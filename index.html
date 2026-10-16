@@ -26,6 +26,27 @@
     border: 2px solid rgba(255, 255, 255, .9); border-radius: 50%; pointer-events: none; display: none; z-index: 5; }
   #deskhint { position: fixed; left: 12px; bottom: 10px; font-size: 12px; color: rgba(255, 255, 255, .5);
     z-index: 5; pointer-events: none; }
+  #btnFS { position: fixed; top: 10px; right: 10px; z-index: 20; width: 44px; height: 44px; border-radius: 12px;
+    border: 2px solid rgba(184, 77, 255, .8); background: rgba(20, 6, 32, .7); color: #fff; font-size: 22px; line-height: 1;
+    cursor: pointer; display: none; touch-action: manipulation; }
+  #btnFS:hover { background: rgba(74, 26, 112, .85); }
+  /* ---- mobile touch controls ---- */
+  #touch { position: fixed; inset: 0; z-index: 6; pointer-events: none; user-select: none; -webkit-user-select: none; }
+  #touch.hidden { display: none; }
+  #stick { position: absolute; left: 4vmin; bottom: 4vmin; width: 34vmin; height: 34vmin; max-width: 190px; max-height: 190px;
+    border-radius: 50%; background: rgba(138, 43, 226, .18); border: 2px solid rgba(184, 77, 255, .55); pointer-events: auto; touch-action: none; }
+  #knob { position: absolute; left: 50%; top: 50%; width: 42%; height: 42%; margin: -21% 0 0 -21%; border-radius: 50%;
+    background: rgba(230, 200, 255, .55); border: 2px solid #fff; }
+  .tbtn { position: absolute; pointer-events: auto; touch-action: none; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .8);
+    background: rgba(40, 12, 64, .55); color: #fff; font: 700 13px "Courier New", monospace; letter-spacing: .05em; }
+  .tbtn.on { background: rgba(138, 43, 226, .8); }
+  #tJump { right: 5vmin; bottom: 6vmin; width: 22vmin; height: 22vmin; max-width: 120px; max-height: 120px; font-size: 16px; }
+  #tGrab { right: 30vmin; bottom: 5vmin; width: 15vmin; height: 15vmin; max-width: 84px; max-height: 84px; }
+  #tSprint { right: 6vmin; bottom: 31vmin; width: 15vmin; height: 15vmin; max-width: 84px; max-height: 84px; font-size: 11px; }
+  #tPause { left: 10px; top: 10px; width: 44px; height: 44px; border-radius: 12px; font-size: 16px; }
+  #rotateHint { position: fixed; inset: 0; z-index: 30; display: none; align-items: center; justify-content: center; text-align: center;
+    background: rgba(0, 0, 0, .9); color: #e6c8ff; font: 700 18px "Courier New", monospace; padding: 24px; }
+  @media (orientation: portrait) and (pointer: coarse) { body.playing #rotateHint { display: flex; } }
 </style>
 <script type="importmap">
 { "imports": {
@@ -35,6 +56,8 @@
 </script>
 <!-- Music pack: classic script, loaded BEFORE the game module. The game still runs if it is missing. -->
 <script src="wega-music.js"></script>
+<!-- Optional Lap 3 track add-on (registers "lap3" with WegaMusic). Also optional: the game falls back to lap 2's song. -->
+<script src="wega-music-lap3.js"></script>
 </head>
 <body>
 <div id="overlay">
@@ -45,11 +68,21 @@
   <button id="btnDesktop" disabled>CLICK TO PLAY (DESKTOP)</button>
   <div class="hint">
     Quest 3S: press <b>ENTER VR</b>. Left stick moves, right stick turns, <b>A</b> jumps, <b>B</b> pauses, grip grabs, trigger clicks menus.<br>
-    Desktop: <b>WASD</b> move, mouse look, <b>Space</b> jump, <b>E</b> grab, <b>Shift</b> sprint lock, <b>Esc</b> pause, <b>M</b> mute.
-    Aim the crosshair at a menu button and click.
+    Desktop: <b>WASD</b> move, mouse look, <b>Space</b> jump, <b>E</b> grab, <b>Shift</b> sprint lock, <b>Esc</b> pause, <b>M</b> mute, <b>F</b> full screen.
+    Aim the crosshair at a menu button and click.<br>
+    Phone / tablet: left stick moves, drag the right side to look, tap menu buttons, JUMP / GRAB / SPRINT buttons on the right.
   </div>
 </div>
 <div id="crosshair"></div>
+<button id="btnFS" title="Full screen (F)" aria-label="Toggle full screen">⛶</button>
+<div id="touch" class="hidden">
+  <div id="stick"><div id="knob"></div></div>
+  <button class="tbtn" id="tJump">JUMP</button>
+  <button class="tbtn" id="tGrab">GRAB</button>
+  <button class="tbtn" id="tSprint">SPRINT</button>
+  <button class="tbtn" id="tPause">II</button>
+</div>
+<div id="rotateHint">Turn your phone sideways (landscape) to play</div>
 <div id="deskhint"></div>
 <script type="module">
 import * as THREE from 'three';
@@ -61,8 +94,8 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 // =====================================================================================
 const CONFIG = {
   // ---- player movement ----
-  WALK_SPEED: 3.0,            // m/s at the start of a run
-  TOP_SPEED: 7.6,             // m/s after RAMP_TIME of continuous running
+  WALK_SPEED: 3.3,            // m/s at the start of a run
+  TOP_SPEED: 8.4,             // m/s after RAMP_TIME of continuous running
   RAMP_TIME: 2.2,             // seconds to reach top speed
   RAMP_RESET: 0.6,            // ramp fraction kept after a >100 deg heading change
   HEADING_RESET_DEG: 100,
@@ -82,9 +115,9 @@ const CONFIG = {
   STAIR_THICK: 1.0,           // stairs are solid wedges this thick under the walking surface
   VIEW_SMOOTH: 22,            // vertical view smoothing on stairs (1/s)
   VIEW_LAG_MAX: 0.12,         // the view never trails the feet by more than this (m)
-  SPEED_MULT: 7.8,            // displayed s/s = horizontal speed * 7.8 (top ~59)
-  SPEED_RED: 50,
-  SPEED_JITTER: 57,
+  SPEED_MULT: 7.8,            // displayed s/s = horizontal speed * 7.8 (top ~66)
+  SPEED_RED: 55,
+  SPEED_JITTER: 63,
   FALL_Y: -35,
   LAVA_Y: -20,
   SAFE_INTERVAL: 0.5,
@@ -96,22 +129,26 @@ const CONFIG = {
   MAX_HP: 100, REGEN: 3, INVULN: 1.0,
   DMG: { rory: 35, screamer: 30, laser: 20, fall: 20, lava: 25, flood: 25, wegaHead: 20, fireball: 15, burn: 10, glitch: 15 },
   DIFF: {
-    chill:  { label: 'CHILL',     dmg: 0.5, timer: 1.4, threat: 0.6, regenDelay: 3,        roryBonus: 0,   collapse: 0.9,  lap2Time: 210 },
-    normal: { label: 'NORMAL',    dmg: 1.0, timer: 1.0, threat: 1.0, regenDelay: 6,        roryBonus: 0,   collapse: 1.0,  lap2Time: 150 },
-    wega:   { label: 'WEGA MODE', dmg: 1.5, timer: 0.8, threat: 1.6, regenDelay: Infinity, roryBonus: 0.6, collapse: 1.18, lap2Time: 120 },
+    chill:  { label: 'CHILL',     dmg: 0.5, timer: 1.4, threat: 0.6, regenDelay: 3,        roryBonus: 0,   collapse: 0.9,  lap2Time: 210, lap3Time: 168, shoe: 0.85 },
+    normal: { label: 'NORMAL',    dmg: 1.0, timer: 1.0, threat: 1.0, regenDelay: 6,        roryBonus: 0,   collapse: 1.0,  lap2Time: 150, lap3Time: 120, shoe: 1.0 },
+    wega:   { label: 'WEGA MODE', dmg: 1.5, timer: 0.8, threat: 1.6, regenDelay: Infinity, roryBonus: 0.6, collapse: 1.18, lap2Time: 120, lap3Time: 96,  shoe: 1.1 },
   },
 
   // ---- level ----
   GRID_N: 8, GRID_SPACING: 14, TIER_H: 4, PLATFORM: 4, WALK_W: 2.6, WALK_T: 1, STEP_RISE: 0.25,
   EXTRA_EDGE_FRAC: 0.3, RING_LOOPS: 4,
-  LAP1_SEED: 207, LAP2_SEED: 208,
+  LAP1_SEED: 207, LAP2_SEED: 208, LAP3_SEED: 209,
   LAP2_REMOVE_FRAC: 0.1, LAP2_NEW_BRIDGES: 4,
   UV_TILE: 2,                 // lap 2 tile texture repeats every 2 m
 
   // ---- collectibles ----
-  COLLECT_TOTAL: 207, COLLECT_SPACING: 1.7, COLLECT_HOVER: 1.1, COLLECT_SIZE: 0.62,
+  COLLECT_TOTAL: 207, COLLECT_SPACING: 1.7, COLLECT_HOVER: 1.1, COLLECT_SIZE: 0.72,
   PICKUP_BODY: 1.1, PICKUP_HAND: 0.35, COMBO_WINDOW: 1.2,
   GOLD_FLASH_AT: [100, 50, 25, 10],
+
+  // ---- Shoebench (chases you once a lap timer hits 0:00) ----
+  SHOE_SPEED: 5.6, SHOE_MAX: 8.0, SHOE_ACCEL: 0.1, SHOE_RADIUS: 1.0, SHOE_SPAWN_DIST: 45,
+  LAP3_THREAT: 1.25,          // extra threat-rate multiplier on Lap 3
 
   // ---- lap 2 ----
   LAP2_BONUS: 3, LAP2_BONUS_EVERY: 25, LAP2_TENSION_AT: 30,
@@ -138,7 +175,7 @@ const CONFIG = {
     walkTop: 0x3b2433, walkSide: 0x22141d, edgeGlow: 0x8a2be2, decal: 0x5a1f2e,
     hemiSky1: 0x4a3a6a, hemiSky2: 0xffa060, hemiGround2: 0x3a0800, hemiChamber: 0x4a5aff, hemiRed: 0xff2020,
     lap2Walk: 0x2b1f9a, lap2Red: 0xe01616, dirt: 0x5a3a1a, grass: 0x1f5a2a, post: 0x1f7a3a,
-    beacon1: 0xe8e04a, beacon2: 0xb8f04a,
+    beacon1: 0xe8e04a, beacon2: 0xb8f04a, beacon3: 0xffffff, edgeGlow3: 0xff1830,
     rory: 0xa020ff, laser: 0xff1a1a, laser2: 0xff5a10, neonEscape: 0x2f9bff,
     discBody: 0x14143c, discRim: 0x4a5aff, gold: 0xffcc33,
     hpGreen: '#2ee86a', hpYellow: '#ffd21f', hpRed: '#ff2a2a',
@@ -433,8 +470,9 @@ const Music = {
     if (this.ok()) { window.WegaMusic.setRate(this.desired.rate, 0.01); window.WegaMusic.play(track, fadeIn); }
   },
   stop(secs) { this.desired.track = null; if (this.ok()) window.WegaMusic.stop(secs); },
+  hasTrack(t) { return !!(window.WegaMusic && window.WegaMusic.data && window.WegaMusic.data[t]); },
   toast(track) {
-    let title = track === 'lap1' ? 'WEXECUTION' : 'WEGAFADENCE';
+    let title = track === 'lap1' ? 'WEXECUTION' : track === 'lap3' ? "PILLAR JOHN'S REVENGE" : 'WEGAFADENCE';
     try { if (window.WegaMusic && window.WegaMusic.data[track]) title = window.WegaMusic.data[track].title.split('(')[0].trim(); } catch (e) { /* ignore */ }
     UI.toast('♪ ' + title.toUpperCase());
   },
@@ -460,14 +498,24 @@ const Music = {
   cuePause(on) { this.setMuffled(on, on ? 0.3 : 0.4); },
   cueEnragedStop() { this.stop(0.4); },
   cueLap2Start() {
-    this.deathTok++;
+    this.deathTok++; this.lapRate = 1;
     this.setRate(1, 0.05);
     this.setMuffled(false, 0.2);
     this.setLevel(0.8, 0.2);
     this.play('lap2', 0.05);
     this.toast('lap2');
   },
-  cueLap2Tension() { this.setRate(1.04, 2); },
+  // Lap 3 uses its own song when wega-music-lap3.js is present, else Lap 2's song sped up
+  cueLap3Start() {
+    this.deathTok++;
+    this.setMuffled(false, 0.2); this.setLevel(0.8, 0.2);
+    if (this.hasTrack('lap3')) { this.setRate(1, 0.05); this.play('lap3', 0.05); this.toast('lap3'); }
+    else { this.setRate(1.12, 0.05); this.play('lap2', 0.05); this.toast('lap2'); }
+    this.lapRate = this.desired.rate;
+  },
+  lapRate: 1,
+  cueLap2Tension() { this.setRate(this.lapRate * 1.04, 2); },
+  cueShoebench() { this.setRate(this.lapRate * 1.1, 1.5); },
   cueChamber() { this.setRate(1.0, 0.5); this.setMuffled(true, 1.0); this.setLevel(0.5, 1.0); },
   cueRun() {
     this.setMuffled(false, 0.2); this.setLevel(0.9, 0.3); this.setRate(1.08, 1.0);
@@ -484,7 +532,8 @@ const Music = {
     this.deathTok++;
     this.desired.rate = 1;
     if (kind === 'LAP1') { this.cueLap1Start(); return; }
-    if (kind === 'LAP2') { this.setRate(1, 0.01); this.setMuffled(false, 0.1); this.setLevel(0.8, 0.2); this.play('lap2', 0.05); this.toast('lap2'); return; }
+    if (kind === 'LAP2') { this.lapRate = 1; this.setRate(1, 0.01); this.setMuffled(false, 0.1); this.setLevel(0.8, 0.2); this.play('lap2', 0.05); this.toast('lap2'); return; }
+    if (kind === 'LAP3') { this.cueLap3Start(); return; }
     // escape retry: lap 2 track fresh, RUN settings
     this.setRate(1, 0.01); this.play('lap2', 0.05); this.cueRun();
   },
@@ -653,6 +702,11 @@ const Sfx = {
   poof(p) { this.noise({ filter: 'bandpass', f0: 900, f1: 180, q: 0.8, dur: 0.35, vol: 0.3, dest: p || undefined }); this.tone({ type: 'sine', f0: 520, f1: 1100, dur: 0.1, vol: 0.12, dest: p || undefined }); },
   bonus() { this.tone({ type: 'square', f0: 988, dur: 0.07, vol: 0.07 }); this.tone({ type: 'square', f0: 1319, dur: 0.12, vol: 0.07, when: 0.07 }); },
   gold() { [1047, 1319, 1568].forEach((f, i) => this.tone({ type: 'triangle', f0: f, dur: 0.18, vol: 0.09, when: i * 0.05 })); },
+  // Shoebench: squeaky sneaker + creaky wood, an alarm when it appears
+  squeak(p) { this.tone({ type: 'square', f0: 1900, f1: 2600, dur: 0.09, vol: 0.06, lp: 3000, dest: p || undefined }); this.tone({ type: 'sine', f0: 2400, f1: 1700, dur: 0.12, vol: 0.08, when: 0.07, dest: p || undefined }); },
+  creak(p) { this.tone({ type: 'sawtooth', f0: 95, f1: 70, dur: 0.35, vol: 0.12, lp: 600, dest: p || undefined }); this.noise({ filter: 'bandpass', f0: 500, q: 6, dur: 0.3, vol: 0.06, dest: p || undefined }); },
+  alarm() { for (let i = 0; i < 4; i++) { this.tone({ type: 'square', f0: 880, dur: 0.18, vol: 0.08, when: i * 0.4, lp: 2400 }); this.tone({ type: 'square', f0: 660, dur: 0.18, vol: 0.08, when: i * 0.4 + 0.2, lp: 2400 }); } },
+  lapPortal() { [392, 523, 659, 784, 1047].forEach((f, i) => this.tone({ type: 'triangle', f0: f, dur: 0.25, vol: 0.09, when: i * 0.06 })); },
   portal() { this.tone({ type: 'sine', f0: 220, f1: 1760, dur: 1.2, vol: 0.2, attack: 0.3 }); this.noise({ filter: 'highpass', f0: 1500, f1: 6000, dur: 1.2, vol: 0.12, attack: 0.4 }); },
 };
 function setPannerPos(p, x, y, z) {
@@ -711,7 +765,7 @@ const Rig = {
 
 function initRenderer() {
   renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, IS_TOUCH ? 1.5 : 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.xr.enabled = true;
@@ -891,7 +945,7 @@ const Input = {
     window.addEventListener('blur', () => { this.keys = Object.create(null); });
     el.addEventListener('mousedown', (e) => {
       AudioSys.ensure();
-      if (XR.inVR) return;
+      if (XR.inVR || Touch.recent()) return;
       if (this.locked) { UI.desktopClick(null); return; }
       // unlocked: click UI under the mouse, otherwise grab pointer lock / start drag-look
       this.mouseNDC.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
@@ -967,6 +1021,18 @@ const Input = {
       if (this.keysPressed.KeyP || (this.keysPressed.Escape && !this.locked)) this.pausePressed = true;
       if (this.keysPressed.KeyM) AudioSys.toggleMute();
       if (this.keysPressed.KeyR && SM.isGameplay()) this.recenter = true;
+      if (this.keysPressed.KeyF) toggleFullscreen();
+      // touch controls (phones / tablets)
+      if (Touch.active) {
+        if (Touch.move.lengthSq() > 0.0001) { this.move.add(Touch.move); if (this.move.lengthSq() > 1) this.move.normalize(); }
+        if (Touch.jumpPressed) this.jumpPressed = true;
+        if (Touch.jumpHeld) jumpHeld = true;
+        if (Touch.grabPressed) this.grabPressed = true;
+        if (Touch.sprintPressed) this.sprintToggle = true;
+        if (Touch.pausePressed) this.pausePressed = true;
+        this.mouseDX += Touch.lookDX * 1.6; this.mouseDY += Touch.lookDY * 1.6;
+        Touch.consume();
+      }
       // mouse look
       const sens = 0.0022;
       if (this.mouseDX || this.mouseDY) {
@@ -975,7 +1041,7 @@ const Input = {
         rig.rotation.y = Rig.yaw; camera.rotation.x = Rig.pitch;
       }
       if (DEBUG_URL) {
-        const map = { Digit1: 'LAP1', Digit2: 'LAP2', Digit3: 'IDOL', Digit4: 'ESCAPE', Digit5: 'WIN' };
+        const map = { Digit1: 'LAP1', Digit2: 'LAP2', Digit3: 'IDOL', Digit4: 'ESCAPE', Digit5: 'WIN', Digit6: 'LAP3' };
         for (const code in map) if (this.keysPressed[code]) Debug.jump(map[code]);
       }
     }
@@ -987,6 +1053,85 @@ const Input = {
 };
 const DEBUG_URL = /[?&]debug\b/.test(window.location.search);
 
+// ---------------- full screen ----------------
+function fullscreenSupported() { return !!(document.fullscreenEnabled || document.webkitFullscreenEnabled); }
+function toggleFullscreen() {
+  const d = document, el = d.documentElement;
+  try {
+    if (d.fullscreenElement || d.webkitFullscreenElement) { (d.exitFullscreen || d.webkitExitFullscreen).call(d); return; }
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (!req) return;
+    const p = req.call(el, { navigationUI: 'hide' });
+    const lock = () => { try { if (IS_TOUCH && window.screen.orientation && window.screen.orientation.lock) window.screen.orientation.lock('landscape').catch(() => {}); } catch (e) { /* ignore */ } };
+    if (p && p.then) p.then(lock).catch(() => {}); else lock();
+  } catch (e) { /* ignore */ }
+}
+
+// ---------------- touch controls (virtual stick, drag-to-look, buttons) ----------------
+const IS_TOUCH = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || ('ontouchstart' in window);
+const Touch = {
+  active: false, move: new THREE.Vector2(), lookDX: 0, lookDY: 0,
+  jumpPressed: false, jumpHeld: false, grabPressed: false, sprintPressed: false, pausePressed: false,
+  stickId: null, lookId: null, look: { x: 0, y: 0, sx: 0, sy: 0, t: 0, moved: 0 }, lastTouch: -1e9,
+  recent() { return performance.now() - this.lastTouch < 900; },
+  consume() { this.lookDX = 0; this.lookDY = 0; this.jumpPressed = false; this.grabPressed = false; this.sprintPressed = false; this.pausePressed = false; },
+  show(on) { this.active = on; document.getElementById('touch').classList.toggle('hidden', !on); if (!on) this.move.set(0, 0); },
+  init() {
+    const el = renderer.domElement, stick = document.getElementById('stick'), knob = document.getElementById('knob');
+    const mark = () => { this.lastTouch = performance.now(); };
+    // left: virtual joystick
+    const setStick = (e) => {
+      const r = stick.getBoundingClientRect(), R = r.width / 2;
+      let x = (e.clientX - (r.left + R)) / R, y = (e.clientY - (r.top + R)) / R;
+      const l = Math.hypot(x, y); if (l > 1) { x /= l; y /= l; }
+      this.move.set(Math.abs(x) < 0.12 ? 0 : x, Math.abs(y) < 0.12 ? 0 : -y);
+      knob.style.transform = `translate(${x * R * 0.6}px, ${y * R * 0.6}px)`;
+    };
+    stick.addEventListener('pointerdown', (e) => { e.preventDefault(); mark(); AudioSys.ensure(); this.stickId = e.pointerId; stick.setPointerCapture(e.pointerId); setStick(e); });
+    stick.addEventListener('pointermove', (e) => { if (e.pointerId === this.stickId) { e.preventDefault(); setStick(e); } });
+    const endStick = (e) => { if (e.pointerId !== this.stickId) return; this.stickId = null; this.move.set(0, 0); knob.style.transform = ''; };
+    stick.addEventListener('pointerup', endStick); stick.addEventListener('pointercancel', endStick);
+    // right side of the screen: drag to look, tap to press 3D menu buttons
+    el.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'touch') return;
+      e.preventDefault(); mark(); AudioSys.ensure();
+      if (this.lookId !== null) return;
+      this.lookId = e.pointerId;
+      Object.assign(this.look, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now(), moved: 0 });
+      try { el.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== this.lookId) return;
+      e.preventDefault();
+      this.lookDX += e.clientX - this.look.x; this.lookDY += e.clientY - this.look.y;
+      this.look.moved = Math.max(this.look.moved, Math.hypot(e.clientX - this.look.sx, e.clientY - this.look.sy));
+      this.look.x = e.clientX; this.look.y = e.clientY;
+      Input.mouseNDC.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+    });
+    const endLook = (e) => {
+      if (e.pointerId !== this.lookId) return;
+      this.lookId = null;
+      if (this.look.moved < 14 && performance.now() - this.look.t < 400) {
+        Input.mouseNDC.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+        UI.desktopClick(Input.mouseNDC);
+      }
+    };
+    el.addEventListener('pointerup', endLook); el.addEventListener('pointercancel', endLook);
+    // buttons
+    const btn = (id, down, up) => {
+      const b = document.getElementById(id);
+      b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); mark(); AudioSys.ensure(); b.classList.add('on'); down(); });
+      const off = (e) => { e.preventDefault(); b.classList.remove('on'); if (up) up(); };
+      b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('pointerleave', off);
+      b.addEventListener('contextmenu', (e) => e.preventDefault());
+    };
+    btn('tJump', () => { this.jumpPressed = true; this.jumpHeld = true; }, () => { this.jumpHeld = false; });
+    btn('tGrab', () => { this.grabPressed = true; });
+    btn('tSprint', () => { this.sprintPressed = true; });
+    btn('tPause', () => { this.pausePressed = true; });
+  },
+};
+
 const DOM = {
   overlay: document.getElementById('overlay'),
   status: document.getElementById('status'),
@@ -994,6 +1139,7 @@ const DOM = {
   btnDesktop: document.getElementById('btnDesktop'),
   crosshair: document.getElementById('crosshair'),
   hint: document.getElementById('deskhint'),
+  btnFS: document.getElementById('btnFS'),
   showOverlay(msg) { this.overlay.classList.remove('hidden'); if (msg) this.status.textContent = msg; },
 };
 
@@ -1353,6 +1499,57 @@ function drawDoodle(ctx, size, progress, data) {
   ctx.restore();
 }
 
+// ---------------- Shoebench (a giant angry sneaker grown into a park bench) ----------------
+function drawShoebench(c) {
+  const ctx = c.getContext('2d'); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  const OL = 7, WOOD = '#8a5a2b', WOOD_D = '#5e3a17';
+  // bench legs dangling under the sole
+  for (const x of [120, 190, 330, 400]) {
+    drawOutlinedShape(ctx, (k) => roundedRect(k, x - 14, 380, 28, 100, 6), WOOD_D, OL);
+    drawOutlinedShape(ctx, (k) => roundedRect(k, x - 20, 470, 40, 14, 5), '#3a2410', 5);
+  }
+  // bench back-rest planks rising out of the shoe opening
+  drawOutlinedShape(ctx, (k) => roundedRect(k, 60, 70, 26, 170, 6), WOOD_D, OL);
+  drawOutlinedShape(ctx, (k) => roundedRect(k, 196, 70, 26, 150, 6), WOOD_D, OL);
+  for (const y of [78, 122]) drawOutlinedShape(ctx, (k) => roundedRect(k, 40, y, 210, 30, 8), WOOD, OL);
+  // the sneaker: upper, toe cap, sole
+  drawOutlinedShape(ctx, (k) => { k.beginPath(); k.moveTo(50, 190); k.lineTo(250, 170); k.quadraticCurveTo(300, 240, 380, 250); k.quadraticCurveTo(480, 262, 490, 330); k.lineTo(490, 360); k.lineTo(40, 360); k.quadraticCurveTo(28, 280, 50, 190); k.closePath(); }, '#d81e1e', OL);
+  drawOutlinedShape(ctx, (k) => { k.beginPath(); k.moveTo(360, 252); k.quadraticCurveTo(470, 258, 490, 330); k.lineTo(490, 352); k.lineTo(350, 352); k.quadraticCurveTo(330, 290, 360, 252); k.closePath(); }, '#f4f1ea', OL);
+  drawOutlinedShape(ctx, (k) => roundedRect(k, 30, 345, 470, 46, 20), '#ffffff', OL);
+  ctx.strokeStyle = '#999'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(48, 372); ctx.lineTo(482, 372); ctx.stroke();
+  // big swoosh stripe
+  drawOutlinedShape(ctx, (k) => { k.beginPath(); k.moveTo(80, 320); k.quadraticCurveTo(230, 330, 330, 260); k.quadraticCurveTo(250, 345, 70, 338); k.closePath(); }, '#ffffff', 4);
+  // laces = gritted teeth over the tongue
+  drawOutlinedShape(ctx, (k) => { k.beginPath(); k.moveTo(230, 175); k.quadraticCurveTo(300, 200, 350, 252); k.lineTo(300, 262); k.quadraticCurveTo(255, 220, 215, 205); k.closePath(); }, '#2a0008', 5);
+  ctx.fillStyle = '#fff';
+  for (let i = 0; i < 5; i++) { const t = i / 5, x = 225 + t * 115, y = 185 + t * 62; polyPath(ctx, [x, y, x + 18, y + 10, x + 4, y + 26]); ctx.fill(); }
+  // furious eyes on the toe cap
+  drawOutlinedShape(ctx, (k) => polyPath(k, [372, 268, 446, 286, 440, 300, 368, 286]), '#1a0000', 4);
+  for (const [ex, ey] of [[392, 314], [446, 318]]) {
+    drawOutlinedShape(ctx, (k) => ellipsePath(k, ex, ey, 22, 18), '#ffffff', 5);
+    ctx.save(); ctx.shadowColor = '#ff0000'; ctx.shadowBlur = 16; ctx.fillStyle = '#ff1010'; circlePath(ctx, ex + 6, ey + 3, 9); ctx.fill(); ctx.restore();
+  }
+}
+function drawLap3Tile(c) {
+  const ctx = c.getContext('2d'), w = c.width, T = w / 4, rng = mulberry32(3309);
+  for (let ty = 0; ty < 4; ty++) for (let tx = 0; tx < 4; tx++) {
+    ctx.fillStyle = (tx + ty) % 2 ? '#f2f0ea' : '#121014'; ctx.fillRect(tx * T, ty * T, T, T);
+  }
+  // blood-red cracks
+  ctx.strokeStyle = '#d0101c'; ctx.lineWidth = 3;
+  for (let i = 0; i < 9; i++) {
+    let x = rng() * w, y = rng() * w; ctx.beginPath(); ctx.moveTo(x, y);
+    for (let k = 0; k < 4; k++) { x += (rng() - 0.5) * 60; y += (rng() - 0.5) * 60; ctx.lineTo(x, y); }
+    ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(80,0,0,0.6)'; ctx.lineWidth = 2;
+  for (let i = 1; i < 4; i++) { ctx.beginPath(); ctx.moveTo(i * T, 0); ctx.lineTo(i * T, w); ctx.moveTo(0, i * T); ctx.lineTo(w, i * T); ctx.stroke(); }
+}
+function drawPortalSign(c, text, color) {
+  const ctx = c.getContext('2d'); ctx.clearRect(0, 0, c.width, c.height);
+  drawText(ctx, text, c.width / 2, c.height / 2 + 4, { size: 92, style: 'italic 900', font: FONT_IMPACT, fill: '#ffffff', stroke: '#000', lw: 12, spacing: 0.08, glow: color, glowBlur: 26, maxWidth: c.width - 20 });
+}
+
 // ---------------- small effect textures ----------------
 function drawFlame(c) {
   const ctx = c.getContext('2d'), w = c.width, h = c.height;
@@ -1458,7 +1655,9 @@ function buildTextures() {
   CANVAS.chevron = makeCanvas(64, 64); drawChevron(CANVAS.chevron); TEX.chevron = canvasTex(CANVAS.chevron);
   CANVAS.tile2 = makeCanvas(256, 256); drawLap2Tile(CANVAS.tile2); TEX.tile2 = canvasTex(CANVAS.tile2, { repeat: true });
   CANVAS.dirt = makeCanvas(128, 64); drawDirt(CANVAS.dirt); TEX.dirt = canvasTex(CANVAS.dirt, { repeat: true });
-  CANVAS.noise = makeCanvas(256, 256); drawNoise(CANVAS.noise); TEX.noise = canvasTex(CANVAS.noise, { repeat: true, linear: true, noMips: true });
+  CANVAS.tile3 = makeCanvas(256, 256); drawLap3Tile(CANVAS.tile3); TEX.tile3 = canvasTex(CANVAS.tile3, { repeat: true });
+  CANVAS.shoebench = makeCanvas(512, 512); drawShoebench(CANVAS.shoebench); TEX.shoebench = canvasTex(CANVAS.shoebench);
+  CANVAS.noise = makeCanvas(256, 256); drawNoise(CANVAS.noise); TEX.noise = canvasTex(CANVAS.noise, { repeat: true, linear: true });
   TEX.doodleData = buildDoodleStrokes();
 }
 
@@ -1748,7 +1947,12 @@ const HUD = {
       ctx.fillStyle = 'rgba(255,255,255,0.35)'; roundedRect(ctx, cx - w + 4, y + 3, Math.max(0, w * 2 - 8), 7, 4); ctx.fill();
     }
     ctx.drawImage(CANVAS.wegaIcon, cx - 34, 2, 68, 68);
-    drawText(ctx, fmtClock(secs), cx, 96, { size: 36, fill: '#ff2a2a', stroke: '#fff', lw: 7, style: 'bold' });
+    if (LapTimer.expired) {
+      // time's up: Shoebench is out
+      const blink = Math.floor(Clock.real * 3) % 2 === 0;
+      drawText(ctx, '0:00', cx, 96, { size: 36, fill: blink ? '#ff2a2a' : '#ffffff', stroke: blink ? '#fff' : '#ff0000', lw: 7, style: 'bold' });
+      drawText(ctx, 'SHOEBENCH!', cx + 150, 96, { size: 22, style: 'italic 900', font: FONT_IMPACT, fill: '#ff3030', stroke: '#000', lw: 5 });
+    } else drawText(ctx, fmtClock(secs), cx, 96, { size: 36, fill: '#ff2a2a', stroke: '#fff', lw: 7, style: 'bold' });
     this.boss.tex.needsUpdate = true;
     const lx = (w / 512) * 0.84;
     this.flames[0].position.set(-lx, 0.035, 0.001); this.flames[1].position.set(lx, 0.035, 0.001);
@@ -1784,8 +1988,8 @@ const HUD = {
     this.main.mesh.scale.set(s, s, 1);
     // boss bar
     if (this.showBoss) {
-      const secs = Math.max(0, Lap2.timeLeft), frac = clamp(secs / Lap2.timeMax, 0, 1);
-      const key = Math.ceil(secs), fk = Math.round(frac * 200);
+      const secs = Math.max(0, LapTimer.timeLeft), frac = clamp(secs / LapTimer.timeMax, 0, 1);
+      const key = Math.ceil(secs) + (LapTimer.expired ? 1000 + (Math.floor(Clock.real * 3) % 2) : 0), fk = Math.round(frac * 200);
       if (key !== v.timer || fk !== v.frac) { v.timer = key; v.frac = fk; if (floatOn) this.drawBoss(frac, secs); Wrist.dirty = true; }
       const fl = 1 + Math.sin(Clock.real * 31) * 0.12 + Math.sin(Clock.real * 17) * 0.08;
       this.flames[0].scale.set(fl, fl * 1.1, 1); this.flames[1].scale.set(fl * 0.95, fl, 1);
@@ -1875,7 +2079,7 @@ const Wrist = {
     drawText(ctx, '-[' + sp + 's/s]-', 128, 24, { size: 22, fill: sp >= CONFIG.SPEED_RED ? '#ff2a2a' : '#fff', stroke: '#000', lw: 5 });
     drawText(ctx, '-[' + Collect.left + ' LEFT]-', 128, 56, { size: 28, fill: '#fff', stroke: '#000', lw: 6 });
     drawHealthBar(ctx, 20, 78, 140, 18, HUD.hpDisp, HUD.hpGhost);
-    if (HUD.showBoss) drawText(ctx, fmtClock(Lap2.timeLeft), 208, 88, { size: 24, fill: '#ff2a2a', stroke: '#fff', lw: 5 });
+    if (HUD.showBoss) drawText(ctx, fmtClock(LapTimer.timeLeft), 208, 88, { size: 24, fill: '#ff2a2a', stroke: '#fff', lw: 5 });
     if (Save.s.fps) drawText(ctx, this.fps + ' FPS', 128, 112, { size: 16, fill: '#9f9', stroke: '#000', lw: 3 });
     this.tex.needsUpdate = true;
   },
@@ -2348,6 +2552,65 @@ const Player = {
   },
 };
 
+// ---------------- first-person body (visible when you look down) ----------------
+// Black suit, legs that swing with your speed; desktop/mobile also get swinging arms
+// (in VR your tracked gloves are the hands). Kept on layer 0 so XR eyes render it.
+const FPBody = {
+  group: null, torso: null, legs: [], arms: [], yaw: 0, phase: 0,
+  init() {
+    const suit = new THREE.MeshLambertMaterial({ color: 0x2e2e3a, emissive: 0x0c0a12 }), dark = new THREE.MeshLambertMaterial({ color: 0x101014, emissive: 0x060608 });
+    const shirt = new THREE.MeshLambertMaterial({ color: 0xe6e6e6 }), tie = new THREE.MeshBasicMaterial({ color: 0x8a2be2 });
+    const g = this.group = new THREE.Group();
+    // torso + hips + shirt + tie merged per material
+    const tGeo = mergeGeometries([new THREE.BoxGeometry(0.42, 0.56, 0.24).translate(0, 0.0, 0), new THREE.BoxGeometry(0.38, 0.2, 0.22).translate(0, -0.36, 0)]);
+    this.torso = new THREE.Group(); g.add(this.torso);
+    this.torso.add(new THREE.Mesh(tGeo, suit));
+    const shirtFront = new THREE.Mesh(new THREE.PlaneGeometry(0.13, 0.36), shirt); shirtFront.position.set(0, 0.08, -0.121); shirtFront.rotation.y = Math.PI;
+    const tieM = new THREE.Mesh(new THREE.PlaneGeometry(0.05, 0.3), tie); tieM.position.set(0, 0.06, -0.123); tieM.rotation.y = Math.PI;
+    this.torso.add(shirtFront, tieM);
+    for (const sx of [-1, 1]) {
+      const pivot = new THREE.Group(); pivot.position.set(sx * 0.1, 0, 0);
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.8, 0.17).translate(0, -0.4, 0), suit);
+      const foot = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.09, 0.28).translate(0, -0.79, -0.05), dark);
+      pivot.add(leg, foot); g.add(pivot); this.legs.push(pivot);
+      const arm = new THREE.Group(); arm.position.set(sx * 0.27, 0, 0);
+      arm.add(new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.6, 0.12).translate(0, -0.3, 0), suit));
+      arm.add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.11, 0.12).translate(0, -0.64, 0), dark));
+      g.add(arm); this.arms.push(arm);
+    }
+    g.traverse((o) => { o.frustumCulled = false; });
+    scene.add(g);
+  },
+  update(dt) {
+    const show = G.lobby.visible || G.maze.visible || G.chamber.visible;
+    this.group.visible = show;
+    if (!show) return;
+    camera.getWorldPosition(_v1);
+    const eye = Math.max(1.0, _v1.y - Player.viewY - Rig.seatedOffset());
+    const k = eye / 1.65;                       // scale the body to the player's height
+    // the body turns lazily toward where you look (faster while running)
+    const hy = Rig.headYaw(), dY = wrapAngle(hy - this.yaw);
+    const rate = Player.hspeed > 0.6 ? 10 : Math.abs(dY) > 0.7 ? 6 : 0;
+    this.yaw = wrapAngle(this.yaw + dY * (1 - Math.exp(-rate * dt)));
+    this.group.position.set(_v1.x, Player.viewY, _v1.z);
+    this.group.rotation.set(0, this.yaw, 0);
+    this.group.scale.setScalar(k);
+    // chest just under/behind the eyes: out of view looking ahead, right there when you look down
+    this.torso.position.set(0, 1.02, 0.07);
+    for (const l of this.legs) { l.position.y = 0.82; l.position.z = 0.05; }
+    for (const a of this.arms) { a.position.y = 1.27; a.position.z = 0.07; a.visible = !XR.inVR; }
+    // leg / arm swing from speed
+    let swing = 0, tuckL = 0, tuckR = 0;
+    if (Player.grounded && Player.hspeed > 0.3) { this.phase += Player.hspeed * dt * 2.1; swing = Math.sin(this.phase) * 0.75 * Math.min(1, Player.hspeed / 5); }
+    else if (!Player.grounded) { tuckL = 0.55; tuckR = -0.2; }
+    const L = this.legs[0], R = this.legs[1];
+    L.rotation.x = damp(L.rotation.x, swing + tuckL, 14, dt);
+    R.rotation.x = damp(R.rotation.x, -swing + tuckR, 14, dt);
+    this.arms[0].rotation.x = damp(this.arms[0].rotation.x, -swing * 0.8 + (Player.grounded ? 0 : -0.6), 14, dt);
+    this.arms[1].rotation.x = damp(this.arms[1].rotation.x, swing * 0.8 + (Player.grounded ? 0 : -0.6), 14, dt);
+  },
+};
+
 // =====================================================================================
 // LEVEL — colliders + spatial hash, maze graph & meshes, lap skins, lobby, sky, beacon
 // =====================================================================================
@@ -2628,10 +2891,12 @@ const Maze = {
   init() {
     this.g1 = genGraph(CONFIG.LAP1_SEED);
     this.g2 = modifyGraph(this.g1, CONFIG.LAP2_SEED);
-    for (const g of [this.g1, this.g2]) g.edges.forEach((e) => { e.info = edgeInfo(g, e); });
+    this.g3 = modifyGraph(this.g2, CONFIG.LAP3_SEED);
+    for (const g of [this.g1, this.g2, this.g3]) g.edges.forEach((e) => { e.info = edgeInfo(g, e); });
     this.mats = {
       walk1: new THREE.MeshLambertMaterial({ vertexColors: true }),
       walk2: new THREE.MeshLambertMaterial({ vertexColors: true, map: TEX.tile2 }),
+      walk3: new THREE.MeshLambertMaterial({ vertexColors: true, map: TEX.tile3 }),
       edge: new THREE.MeshBasicMaterial({ color: CONFIG.COLORS.edgeGlow }),
       decal: new THREE.MeshBasicMaterial({ map: TEX.glow, color: CONFIG.COLORS.decal, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }),
       dirt: new THREE.MeshLambertMaterial({ map: TEX.dirt }),
@@ -2658,12 +2923,12 @@ const Maze = {
   },
   build(lap) {
     this.dispose();
-    const g = lap === 1 ? this.g1 : this.g2; this.cur = g; this.lap = lap;
+    const g = lap === 1 ? this.g1 : lap === 2 ? this.g2 : this.g3; this.cur = g; this.lap = lap;
     World.clear();
     const C = CONFIG.COLORS, W = CONFIG.WALK_W, P = CONFIG.PLATFORM;
-    const top = new THREE.Color(lap === 1 ? C.walkTop : 0xffffff), side = new THREE.Color(lap === 1 ? C.walkSide : 0x58609a);
+    const top = new THREE.Color(lap === 1 ? C.walkTop : 0xffffff), side = new THREE.Color(lap === 1 ? C.walkSide : lap === 2 ? 0x58609a : 0x5a2a2e);
     const walk = new BoxBatch(), glow = new BoxBatch(), dirt = new BoxBatch();
-    const rng = mulberry32(lap === 1 ? 7207 : 7208);
+    const rng = mulberry32(7206 + lap);
     const segs = [];
     for (const n of g.nodes) {
       walk.box(n.x, n.y - 0.5, n.z, P, CONFIG.WALK_T, P, top, side);
@@ -2687,8 +2952,8 @@ const Maze = {
         }
         World.addRamp(X(I.c0, I.other - W / 2), Z(I.c0, I.other - W / 2), X(I.c1, I.other + W / 2), Z(I.c1, I.other + W / 2), I.axis, I.y0, I.y1, 'stairs');
       }
-      // purple neon edge strips on ~40% of walkways (lap 1)
-      if (lap === 1 && rng() < 0.4) {
+      // neon edge strips: purple on ~40% of walkways (lap 1), blood red on ~60% (lap 3)
+      if ((lap === 1 && rng() < 0.4) || (lap === 3 && rng() < 0.6)) {
         for (const s of [-1, 1]) {
           const o = I.other + s * (W / 2 - 0.04);
           if (!I.stairs) glow.box(X(mid, o), I.y0 + 0.012, Z(mid, o), I.axis === 0 ? I.len : 0.08, 0.08, I.axis === 0 ? 0.08 : I.len, white);
@@ -2709,9 +2974,10 @@ const Maze = {
       }
     }
     Nav.set(g, segs);
-    const wm = this.addMesh(walk.build(lap === 1 ? this.mats.walk1 : this.mats.walk2));
+    const wm = this.addMesh(walk.build(lap === 1 ? this.mats.walk1 : lap === 2 ? this.mats.walk2 : this.mats.walk3));
     wm.userData.isWalk = true;
-    if (lap === 1) this.glowMesh = this.addMesh(glow.build(this.mats.edge)); else this.glowMesh = null;
+    this.edgeBase.set(lap === 3 ? CONFIG.COLORS.edgeGlow3 : CONFIG.COLORS.edgeGlow);
+    if (lap !== 2) this.glowMesh = this.addMesh(glow.build(this.mats.edge)); else this.glowMesh = null;
     if (lap === 2) this.addMesh(dirt.build(this.mats.dirt));
     // start marker ring
     const sn = g.nodes[g.start];
@@ -2750,7 +3016,7 @@ const Maze = {
   },
   // beat-reactive edge glow (lap 1)
   update(lvl) {
-    if (this.lap === 1) this.mats.edge.color.copy(this.edgeBase).multiplyScalar(0.4 + lvl * 1.2);
+    if (this.lap !== 2) this.mats.edge.color.copy(this.edgeBase).multiplyScalar(0.4 + lvl * 1.2);
   },
 };
 
@@ -2774,7 +3040,7 @@ const Silhouettes = {
     geos.forEach((g) => g.dispose());
     G.mazeDeco.add(this.mesh);
   },
-  setLap(lap) { this.mat.color.set(lap === 1 ? 0x1a0f1e : 0x2a0600); },
+  setLap(lap) { this.mat.color.set(lap === 1 ? 0x1a0f1e : lap === 2 ? 0x2a0600 : 0x050002); },
 };
 
 // ---------------- sky dome (enraged purple / lava) + lava sea + embers ----------------
@@ -2790,27 +3056,42 @@ vec3 lavaRamp(float t){
 }
 void main(){
   vec3 d = normalize(vDir);
-  vec2 uv = vec2(atan(d.x, d.z) / 6.28318 * 3.0, d.y * 1.3);
+  // sky-plane projection: no atan seam and no pinch at the zenith; mipmapped noise = no shimmer
+  float h = abs(d.y);
+  vec2 uv = d.xz / (h + 0.22) * 0.32;
+  float haze = 1.0 - smoothstep(0.0, 0.35, h);
   vec3 col;
   if (uMode < 1.5) {
-    float n1 = texture2D(uNoise, uv + vec2(uTime * 0.02, -uTime * 0.06)).r;
-    float n2 = texture2D(uNoise, uv * 2.3 + vec2(-uTime * 0.03, -uTime * 0.13)).r;
+    float n1 = texture2D(uNoise, uv + vec2(uTime * 0.02, -uTime * 0.05)).r;
+    float n2 = texture2D(uNoise, uv * 2.3 + vec2(-uTime * 0.03, uTime * 0.09)).r;
     float n = n1 * 0.6 + n2 * 0.4;
     col = mix(vec3(0.227, 0.039, 0.416), vec3(0.541, 0.0, 1.0), smoothstep(0.25, 0.85, n));
     float ridge = pow(1.0 - abs(n2 - 0.5) * 2.0, 22.0) * uFlash;
     col += vec3(0.95, 0.75, 1.0) * ridge;
-  } else {
-    float sp = 0.05 + uLevel * 0.05;
-    float n1 = texture2D(uNoise, uv + vec2(uTime * 0.01, -uTime * sp)).r;
-    float n2 = texture2D(uNoise, uv * 2.7 + vec2(-uTime * 0.02, -uTime * sp * 2.2)).r;
-    float n = n1 * 0.62 + n2 * 0.38 + (1.0 - abs(d.y)) * 0.1;
+    col = mix(col, vec3(0.35, 0.08, 0.6), haze * 0.7);
+  } else if (uMode < 2.5) {
+    float sp = 0.03 + uLevel * 0.04;
+    float n1 = texture2D(uNoise, uv + vec2(uTime * 0.01, uTime * sp)).r;
+    float n2 = texture2D(uNoise, uv * 2.7 + vec2(-uTime * 0.02, uTime * sp * 2.0)).r;
+    float n = n1 * 0.62 + n2 * 0.38;
     col = lavaRamp(clamp(n, 0.0, 1.0)) * (0.7 + uLevel * 0.7);
+    col = mix(col, vec3(0.75, 0.2, 0.02), haze * 0.75);
+  } else {
+    // lap 3: black and blood-red storm with white lightning
+    float n1 = texture2D(uNoise, uv * 0.8 + vec2(uTime * 0.03, uTime * 0.02)).r;
+    float n2 = texture2D(uNoise, uv * 2.1 + vec2(-uTime * 0.05, uTime * 0.04)).r;
+    float n = n1 * 0.6 + n2 * 0.4;
+    col = mix(vec3(0.02, 0.0, 0.01), vec3(0.62, 0.02, 0.05), smoothstep(0.35, 0.9, n));
+    float ridge = pow(1.0 - abs(n2 - 0.5) * 2.0, 26.0) * uFlash;
+    col += vec3(1.0, 0.9, 0.9) * ridge * 0.9;
+    col *= 0.75 + uLevel * 0.6;
+    col = mix(col, vec3(0.3, 0.0, 0.03), haze * 0.7);
   }
   gl_FragColor = vec4(col * uBright, 1.0);
 }`;
 const LAVA_VS = `varying vec2 vW; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xz; gl_Position = projectionMatrix * viewMatrix * w; }`;
 const LAVA_FS = `
-uniform sampler2D uNoise; uniform float uTime; uniform float uLevel;
+uniform sampler2D uNoise; uniform float uTime; uniform float uLevel; uniform vec3 uTint;
 varying vec2 vW;
 void main(){
   float n1 = texture2D(uNoise, vW * 0.012 + vec2(uTime * 0.01, uTime * 0.02)).r;
@@ -2818,7 +3099,7 @@ void main(){
   float n = n1 * 0.6 + n2 * 0.4;
   vec3 a = vec3(0.35, 0.02, 0.0), b = vec3(1.0, 0.33, 0.0), c = vec3(1.0, 0.85, 0.3);
   vec3 col = n < 0.55 ? mix(a, b, n / 0.55) : mix(b, c, (n - 0.55) / 0.45);
-  col *= 0.8 + uLevel * 0.6;
+  col *= (0.8 + uLevel * 0.6) * uTint;
   gl_FragColor = vec4(col, 1.0);
 }`;
 const Sky = {
@@ -2830,20 +3111,21 @@ const Sky = {
     this.dome = new THREE.Mesh(new THREE.SphereGeometry(350, 32, 16), mat);
     this.dome.renderOrder = -10; this.dome.visible = false; this.dome.frustumCulled = false;
     scene.add(this.dome);
-    this.lavaUni = { uNoise: { value: TEX.noise }, uTime: this.uni.uTime, uLevel: this.uni.uLevel };
+    this.lavaUni = { uNoise: { value: TEX.noise }, uTime: this.uni.uTime, uLevel: this.uni.uLevel, uTint: { value: new THREE.Color(1, 1, 1) } };
     this.lava = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), new THREE.ShaderMaterial({ vertexShader: LAVA_VS, fragmentShader: LAVA_FS, uniforms: this.lavaUni, fog: false }));
     this.lava.rotation.x = -Math.PI / 2; this.lava.position.y = CONFIG.LAVA_Y; this.lava.visible = false; this.lava.frustumCulled = false;
     scene.add(this.lava);
     this.embers = makeEmbers(600); this.embers.visible = false; scene.add(this.embers);
   },
-  set(mode) { // 0 black void, 1 enraged purple, 2 lava
+  set(mode) { // 0 black void, 1 enraged purple, 2 lava, 3 lap-3 blood storm
     this.mode = mode;
     this.dome.visible = mode > 0; this.uni.uMode.value = mode;
-    this.lava.visible = mode === 2; this.embers.visible = mode === 2;
+    this.lava.visible = mode === 2 || mode === 3; this.embers.visible = mode === 2 || mode === 3;
+    this.lavaUni.uTint.value.set(mode === 3 ? 0xff2040 : 0xffffff);
   },
   update(dt, lvl) {
     this.uni.uTime.value += dt; this.uni.uLevel.value = lvl;
-    this.uni.uFlash.value = this.mode === 1 ? (Save.s.reduceFlash ? 0.35 + 0.25 * Math.sin(Clock.real * 2) : (Math.sin(Clock.real * 9) > 0.6 ? 1.6 : 0.4)) : 0;
+    this.uni.uFlash.value = this.mode === 1 || this.mode === 3 ? (Save.s.reduceFlash ? 0.35 + 0.25 * Math.sin(Clock.real * 2) : (Math.sin(Clock.real * (this.mode === 3 ? 5.3 : 9)) > 0.6 ? 1.6 : 0.4)) : 0;
     camera.getWorldPosition(_v1);
     this.dome.position.copy(_v1);
     this.lava.position.x = _v1.x; this.lava.position.z = _v1.z;
@@ -2867,13 +3149,14 @@ function makeEmbers(count) {
         p.z += cos(uTime * 0.5 + aSeed.x * 6.28) * 1.5;
         p = uCenter + mod(p - uCenter + box * 0.5, box) - box * 0.5;
         vec4 mv = modelViewMatrix * vec4(p, 1.0);
-        gl_PointSize = uScale * (0.1 + aSeed.y * 0.16) * projectionMatrix[1][1] / max(0.5, -mv.z);
-        vA = 0.5 + 0.5 * sin(uTime * 6.0 + aSeed.z * 30.0);
+        // clamp the size and fade embers that drift right up to the eyes (they used to flash as big blobs)
+        gl_PointSize = min(40.0, uScale * (0.1 + aSeed.y * 0.16) * projectionMatrix[1][1] / max(0.5, -mv.z));
+        vA = (0.5 + 0.5 * sin(uTime * 6.0 + aSeed.z * 30.0)) * smoothstep(1.5, 4.0, -mv.z);
         gl_Position = projectionMatrix * mv;
       }`,
     fragmentShader: `
       uniform sampler2D uMap; varying float vA;
-      void main(){ float a = texture2D(uMap, gl_PointCoord).a; gl_FragColor = vec4(vec3(1.0, 0.55 + 0.3 * vA, 0.15) * a * (0.5 + 0.5 * vA), a); }`,
+      void main(){ float a = texture2D(uMap, gl_PointCoord).a * min(1.0, vA * 2.0); gl_FragColor = vec4(vec3(1.0, 0.55 + 0.3 * vA, 0.15) * a * (0.5 + 0.5 * vA), a); }`,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   });
   const pts = new THREE.Points(geo, mat); pts.frustumCulled = false;
@@ -2921,6 +3204,54 @@ const Beacon = {
     if (!this.active) return;
     this.uni.uTime.value += dt;
     const s = 9 + Math.sin(Clock.real * 3) * 0.8; this.glow.scale.set(s, s, 1);
+  },
+};
+
+// ---------------- lap portal: optional next lap (appears at the start node) ----------------
+const LapPortal = {
+  group: null, ring: null, disc: null, sign: null, signCanvas: null, signTex: null, active: false, lap: 2, pos: new THREE.Vector3(), uni: null,
+  init() {
+    this.group = new THREE.Group(); this.group.visible = false; scene.add(this.group);
+    this.ring = new THREE.Mesh(new THREE.TorusGeometry(1.55, 0.16, 8, 40), new THREE.MeshBasicMaterial({ color: 0xb050ff, fog: false }));
+    this.ring.position.y = 1.85; this.group.add(this.ring);
+    this.uni = { uNoise: { value: TEX.noise }, uTime: { value: 0 }, uColor: { value: new THREE.Color(0xb050ff) } };
+    this.disc = new THREE.Mesh(new THREE.CircleGeometry(1.45, 40), new THREE.ShaderMaterial({
+      uniforms: this.uni, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending,
+      vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `uniform sampler2D uNoise; uniform float uTime; uniform vec3 uColor; varying vec2 vUv;
+        void main(){ vec2 p = vUv - 0.5; float r = length(p) * 2.0; float a = atan(p.y, p.x);
+          float sw = texture2D(uNoise, vec2(a / 6.2832 * 2.0 + r * 0.6 - uTime * 0.25, r * 0.5 - uTime * 0.4)).r;
+          float v = (0.35 + 0.65 * sw) * smoothstep(1.0, 0.75, r) + 0.6 * smoothstep(0.35, 0.0, r);
+          gl_FragColor = vec4(uColor * v, v); }`,
+    }));
+    this.disc.position.y = 1.85; this.group.add(this.disc);
+    this.signCanvas = makeCanvas(512, 160); this.signTex = canvasTex(this.signCanvas);
+    this.sign = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.0), new THREE.MeshBasicMaterial({ map: this.signTex, transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide }));
+    this.sign.position.y = 4.3; this.group.add(this.sign);
+  },
+  show(p, lap) {
+    this.lap = lap; this.active = true; this.armed = false; this.pos.copy(p);
+    const col = lap === 2 ? 0xb050ff : 0xff2040;
+    this.ring.material.color.set(col); this.uni.uColor.value.set(col);
+    drawPortalSign(this.signCanvas, 'LAP ' + lap, lap === 2 ? '#b050ff' : '#ff2040'); this.signTex.needsUpdate = true;
+    this.group.position.copy(p); this.group.visible = true;
+    Sfx.lapPortal();
+  },
+  hide() { this.active = false; this.group.visible = false; },
+  // only arms once you have stepped away from it, so it never grabs you the moment it opens
+  touched() {
+    if (!this.active) return false;
+    const p = Player.pos, d = Math.hypot(p.x - this.pos.x, p.z - this.pos.z);
+    if (!this.armed) { if (d > 3.5) this.armed = true; return false; }
+    return d < 1.5 && p.y > this.pos.y - 1 && p.y < this.pos.y + 3.5;
+  },
+  update(dt) {
+    if (!this.active) return;
+    this.uni.uTime.value += dt;
+    camera.getWorldPosition(_v1);
+    this.group.rotation.y = Math.atan2(_v1.x - this.pos.x, _v1.z - this.pos.z);
+    this.ring.rotation.z += dt * 0.8;
+    const s = 1 + Math.sin(Clock.real * 4) * 0.04; this.disc.scale.set(s, s, 1);
   },
 };
 
@@ -3008,8 +3339,8 @@ const LOBBY_PAGES = {
     const rows = [
       ['lilguy', "COLLECT ALL 207 LIL' GUYS", 'RUN THROUGH THEM OR GRAB THEM'],
       ['rory', 'AVOID RORY, LASERS, SCREAMERS', 'BUILD SPEED TO OUTRUN RORY'],
-      ['beacon', 'AT 0 LEFT: GO TO THE BEACON', 'FOLLOW THE YELLOW ARROW'],
-      ['wega', 'LAP 2: BEAT WEGA\'S TIMER', 'JUMP OVER PIXEL FLOODS'],
+      ['beacon', 'AT 0 LEFT: BEACON OR LAP PORTAL', 'PORTAL = OPTIONAL LAP 2 / LAP 3'],
+      ['wega', 'LAPS 2 + 3: BEAT THE TIMER', 'AT 0:00 SHOEBENCH HUNTS YOU'],
       ['idol', 'GET THE IDOL', 'SQUEEZE GRIP (DESKTOP: E)'],
       ['door', 'RUN FOR YOUR LIFE!', 'REACH THE WHITE DOOR'],
     ];
@@ -3135,10 +3466,11 @@ const Mirror = {
     const t0 = performance.now();
     const prevTarget = renderer.getRenderTarget(), xrOn = renderer.xr.enabled;
     renderer.xr.enabled = false;
-    this.mesh.visible = false; G.hud.visible = false;
+    const bodyVis = FPBody.group.visible;
+    this.mesh.visible = false; G.hud.visible = false; FPBody.group.visible = false;   // the mirror shows the fishbowl avatar instead
     renderer.setRenderTarget(this.rt); renderer.clear(); renderer.render(scene, this.cam);
     renderer.setRenderTarget(prevTarget);
-    renderer.xr.enabled = xrOn; this.mesh.visible = true; G.hud.visible = true;
+    renderer.xr.enabled = xrOn; this.mesh.visible = true; G.hud.visible = true; FPBody.group.visible = bodyVis;
     const ms = performance.now() - t0;
     this.cost = this.cost * 0.9 + ms * 0.1;
     if (XR.inVR && this.frame > 90 && this.cost > 1.0) { this.disabledVR = true; this.mesh.material = this.offMat; }
@@ -3752,12 +4084,65 @@ const Decals = {
   },
 };
 
+// ---------------- 3D Lil' Guy model (merged primitives, ~460 triangles) ----------------
+function buildLilGuyGeometry() {
+  const parts = [];
+  const put = (geo, color, x, y, z, sx = 1, sy = 1, sz = 1, rx = 0, ry = 0, rz = 0) => {
+    const m = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), new THREE.Vector3(sx, sy, sz));
+    const g = geo.index ? geo : geo; g.applyMatrix4(m);
+    for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
+    const c = new THREE.Color(color), n = g.attributes.position.count, col = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b; }
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    parts.push(g.index ? g : g);
+  };
+  const BROWN = 0x6b3e1e, GREEN = 0x2fb84a, PEACH = 0xffcf9e, ORANGE = 0xff8a1a, ORANGE2 = 0xff7a00, DARK = 0x1a0a00;
+  for (const sx of [-1, 1]) {
+    put(new THREE.SphereGeometry(0.11, 6, 4), BROWN, sx * 0.1, -0.44, 0.04, 1, 0.55, 1.45);                 // shoes
+    put(new THREE.CylinderGeometry(0.042, 0.042, 0.2, 5, 1, true), GREEN, sx * 0.2, -0.24, 0, 1, 1, 1, 0, 0, sx * 0.7); // arms
+    put(new THREE.BoxGeometry(0.06, 0.018, 0.02), DARK, sx * 0.085 - 0.02, 0.06, 0.228, 1, 1, 1, 0, 0, 0.6);     // ^ eye, left stroke
+    put(new THREE.BoxGeometry(0.06, 0.018, 0.02), DARK, sx * 0.085 + 0.02, 0.06, 0.228, 1, 1, 1, 0, 0, -0.6);    // ^ eye, right stroke
+  }
+  put(new THREE.CylinderGeometry(0.12, 0.16, 0.26, 8), GREEN, 0, -0.27, 0);                                   // body
+  put(new THREE.SphereGeometry(0.24, 10, 7), PEACH, 0, 0.06, 0);                                               // head
+  put(new THREE.SphereGeometry(0.252, 10, 4, 0, Math.PI * 2, 0, Math.PI / 2), ORANGE, 0, 0.1, 0, 1, 0.9, 1);   // cap dome
+  put(new THREE.CylinderGeometry(0.27, 0.27, 0.035, 10), ORANGE2, 0, 0.1, 0.07, 1, 1, 1.3);                    // brim
+  put(new THREE.SphereGeometry(0.065, 6, 3), 0xffffff, 0, 0.26, 0.178, 1, 0.45, 1, 0.785, 0, 0);               // white spot
+  put(new THREE.TorusGeometry(0.045, 0.012, 3, 6, Math.PI), DARK, 0, -0.01, 0.232, 1, 1, 1, 0, 0, Math.PI);   // smile
+  const g = mergeGeometries(parts);
+  parts.forEach((x) => x.dispose());
+  return g;
+}
+function lilGuyMaterial(spin) {
+  const mat = new THREE.MeshBasicMaterial({ vertexColors: true });
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uTime = Billboards.uTime;
+    sh.vertexShader = 'uniform float uTime;\nattribute float aPhase;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      float lgA = ${spin ? 'uTime * 1.7 + aPhase' : 'aPhase'};
+      float lgC = cos(lgA), lgS = sin(lgA);
+      transformed = vec3(lgC * transformed.x + lgS * transformed.z, transformed.y, -lgS * transformed.x + lgC * transformed.z);
+      transformed.y += sin(uTime * 10.05 + aPhase) * ${spin ? '0.19' : '0.0'};
+      vec3 lgN = vec3(lgC * normal.x + lgS * normal.z, normal.y, -lgS * normal.x + lgC * normal.z);
+      float lgL = 0.58 + 0.42 * max(dot(lgN, normalize(vec3(0.35, 0.85, 0.4))), 0.0) + 0.12 * max(lgN.y, 0.0);
+      #ifdef USE_COLOR
+        vColor.rgb *= lgL;
+      #endif`);
+  };
+  mat.customProgramCacheKey = () => 'lilguy3d' + (spin ? 's' : '');
+  return mat;
+}
+
 // ---------------- the Lil' Guys ----------------
 const Collect = {
   mesh: null, base: [], alive: null, popT: null, left: 0, total: CONFIG.COLLECT_TOTAL, lapCount: 0, combo: 0, comboT: 0, popping: [],
   init() {
     const n = CONFIG.COLLECT_TOTAL;
-    this.mesh = Billboards.makeInstanced(TEX.lilguy, n, { bob: 0.12, bobF: Math.PI * 2 * 1.6, wiggle: 0.14, wiggleF: 2.4 });
+    // 3D collectible: spun + bobbed per instance in the vertex shader (one draw call)
+    const geo = buildLilGuyGeometry();
+    const phase = new Float32Array(n); for (let i = 0; i < n; i++) phase[i] = Math.random() * Math.PI * 2;
+    geo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(phase, 1));
+    this.mesh = new THREE.InstancedMesh(geo, lilGuyMaterial(true), n);
+    this.mesh.frustumCulled = false;
     this.alive = new Uint8Array(n); this.popT = new Float32Array(n);
     for (let i = 0; i < n; i++) this.base.push(new THREE.Vector3());
     this.mesh.visible = false;
@@ -3882,7 +4267,10 @@ function placeCollectibles(g, seed) {
 const Confetti = {
   mesh: null, N: 70, data: null, active: false,
   init() {
-    this.mesh = Billboards.makeInstanced(TEX.lilguy, this.N, { wiggle: 0.5, wiggleF: 3.0, fog: false });
+    const geo = buildLilGuyGeometry(), phase = new Float32Array(this.N);
+    for (let i = 0; i < this.N; i++) phase[i] = Math.random() * 6.28;
+    geo.setAttribute('aPhase', new THREE.InstancedBufferAttribute(phase, 1));
+    this.mesh = new THREE.InstancedMesh(geo, lilGuyMaterial(true), this.N); this.mesh.frustumCulled = false;
     this.data = new Float32Array(this.N * 4);
     this.mesh.visible = false; G.stage.add(this.mesh);
   },
@@ -4477,16 +4865,66 @@ const Flood = {
   },
 };
 
+// ---------------- Shoebench: chases you once a lap timer hits 0:00 (touch = death) ----------------
+const Shoebench = {
+  sprite: null, shadow: null, active: false, pos: new THREE.Vector3(), dir: new THREE.Vector3(), t: 0, speed: 0, panner: null, stepT: 0, creakT: 0, light: null,
+  init() {
+    this.sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.shoebench, alphaTest: 0.4, fog: false }));
+    this.sprite.scale.set(3.0, 3.0, 1); this.sprite.visible = false; this.sprite.renderOrder = 4;
+    G.fx.add(this.sprite);
+  },
+  spawn() {
+    if (this.active) return;
+    Rig.headForward(_v1);
+    const p = Player.pos, d = CONFIG.SHOE_SPAWN_DIST;
+    this.pos.set(p.x - _v1.x * d, p.y + 8, p.z - _v1.z * d);
+    this.active = true; this.t = 0; this.speed = CONFIG.SHOE_SPEED * diff().shoe; this.stepT = 0; this.creakT = 0;
+    this.sprite.visible = true;
+    this.panner = Sfx.panner(this.pos.x, this.pos.y, this.pos.z);
+    this.light = Lights.acquire('shoebench', 0xff2020, 18, 10);
+    UI.announce('SHOEBENCH IS COMING!!', { color: '#ff3030' });
+    Sfx.alarm(); Hands.pulse('both', 0.7, 400);
+    Music.cueShoebench();
+    Captions.show('[ ALARM ]', 2);
+  },
+  despawn() {
+    if (!this.active) return;
+    this.active = false; this.sprite.visible = false;
+    const p = this.panner; this.panner = null;
+    if (p) setTimeout(() => { try { p.disconnect(); } catch (e) { /* ignore */ } }, 1500);
+    Lights.release('shoebench'); this.light = null;
+  },
+  update(dt) {
+    if (!this.active) return;
+    this.t += dt;
+    // flies straight at you through everything, slowly speeding up toward (just under) your top speed
+    this.speed = Math.min(CONFIG.SHOE_MAX * diff().shoe, this.speed + CONFIG.SHOE_ACCEL * dt);
+    _v2.set(Player.pos.x, Player.pos.y + 1.0, Player.pos.z).sub(this.pos);
+    const d = _v2.length();
+    if (d > 0.01) this.pos.addScaledVector(_v2, Math.min(d, this.speed * dt) / d);
+    this.sprite.position.set(this.pos.x, this.pos.y + Math.sin(this.t * 7) * 0.15, this.pos.z);
+    this.sprite.material.rotation = Math.sin(this.t * 7) * 0.12;
+    if (this.light) this.light.position.copy(this.pos);
+    setPannerPos(this.panner, this.pos.x, this.pos.y, this.pos.z);
+    this.stepT -= dt; this.creakT -= dt;
+    if (this.stepT <= 0) { this.stepT = 0.38; if (this.panner) Sfx.squeak(this.panner); }
+    if (this.creakT <= 0) { this.creakT = 1.3; if (this.panner) Sfx.creak(this.panner); }
+    if (d < 40) Captions.show('[ SQUEAK SQUEAK ]', 0.5);
+    if (d < 8) Hands.pulse('both', 0.12, 30);
+    if (d < CONFIG.SHOE_RADIUS + CONFIG.RADIUS + 0.2 && !Player.godMode) Game.playerDied('shoebench');
+  },
+};
+
 // ---------------- the threat director ----------------
 const Hazards = {
   mode: 'off', lasers: [], fireballs: [], roryT: 0, scrT: 0, laserT: [], fireT: 0, headTimes: [], floodsDone: null, esc: null,
   init() {
-    Rory.init(); Screamer.init(); GlitchGuy.init(); WegaHead.init(); Flood.init();
+    Rory.init(); Screamer.init(); GlitchGuy.init(); WegaHead.init(); Flood.init(); Shoebench.init();
     for (let i = 0; i < 7; i++) this.lasers.push(new Laser());
     for (let i = 0; i < 5; i++) this.fireballs.push(new Fireball());
   },
   clear() {
-    Rory.despawn(false); Screamer.clear(); GlitchGuy.stop(); WegaHead.stop(); Flood.stop();
+    Rory.despawn(false); Screamer.clear(); GlitchGuy.stop(); WegaHead.stop(); Flood.stop(); Shoebench.despawn();
     for (const l of this.lasers) l.stop();
     for (const f of this.fireballs) f.stop();
     Decals.clear(); FX.clear(); Lights.releaseAll();
@@ -4495,25 +4933,26 @@ const Hazards = {
   reset(mode) {
     this.clear();
     this.mode = mode;
-    const tr = diff().threat;
+    const tr = this.tr();
     if (mode === 'lap1') {
       this.roryT = CONFIG.RORY_FIRST / Math.max(0.6, tr);
       this.scrT = rr(...CONFIG.SCREAMER_CD) / tr;
       this.laserT = this.lasers.map((_, i) => 2 + i * 6);
-    } else if (mode === 'lap2') {
+    } else if (mode === 'lap2' || mode === 'lap3') {
       this.roryT = 12 / tr;
       this.scrT = rr(4, 8) / tr;
       this.laserT = this.lasers.map((_, i) => 1 + i * 3.5);
       this.fireT = 5;
       GlitchGuy.reset(10 / tr);
-      const T = Lap2.timeMax; this.headTimes = [T * 0.8, T * 0.5, T * 0.22].slice(0, CONFIG.WEGAHEAD_COUNT);
+      const T = LapTimer.timeMax; this.headTimes = [T * 0.8, T * 0.5, T * 0.22].slice(0, CONFIG.WEGAHEAD_COUNT);
       this.floodsDone = new Set();
     } else if (mode === 'escape') {
       this.setupEscape();
     }
   },
-  roryGap(lap2) { const g = lap2 ? CONFIG.RORY_GAP2 : CONFIG.RORY_GAP; return rr(g[0], g[1]) / diff().threat; },
-  roryEventSpeed(lap2) { return (lap2 ? CONFIG.RORY_SPEED2 : CONFIG.RORY_SPEED) + diff().roryBonus; },
+  tr() { return diff().threat * (this.mode === 'lap3' ? CONFIG.LAP3_THREAT : 1); },
+  roryGap(lap2) { const g = lap2 ? CONFIG.RORY_GAP2 : CONFIG.RORY_GAP; return rr(g[0], g[1]) / this.tr(); },
+  roryEventSpeed(lap2) { return (lap2 ? CONFIG.RORY_SPEED2 : CONFIG.RORY_SPEED) + diff().roryBonus + (this.mode === 'lap3' ? 0.4 : 0); },
   makeLaserCfg(lap2) {
     const p = Player.pos, color = lap2 ? CONFIG.COLORS.laser2 : CONFIG.COLORS.laser;
     if (Math.random() < 0.55) {
@@ -4572,11 +5011,11 @@ const Hazards = {
   },
   update(dt) {
     const m = this.mode;
-    if (m === 'lap1' || m === 'lap2') {
-      const lap2 = m === 'lap2', left = Collect.left, tr = diff().threat;
+    if (m === 'lap1' || m === 'lap2' || m === 'lap3') {
+      const lap2 = m !== 'lap1', left = Collect.left, tr = this.tr();
       if (!Rory.active) { this.roryT -= dt; if (this.roryT <= 0) { Rory.event(this.roryEventSpeed(lap2)); this.roryT = CONFIG.RORY_DURATION + this.roryGap(lap2); } }
       if (lap2 || left <= CONFIG.LASER_START_LEFT) {
-        const max = lap2 ? CONFIG.LASER_MAX2 : CONFIG.LASER_MAX1;
+        const max = m === 'lap3' ? CONFIG.LASER_MAX2 + 1 : lap2 ? CONFIG.LASER_MAX2 : CONFIG.LASER_MAX1;
         for (let i = 0; i < max; i++) {
           const l = this.lasers[i];
           if (!l.active) { this.laserT[i] -= dt; if (this.laserT[i] <= 0) { l.start(this.makeLaserCfg(lap2)); this.laserT[i] = rr(3, 6) / tr; } }
@@ -4589,16 +5028,16 @@ const Hazards = {
       if (lap2) {
         this.fireT -= dt;
         if (this.fireT <= 0) {
-          const frac = clamp(Lap2.timeLeft / Lap2.timeMax, 0, 1);
+          const frac = clamp(LapTimer.timeLeft / LapTimer.timeMax, 0, 1);
           this.fireT = rr(...CONFIG.FIREBALL_GAP) * (0.45 + 0.55 * frac) / tr;
           this.spawnFireball();
         }
-        if (this.headTimes.length && Lap2.timeLeft <= this.headTimes[0] && !WegaHead.active) { this.headTimes.shift(); WegaHead.spawn(); }
+        if (this.headTimes.length && LapTimer.timeLeft <= this.headTimes[0] && !WegaHead.active) { this.headTimes.shift(); WegaHead.spawn(); }
         for (const at of CONFIG.FLOOD_AT) if (left <= at && !this.floodsDone.has(at) && !Flood.active) { this.floodsDone.add(at); Flood.start(); }
       }
     } else if (m === 'escape') this.updateEscape(dt);
     if (m === 'off') return;
-    Rory.update(dt); Screamer.update(dt); GlitchGuy.update(dt); WegaHead.update(dt); Flood.update(dt);
+    Rory.update(dt); Screamer.update(dt); GlitchGuy.update(dt); WegaHead.update(dt); Flood.update(dt); Shoebench.update(dt);
     for (const l of this.lasers) l.update(dt);
     for (const f of this.fireballs) f.update(dt);
   },
@@ -4622,8 +5061,8 @@ const Hazards = {
 // =====================================================================================
 // STATES — state machine + every state's enter/update/exit, cutscene, screens, glue
 // =====================================================================================
-const GAMEPLAY = new Set(['LAP1', 'BEACON1', 'LAP2', 'BEACON2', 'IDOL_CHAMBER', 'ESCAPE']);
-const TIMED = new Set(['LAP1', 'BEACON1', 'ENRAGED_CUTSCENE', 'LAP2', 'BEACON2', 'IDOL_CHAMBER', 'ESCAPE']);
+const GAMEPLAY = new Set(['LAP1', 'BEACON1', 'LAP2', 'BEACON2', 'LAP3', 'BEACON3', 'IDOL_CHAMBER', 'ESCAPE']);
+const TIMED = new Set(['LAP1', 'BEACON1', 'ENRAGED_CUTSCENE', 'LAP2', 'BEACON2', 'LAP3', 'BEACON3', 'IDOL_CHAMBER', 'ESCAPE']);
 
 const SM = {
   states: {}, cur: null, curName: '', seq: 0, paused: false,
@@ -4659,22 +5098,25 @@ function setLook(kind) {
   if (kind === 'lobby') { f.color.set(C.fogLobby); f.density = 0.03; hemi.color.set(0x8a6ac0); hemi.groundColor.set(0x0a0010); hemi.intensity = 1.6 * L; dirLight.color.set(0xc8b0ff); dirLight.intensity = 0.8 * L; }
   else if (kind === 'lap1') { f.color.set(C.fog1); f.density = 0.018; hemi.color.set(C.hemiSky1); hemi.groundColor.set(0x000000); hemi.intensity = 0.6 * L * 6; dirLight.color.set(0xd0b8ff); dirLight.intensity = 0.6 * L; }
   else if (kind === 'lap2') { f.color.set(C.fog2); f.density = 0.012; hemi.color.set(C.hemiSky2); hemi.groundColor.set(C.hemiGround2); hemi.intensity = 1.5 * L; dirLight.color.set(0xffc090); dirLight.intensity = 0.8 * L; }
+  else if (kind === 'lap3') { f.color.set(0x1a0004); f.density = 0.014; hemi.color.set(0xffb0b0); hemi.groundColor.set(0x200000); hemi.intensity = 1.3 * L; dirLight.color.set(0xff8080); dirLight.intensity = 0.9 * L; }
   else if (kind === 'dead') { scene.background.set(0x2a0000); f.color.set(0x2a0000); f.density = 0.01; }
   else { f.color.set(0x000000); f.density = 0.01; }
 }
 function hideWorld() {
   G.lobby.visible = false; G.maze.visible = false; G.mazeDeco.visible = false; G.chamber.visible = false;
-  Sky.set(0); Beacon.hide();
+  Sky.set(0); Beacon.hide(); LapPortal.hide();
 }
 
-// ---------------- Lap 2 timer + "+3" popup ----------------
-const Lap2 = {
-  timeLeft: 150, timeMax: 150, tension: false,
-  reset() { this.timeMax = diff().lap2Time; this.timeLeft = this.timeMax; this.tension = false; },
+// ---------------- Lap 2 / Lap 3 timer (0:00 => Shoebench comes for you) + "+3" popup ----------------
+const LapTimer = {
+  timeLeft: 150, timeMax: 150, tension: false, expired: false,
+  reset(lap) { this.timeMax = lap === 3 ? diff().lap3Time : diff().lap2Time; this.timeLeft = this.timeMax; this.tension = false; this.expired = false; },
   update(dt) {
-    this.timeLeft -= dt;
+    if (this.expired) return;
+    this.timeLeft = Math.max(0, this.timeLeft - dt);
     if (!this.tension && this.timeLeft < CONFIG.LAP2_TENSION_AT) { this.tension = true; Music.cueLap2Tension(); }
-    if (this.tension && this.timeLeft > CONFIG.LAP2_TENSION_AT + 5) { this.tension = false; Music.setRate(1.0, 1.5); }
+    if (this.tension && this.timeLeft > CONFIG.LAP2_TENSION_AT + 5) { this.tension = false; Music.setRate(Music.lapRate, 1.5); }
+    if (this.timeLeft <= 0) { this.expired = true; Shoebench.spawn(); }
   },
 };
 const BonusPop = {
@@ -4707,13 +5149,18 @@ const SkyFace = {
       const e = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0xff1010, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
       e.position.set(x, -8, 0.5); e.scale.set(14, 14, 1); e.renderOrder = 5; this.group.add(e); this.eyes.push(e);
     }
-    const c = makeCanvas(512, 128), ctx = c.getContext('2d');
-    drawText(ctx, 'WEGA IS ENRAGED', 256, 66, { size: 54, style: 'italic 900', font: FONT_IMPACT, fill: '#ffffff', stroke: '#3a0060', lw: 8, spacing: 0.15, glow: '#b040ff', glowBlur: 20, maxWidth: 500 });
-    const tex = canvasTex(c); tex.needsUpdate = true;
-    this.text = new THREE.Mesh(new THREE.PlaneGeometry(70, 17.5), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, fog: false, opacity: 0 }));
+    const mkText = (text, stroke, glow) => {
+      const c = makeCanvas(512, 128), ctx = c.getContext('2d');
+      drawText(ctx, text, 256, 66, { size: 54, style: 'italic 900', font: FONT_IMPACT, fill: '#ffffff', stroke, lw: 8, spacing: 0.15, glow, glowBlur: 20, maxWidth: 500 });
+      const t = canvasTex(c); t.needsUpdate = true; return t;
+    };
+    this.texts = { 2: mkText('WEGA IS ENRAGED', '#3a0060', '#b040ff'), 3: mkText("WEGA'S REVENGE", '#400008', '#ff2040') };
+    this.text = new THREE.Mesh(new THREE.PlaneGeometry(70, 17.5), new THREE.MeshBasicMaterial({ map: this.texts[2], transparent: true, depthWrite: false, fog: false, opacity: 0 }));
     this.text.position.set(0, -50, 4); this.text.renderOrder = 6; this.group.add(this.text);
   },
-  show() {
+  show(lap = 2) {
+    this.text.material.map = this.texts[lap === 3 ? 3 : 2];
+    this.face.material.color.set(lap === 3 ? 0xff7a7a : 0xffffff);
     camera.getWorldPosition(_v1); const yaw = Rig.headYaw();
     this.group.position.set(_v1.x - Math.sin(yaw) * 120, _v1.y + 24, _v1.z - Math.cos(yaw) * 120);
     this.group.visible = true; this.active = true; this.t = 0; this.opacity = 0; this.target = 1; this.punch = 0; this.textOn = false;
@@ -4762,9 +5209,9 @@ const Stage = {
   hideAll() { for (const o of [this.deadPanel.mesh, this.deadHead, this.winPanel.mesh, this.doodle, this.typeMesh]) o.visible = false; },
   drawDead(ctx, p) {
     p.bg('rgba(30,0,0,0.9)', '#ff3030');
-    const title = this.reason === 'timeout' ? 'TOO SLOW!' : this.reason === 'collapse' ? 'THE IDOL WAS RECLAIMED' : 'WEGA GOT YOU';
+    const title = this.reason === 'shoebench' ? 'TOO SLOW!' : this.reason === 'collapse' ? 'THE IDOL WAS RECLAIMED' : 'WEGA GOT YOU';
     drawText(ctx, title, 256, 74, { size: 54, style: 'italic 900', font: FONT_IMPACT, fill: '#ffffff', stroke: '#000', lw: 8, spacing: 0.08, maxWidth: 480, glow: '#ff0000', glowBlur: 18 });
-    drawText(ctx, this.reason === 'timeout' ? 'THE CLOCK RAN OUT' : this.reason === 'collapse' ? 'THE COLLAPSE CAUGHT UP' : 'YOU RAN OUT OF HEALTH', 256, 132, { size: 20, fill: '#ffb0b0', stroke: '#000', lw: 4 });
+    drawText(ctx, this.reason === 'shoebench' ? 'SHOEBENCH CAUGHT YOU' : this.reason === 'collapse' ? 'THE COLLAPSE CAUGHT UP' : 'YOU RAN OUT OF HEALTH', 256, 132, { size: 20, fill: '#ffb0b0', stroke: '#000', lw: 4 });
     p.button('retry', 46, 180, 200, 76, 'RETRY LAP', () => Game.retry(), { size: 28, fill: '#5a0a0a', border: '#ff5050', hoverFill: '#a01818' });
     p.button('lobby', 266, 180, 200, 76, 'LOBBY', () => Game.transition('LOBBY'), { size: 28, fill: '#2a0f40', hoverFill: '#6a2aa0' });
   },
@@ -4787,7 +5234,7 @@ const Stage = {
     const rows = [
       ['TIME', fmtTime(s.time)],
       ['BEST', fmtTime(s.best) + (s.newBest ? '  NEW BEST!' : '')],
-      ["LIL' GUYS", String(s.collected != null ? s.collected : 0)],
+      ["LIL' GUYS", String(s.collected != null ? s.collected : 0) + '  (' + (s.laps || 1) + (s.laps === 1 ? ' LAP)' : ' LAPS)')],
       ['HITS TAKEN', String(s.hits || 0)],
       ['FALLS', String(s.falls || 0)],
     ];
@@ -4846,32 +5293,38 @@ const PauseMenu = {
 
 // ---------------- game glue ----------------
 const Game = {
-  runTime: 0, timerOn: false, debugRun: false, collectedTotal: 0, retryTarget: 'LAP1', transTok: 0, transitioning: false,
+  runTime: 0, timerOn: false, debugRun: false, collectedTotal: 0, retryTarget: 'LAP1', transTok: 0, transitioning: false, lap: 1, maxLap: 1,
   startRun() {
     AudioSys.ensure();
     if (SM.curName !== 'LOBBY' || this.transitioning) return;
-    this.runTime = 0; this.timerOn = true; this.debugRun = false; this.collectedTotal = 0; Player.resetStats();
+    this.runTime = 0; this.timerOn = true; this.debugRun = false; this.collectedTotal = 0; this.maxLap = 1; Player.resetStats();
     SM.go('INTRO');
   },
   relockPointer() {
-    if (XR.inVR) return;
+    if (XR.inVR || IS_TOUCH) return;
     const el = renderer.domElement;
     try { if (!Input.locked && el.requestPointerLock) { const p = el.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } } catch (e) { /* ignore */ }
   },
   playerDied(src) {
     if (!GAMEPLAY.has(SM.curName) || this.transitioning) return;
-    const reason = src === 'timeout' ? 'timeout' : src === 'collapse' ? 'collapse' : 'hp';
+    const reason = src === 'shoebench' ? 'shoebench' : src === 'collapse' ? 'collapse' : 'hp';
     SM.go('DEAD', { reason });
   },
   respawnAllowed(p) { return SM.curName !== 'ESCAPE' || Chamber.respawnOk(p); },
   onCollect(left) {
     if (CONFIG.GOLD_FLASH_AT.includes(left)) { HUD.goldFlash(); Sfx.gold(); }
-    if (SM.curName === 'LAP2' && Collect.lapCount > 0 && Collect.lapCount % CONFIG.LAP2_BONUS_EVERY === 0) { Lap2.timeLeft += CONFIG.LAP2_BONUS; BonusPop.show(); Sfx.bonus(); }
+    if ((SM.curName === 'LAP2' || SM.curName === 'LAP3') && !LapTimer.expired && Collect.lapCount > 0 && Collect.lapCount % CONFIG.LAP2_BONUS_EVERY === 0) { LapTimer.timeLeft += CONFIG.LAP2_BONUS; BonusPop.show(); Sfx.bonus(); }
   },
+  // counter hit 0: the beacon (-> Idol Chamber) appears far away; the next lap's portal opens at the start
   showBeacon(lap) {
     const from = Nav.nearestNode(Player.pos), far = Nav.farthestFrom(from), n = Nav.g.nodes[far];
-    Beacon.show(_v1.set(n.x, n.y, n.z), lap === 1 ? CONFIG.COLORS.beacon1 : CONFIG.COLORS.beacon2);
+    Beacon.show(_v1.set(n.x, n.y, n.z), lap === 1 ? CONFIG.COLORS.beacon1 : lap === 2 ? CONFIG.COLORS.beacon2 : CONFIG.COLORS.beacon3);
     UI.announce('GO TO THE BEACON', { color: '#ffe94a' });
+    if (lap < 3) {
+      const st = Nav.g.nodes[Nav.g.start != null ? Nav.g.start : Maze.cur.start];
+      LapPortal.show(_v1.set(st.x, st.y, st.z), lap + 1);
+      UI.announce('...OR TAKE THE LAP ' + (lap + 1) + ' PORTAL!', { color: lap === 1 ? '#d9a0ff' : '#ff6070' });
+    }
   },
   // generic faded transition into a state
   async transition(name, arg, o = {}) {
@@ -4890,8 +5343,7 @@ const Game = {
     if (tok !== this.transTok) return;
     Stage.hideAll(); G.stage.visible = false; scene.background.set(0x000000);
     this.timerOn = true;
-    if (target === 'LAP1') { setupLap(1); SM.go('LAP1', { retry: true }); }
-    else if (target === 'LAP2') { setupLap(2); SM.go('LAP2', { retry: true }); }
+    if (target === 'LAP1' || target === 'LAP2' || target === 'LAP3') { const n = +target[3]; setupLap(n); SM.go(target, { retry: true }); }
     else SM.go('ESCAPE', { retry: true });
     this.transitioning = false;
     await Fade.to(0, 0.6);
@@ -4921,16 +5373,17 @@ function setupLap(n) {
   Chamber.dispose(); Idol.detach();
   G.maze.visible = true; G.mazeDeco.visible = true;
   Maze.build(n);
-  const positions = placeCollectibles(Maze.cur, n === 1 ? CONFIG.LAP1_SEED : CONFIG.LAP2_SEED);
+  const positions = placeCollectibles(Maze.cur, CONFIG.LAP1_SEED + n - 1);
   Collect.setup(positions); Maze.buildDecals(positions);
-  setLook(n === 1 ? 'lap1' : 'lap2');
-  Sky.set(n === 1 ? 0 : 2); Sky.uni.uBright.value = 1;
-  if (n === 2) { Lap2.reset(); Flood.prepare(); }
-  Hazards.reset(n === 1 ? 'lap1' : 'lap2');
+  setLook('lap' + n);
+  Sky.set(n === 1 ? 0 : n === 2 ? 2 : 3); Sky.uni.uBright.value = 1;
+  if (n >= 2) { LapTimer.reset(n); Flood.prepare(); }
+  Hazards.reset('lap' + n);
   Maze.startPos(_v1);
   Player.spawn(_v1.x, _v1.y, _v1.z, Maze.startYaw());
-  Player.heal(); Player.boundsRadius = 0; Player.fallY = CONFIG.FALL_Y; Player.lavaY = n === 2 ? CONFIG.LAVA_Y : null;
-  HUD.setVisible(true); HUD.setBoss(n === 2); HUD.follow.reset = true; HUD.vals.speed = -1;
+  Player.heal(); Player.boundsRadius = 0; Player.fallY = CONFIG.FALL_Y; Player.lavaY = n >= 2 ? CONFIG.LAVA_Y : null;
+  HUD.setVisible(true); HUD.setBoss(n >= 2); HUD.follow.reset = true; HUD.vals.speed = -1;
+  Game.lap = n; Game.maxLap = Math.max(Game.maxLap, n);
   Announce.clear();
 }
 function setupChamber() {
@@ -4989,58 +5442,64 @@ SM.states.LAP1 = {
   },
   update(dt) { gameplayTick(dt); if (Collect.left <= 0) SM.go('BEACON1'); },
 };
-SM.states.BEACON1 = {
-  enter() { Player.locomotion = 'full'; Game.showBeacon(1); },
-  update(dt) { gameplayTick(dt); if (Beacon.touched()) SM.go('ENRAGED_CUTSCENE'); },
-};
+// Laps 2 and 3: timed; at 0:00 Shoebench comes after you (the lap keeps going)
+function lapState(n) {
+  return {
+    enter(arg) {
+      Player.locomotion = 'full'; Game.retryTarget = 'LAP' + n;
+      if (arg.retry) Music.cueRetry('LAP' + n);
+      UI.announce(n === 2 ? 'LAP 2: INFERNO' : "LAP 3: WEGA'S REVENGE", { color: n === 2 ? '#ffb050' : '#ff4050' });
+      UI.announce('COLLECT THEM ALL', { color: '#ffffff' });
+    },
+    update(dt) { gameplayTick(dt); LapTimer.update(dt); if (Collect.left <= 0) SM.go('BEACON' + n); },
+  };
+}
+// counter at 0: beacon -> Idol Chamber, portal (laps 1-2) -> next lap
+function beaconState(n) {
+  return {
+    enter() { Player.locomotion = 'full'; Game.showBeacon(n); },
+    update(dt) {
+      gameplayTick(dt);
+      if (n >= 2) LapTimer.update(dt);
+      if (SM.curName !== 'BEACON' + n || Game.transitioning) return;
+      if (LapPortal.touched()) { LapPortal.hide(); SM.go('ENRAGED_CUTSCENE', { lap: n + 1 }); return; }
+      if (Beacon.touched()) Game.toChamber();
+    },
+  };
+}
+SM.states.BEACON1 = beaconState(1);
+SM.states.LAP2 = lapState(2);
+SM.states.BEACON2 = beaconState(2);
+SM.states.LAP3 = lapState(3);
+SM.states.BEACON3 = beaconState(3);
 SM.states.ENRAGED_CUTSCENE = {
-  enter() {
-    const tok = SM.seq;
-    Player.locomotion = 'none'; Hazards.clear(); Beacon.hide(); Announce.clear();
-    Music.cueEnragedStop(); Hands.pulse('both', 0.6, 400); Sfx.beacon();
-    Sky.set(1); Sky.uni.uBright.value = 0; this.skyFade = 0;
-    SkyFace.show();
+  enter(arg) {
+    const tok = SM.seq, lap = arg.lap || 2;
+    Player.locomotion = 'none'; Hazards.clear(); Beacon.hide(); LapPortal.hide(); Announce.clear();
+    Music.cueEnragedStop(); Hands.pulse('both', 0.6, 400); Sfx.lapPortal();
+    Sky.set(lap === 2 ? 1 : 3); Sky.uni.uBright.value = 0; this.skyFade = 0;
+    SkyFace.show(lap);
     (async () => {
       await wait(0.5); if (tok !== SM.seq) return;
       Sfx.boom(null, true);
       await wait(0.7); if (tok !== SM.seq) return;
       Sfx.roar(); SkyFace.roar(); Hands.pulse('both', 0.6, 400);
-      UI.announce('WEGA IS ENRAGED', { color: '#e0b0ff' });
+      UI.announce(lap === 2 ? 'WEGA IS ENRAGED' : "WEGA'S REVENGE", { color: lap === 2 ? '#e0b0ff' : '#ff7080' });
       await wait(0.7); if (tok !== SM.seq) return;
-      Music.cueLap2Start();
+      if (lap === 2) Music.cueLap2Start(); else Music.cueLap3Start();
       await wait(1.6); if (tok !== SM.seq) return;
-      if (Save.s.reduceFlash) await Fade.to(1, 0.7, 0x3a0a6a); else await Fade.to(1, 0.12, 0xc060ff);
+      const flash = lap === 2 ? [0x3a0a6a, 0xc060ff] : [0x3a0008, 0xff2040];
+      if (Save.s.reduceFlash) await Fade.to(1, 0.7, flash[0]); else await Fade.to(1, 0.12, flash[1]);
       if (tok !== SM.seq) return;
       SkyFace.hide(); SkyFace.active = false; SkyFace.group.visible = false;
-      setupLap(2);
-      SM.go('LAP2', { fresh: true });
+      setupLap(lap);
+      SM.go('LAP' + lap, { fresh: true });
       await Fade.to(0, Save.s.reduceFlash ? 0.9 : 0.6);
     })();
   },
   update(dt) {
     Player.update(dt); SkyFace.update(dt);
     this.skyFade = Math.min(1, this.skyFade + dt / 0.6); Sky.uni.uBright.value = this.skyFade;
-  },
-};
-SM.states.LAP2 = {
-  enter(arg) {
-    Player.locomotion = 'full'; Game.retryTarget = 'LAP2';
-    if (arg.retry) Music.cueRetry('LAP2');
-    UI.announce('LAP 2: INFERNO', { color: '#ffb050' });
-    UI.announce('COLLECT THEM ALL', { color: '#ffffff' });
-  },
-  update(dt) {
-    gameplayTick(dt); Lap2.update(dt);
-    if (Lap2.timeLeft <= 0) { Lap2.timeLeft = 0; Game.playerDied('timeout'); return; }
-    if (Collect.left <= 0) SM.go('BEACON2');
-  },
-};
-SM.states.BEACON2 = {
-  enter() { Player.locomotion = 'full'; Game.showBeacon(2); },
-  update(dt) {
-    gameplayTick(dt); Lap2.update(dt);
-    if (Lap2.timeLeft <= 0) { Lap2.timeLeft = 0; Game.playerDied('timeout'); return; }
-    if (!Game.transitioning && Beacon.touched()) Game.toChamber();
   },
 };
 SM.states.IDOL_CHAMBER = {
@@ -5111,7 +5570,7 @@ SM.states.WIN = {
     Player.locomotion = 'turn';
     const t = Game.runTime, best = Save.data.best, newBest = !Game.debugRun && (best == null || t < best);
     if (newBest) { Save.data.best = t; Save.save(); }
-    Stage.showWin({ time: t, best: Save.data.best, newBest, collected: Game.collectedTotal, hits: Player.hits, falls: Player.falls });
+    Stage.showWin({ time: t, best: Save.data.best, newBest, collected: Game.collectedTotal, hits: Player.hits, falls: Player.falls, laps: Game.maxLap });
     UI.setActive([Stage.winPanel]);
     camera.getWorldPosition(_v1); Confetti.start(_v1);
   },
@@ -5168,6 +5627,7 @@ const Debug = {
       Game.transitioning = false;
       if (target === 'LAP1') { setupLap(1); SM.go('LAP1', { fresh: true }); }
       else if (target === 'LAP2') { setupLap(2); SM.go('LAP2', { retry: true }); }
+      else if (target === 'LAP3') { setupLap(3); SM.go('LAP3', { retry: true }); }
       else if (target === 'IDOL') SM.go('IDOL_CHAMBER');
       else if (target === 'ESCAPE') SM.go('ESCAPE', { retry: true });
       else if (target === 'WIN') { Chamber.dispose(); Idol.detach(); Collect.hide(); Game.timerOn = false; SM.go('WIN'); }
@@ -5177,6 +5637,8 @@ const Debug = {
 };
 window.WEGA_DEBUG = {
   skipToLap2: () => Debug.jump('LAP2'),
+  skipToLap3: () => Debug.jump('LAP3'),
+  spawnShoebench: () => { if (SM.curName.startsWith('LAP') || SM.curName.startsWith('BEACON')) { LapTimer.timeLeft = 0; LapTimer.expired = true; Shoebench.spawn(); } return Shoebench.active; },
   skipToIdol: () => Debug.jump('IDOL'),
   skipToEscape: () => Debug.jump('ESCAPE'),
   win: () => Debug.jump('WIN'),
@@ -5187,7 +5649,7 @@ window.WEGA_DEBUG = {
   player: () => ({ pos: Player.pos.toArray().map((v) => +v.toFixed(2)), hp: Player.hp, speed: +(Player.hspeed * CONFIG.SPEED_MULT).toFixed(1), grounded: Player.grounded }),
 };
 // test/debug access to internals (only with ?debug in the URL)
-if (DEBUG_URL) window.WEGA_DEBUG.internals = { SM, Player, Collect, Beacon, Chamber, Hazards, Game, Rory, Screamer, Lap2, Flood, WegaHead, GlitchGuy, Idol, Music, HUD, Maze, Nav, World, Rig, Input, Fade, AudioSys, Save, Lobby, Stage, UI, get renderer() { return renderer; }, get scene() { return scene; }, get camera() { return camera; }, get perf() { return { upd: +Perf.upd.toFixed(2), ren: +Perf.ren.toFixed(2), calls: renderer.info.render.calls, tris: renderer.info.render.triangles }; } };
+if (DEBUG_URL) window.WEGA_DEBUG.internals = { SM, Player, Collect, Beacon, Chamber, Hazards, Game, Rory, Screamer, LapTimer, Lap2: LapTimer, Flood, Shoebench, LapPortal, FPBody, Touch, WegaHead, GlitchGuy, Idol, Music, HUD, Maze, Nav, World, Rig, Input, Fade, AudioSys, Save, Lobby, Stage, UI, get renderer() { return renderer; }, get scene() { return scene; }, get camera() { return camera; }, get perf() { return { upd: +Perf.upd.toFixed(2), ren: +Perf.ren.toFixed(2), calls: renderer.info.render.calls, tris: renderer.info.render.triangles }; } };
 
 // =====================================================================================
 // MAIN LOOP
@@ -5213,11 +5675,13 @@ function loop() {
   if (!SM.paused) {
     Maze.update(lvl);
     Beacon.update(dt);
+    LapPortal.update(dt);
     if (G.chamber.visible) Chamber.update(dt, lvl);
     FX.update(dt);
     Decals.update(dt);
     BonusPop.update(dt);
   }
+  FPBody.update(dt);
   Sky.update(dt, lvl);
   Fade.update(dt);
   Effects.update(dt);
@@ -5240,11 +5704,13 @@ const Perf = { upd: 0, ren: 0 };
 function warmup() {
   const groups = Object.values(G), vis = groups.map((g) => g.visible);
   groups.forEach((g) => { g.visible = true; });
-  const extra = [Sky.dome, Sky.lava, Sky.embers, Beacon.group, SkyFace.group, PauseMenu.panel.mesh];
+  const extra = [Sky.dome, Sky.lava, Sky.embers, Beacon.group, SkyFace.group, PauseMenu.panel.mesh, LapPortal.group];
   const ev = extra.map((o) => o.visible); extra.forEach((o) => { o.visible = true; });
   const hidden = [];
   scene.traverse((o) => { if (!o.visible && (o.isMesh || o.isSprite || o.isPoints)) { hidden.push(o); o.visible = true; } });
   try {
+    Maze.build(3); Collect.setup(placeCollectibles(Maze.cur, CONFIG.LAP3_SEED));
+    renderer.compile(scene, camera);
     Maze.build(2); Collect.setup(placeCollectibles(Maze.cur, CONFIG.LAP2_SEED));
     renderer.compile(scene, camera);
     Chamber.build(); Idol.placeOnPedestal(Chamber.pedestal);
@@ -5264,9 +5730,9 @@ function init() {
   initRenderer();
   buildTextures();
   Fade.init(); Effects.init(); HUD.init(); Announce.init(); Wrist.init(); Toast.init(); Captions.init(); Ouch.init();
-  Hands.init(); Input.initDesktop();
+  Hands.init(); Input.initDesktop(); Touch.init();
   FX.init(); Decals.init();
-  Sky.init(); Beacon.init(); Maze.init(); Lobby.init();
+  Sky.init(); Beacon.init(); LapPortal.init(); Maze.init(); Lobby.init(); FPBody.init();
   buildEnvMap(); Idol.init();
   Collect.init(); Confetti.init(); Hazards.init();
   Stage.init(); SkyFace.init(); PauseMenu.init(); BonusPop.init();
@@ -5283,12 +5749,19 @@ function init() {
   // ---- DOM overlay: Click to play / Enter VR ----
   DOM.status.textContent = window.WegaMusic ? 'READY' : 'READY (wega-music.js not found: playing without music)';
   DOM.btnDesktop.disabled = false;
+  if (IS_TOUCH) DOM.btnDesktop.textContent = 'TAP TO PLAY';
   DOM.btnDesktop.addEventListener('click', () => {
     AudioSys.ensure();
     DOM.overlay.classList.add('hidden');
-    DOM.hint.textContent = 'WASD move · mouse look · Space jump · E grab · Shift sprint lock · Esc pause · M mute';
+    document.body.classList.add('playing');
+    if (IS_TOUCH) { Touch.show(true); DOM.hint.textContent = ''; if (fullscreenSupported() && !document.fullscreenElement) toggleFullscreen(); }
+    else DOM.hint.textContent = 'WASD move · mouse look · Space jump · E grab · Shift sprint lock · Esc pause · M mute · F full screen';
     Game.relockPointer();
   });
+  if (fullscreenSupported()) {
+    DOM.btnFS.style.display = 'block';
+    DOM.btnFS.addEventListener('click', (e) => { e.stopPropagation(); toggleFullscreen(); });
+  }
   DOM.btnVR.addEventListener('click', () => XR.enter());
   XR.check().then((ok) => {
     DOM.btnVR.disabled = !ok;
