@@ -68,7 +68,8 @@ const CONFIG = {
   HEADING_RESET_DEG: 100,
   DECEL: 18,                  // m/s^2 when the stick is released
   GROUND_ACCEL: 30,           // m/s^2 steering acceleration on the ground
-  AIR_CONTROL: 0.35,
+  AIR_CONTROL: 0.8,           // fraction of ground steering acceleration available in the air
+  AIR_TURN_RATE: 4.0,         // rad/s the air momentum can be bent toward the stick (keeps speed)
   GRAVITY: 22,
   JUMP_VEL: 7.2,
   COYOTE: 0.12,
@@ -77,6 +78,10 @@ const CONFIG = {
   MIN_HEIGHT: 1.2,
   DESKTOP_EYE: 1.65,
   STEP_UP: 0.35,
+  RAMP_SNAP_SLOPE: 1.0,       // extra ramp step-up per metre moved this frame (steep stairs at low fps)
+  STAIR_THICK: 1.0,           // stairs are solid wedges this thick under the walking surface
+  VIEW_SMOOTH: 22,            // vertical view smoothing on stairs (1/s)
+  VIEW_LAG_MAX: 0.12,         // the view never trails the feet by more than this (m)
   SPEED_MULT: 7.8,            // displayed s/s = horizontal speed * 7.8 (top ~59)
   SPEED_RED: 50,
   SPEED_JITTER: 57,
@@ -117,7 +122,7 @@ const CONFIG = {
   SCREAMER_SPEED: 40, SCREAMER_TELEGRAPH: 1.0, SCREAMER_CD: [12, 18], SCREAMER_CD2: [7, 11], SCREAMER_START_LEFT: 110,
   LASER_TELEGRAPH: 1.2, LASER_START_LEFT: 150, LASER_MAX1: 2, LASER_MAX2: 4,
   FIREBALL_GAP: [3, 5], FIREBALL_TELEGRAPH: 1.3, FIREBALL_RANGE: 15, BURN_TIME: 4, BURN_TICK: 0.5,
-  GLITCH_PERIOD: 4, GLITCH_LUNGE: 6,
+  GLITCH_PERIOD: 4, GLITCH_LUNGE: 6, GLITCH_HOVER: 1.2, GLITCH_LUNGE_TIME: 0.45, GLITCH_HIT: 0.3, GLITCH_HEIGHT: 0.55, GLITCH_AHEAD: [7, 10], GLITCH_SIDE: [2.6, 3.4],
   WEGAHEAD_COUNT: 3, WEGAHEAD_LIFE: 3,
   FLOOD_SPEED: 12, FLOOD_AT: [120, 25], FLOOD_HEIGHT: 1.0, FLOOD_BLOCK: 0.8,
   COLLAPSE_SPEED: 6.3,
@@ -2000,7 +2005,7 @@ function drawSettingsPage(ctx, panel, onBack) {
 // =====================================================================================
 const Player = {
   pos: new THREE.Vector3(), vel: new THREE.Vector3(), prevPos: new THREE.Vector3(),
-  grounded: false, sinceGround: 0, jumpBuf: 0, airTime: 0, groundY: 0,
+  grounded: false, sinceGround: 0, jumpBuf: 0, airTime: 0, groundY: 0, viewY: 0,
   rampT: 0, refHeading: new THREE.Vector3(0, 0, -1), sprintLock: false, hspeed: 0,
   hp: CONFIG.MAX_HP, invuln: 0, sinceDamage: 99, hits: 0, falls: 0, godMode: false,
   height: 1.75, lastSafe: new THREE.Vector3(), safeTimer: 0, stepDist: 0,
@@ -2025,6 +2030,7 @@ const Player = {
       Rig.yaw = wrapAngle(yaw - headYawInRig); rig.rotation.set(0, Rig.yaw, 0);
     }
     rig.updateMatrixWorld(true);
+    this.viewY = y;
     Rig.placeFeet(x, y, z);
     this.recenterFrames = 2;
   },
@@ -2040,11 +2046,13 @@ const Player = {
     _v6.set(this.pos.x, this.pos.y + this.height - r, this.pos.z);
     return distSegSeg(_v5, _v6, a, b) - r;
   },
-  probeGround(x, z, maxY) {
+  // Centre ray + 4 probes at the capsule radius. The probes only count when the centre has no
+  // support (standing on an edge); otherwise they would lift you above a slope (bumpy stairs).
+  probeGround(x, z, maxY, rampExtra = 0, refY = maxY) {
     const r = CONFIG.RADIUS * 0.85;
-    let g = World.groundAt(x, z, maxY);
-    g = Math.max(g, World.groundAt(x + r, z, maxY), World.groundAt(x - r, z, maxY), World.groundAt(x, z + r, maxY), World.groundAt(x, z - r, maxY));
-    return g;
+    const gc = World.groundAt(x, z, maxY, rampExtra);
+    if (gc > -Infinity && gc >= refY - 0.6) return gc;
+    return Math.max(gc, World.groundAt(x + r, z, maxY, rampExtra), World.groundAt(x - r, z, maxY, rampExtra), World.groundAt(x, z + r, maxY, rampExtra), World.groundAt(x, z - r, maxY, rampExtra));
   },
   nearEdge() {
     const r = 0.9, y = this.pos.y, maxY = y + 0.3;
@@ -2084,7 +2092,7 @@ const Player = {
       const dx = _v1.x - this.pos.x, dz = _v1.z - this.pos.z;
       if (dx * dx + dz * dz < 0.25) { this.pos.x += dx; this.pos.z += dz; }
     }
-    if (this.respawning || this.locomotion !== 'full') { Rig.placeFeet(this.pos.x, this.pos.y, this.pos.z); this.hspeed = 0; Effects.comfortStrength = 0; return; }
+    if (this.respawning || this.locomotion !== 'full') { this.viewY = this.pos.y; Rig.placeFeet(this.pos.x, this.pos.y, this.pos.z); this.hspeed = 0; Effects.comfortStrength = 0; return; }
 
     // ---- desired move direction ----
     let fx, fz;
@@ -2115,8 +2123,23 @@ const Player = {
     if (this.shoveT > 0) {
       this.shoveT -= dt; this.vel.x = this.shoveVel.x; this.vel.z = this.shoveVel.z;
     } else if (moving) {
-      const tx = this.desired.x * targetSpeed, tz = this.desired.z * targetSpeed;
-      let ddx = tx - vx, ddz = tz - vz;
+      let tSpeed = targetSpeed;
+      if (!this.grounded) {
+        // air control: bend the momentum toward the stick without bleeding speed,
+        // then steer/accelerate (pulling the stick backwards still brakes)
+        const sp = Math.hypot(vx, vz);
+        if (sp > 0.5) {
+          const cur = Math.atan2(vx, vz), want = Math.atan2(this.desired.x, this.desired.z);
+          const d = wrapAngle(want - cur);
+          if (Math.abs(d) < Math.PI * 0.75) {
+            const na = cur + clamp(d, -CONFIG.AIR_TURN_RATE * mag * dt, CONFIG.AIR_TURN_RATE * mag * dt);
+            this.vel.x = Math.sin(na) * sp; this.vel.z = Math.cos(na) * sp;
+            tSpeed = Math.max(tSpeed, Math.min(sp, CONFIG.TOP_SPEED));
+          }
+        }
+      }
+      const tx = this.desired.x * tSpeed, tz = this.desired.z * tSpeed;
+      let ddx = tx - this.vel.x, ddz = tz - this.vel.z;
       const maxDv = CONFIG.GROUND_ACCEL * (this.grounded ? 1 : CONFIG.AIR_CONTROL) * dt;
       const dl = Math.hypot(ddx, ddz);
       if (dl > maxDv) { ddx *= maxDv / dl; ddz *= maxDv / dl; }
@@ -2152,11 +2175,15 @@ const Player = {
 
     // ---- ground ----
     const top = Math.max(prevY, this.pos.y) + CONFIG.STEP_UP;
-    const g = this.probeGround(this.pos.x, this.pos.z, top);
+    const hmove = Math.hypot(this.pos.x - this.prevPos.x, this.pos.z - this.prevPos.z);
+    const g = this.probeGround(this.pos.x, this.pos.z, top, hmove * CONFIG.RAMP_SNAP_SLOPE, Math.max(prevY, this.pos.y));
     this.grounded = false;
-    if (g > -Infinity && this.vel.y <= 0) {
-      if (this.pos.y <= g + 0.001) { this.pos.y = g; this.grounded = true; }
-      else if (wasGrounded && this.pos.y - g < 0.6) { this.pos.y = g; this.grounded = true; }
+    if (g > -Infinity) {
+      if (this.pos.y <= g + 0.001) {
+        // never sink into a surface, even while still rising (jumping up steep stairs)
+        this.pos.y = g;
+        if (this.vel.y <= 0) this.grounded = true;
+      } else if (wasGrounded && this.vel.y <= 0 && this.pos.y - g < 0.6) { this.pos.y = g; this.grounded = true; }
     }
     if (this.grounded) {
       if (!wasGrounded && this.airTime > 0.25) { Sfx.land(); Hands.pulse('both', 0.2, 40); }
@@ -2194,7 +2221,12 @@ const Player = {
     // ---- comfort vignette strength from speed + turning ----
     Effects.comfortStrength = clamp(Math.max(this.hspeed / CONFIG.TOP_SPEED - 0.15, 0) * 1.1 + this.turnRate * 0.35 + (this.grounded ? 0 : 0.1), 0, 1);
 
-    Rig.placeFeet(this.pos.x, this.pos.y, this.pos.z);
+    // smooth the view over stair kinks (never lags more than VIEW_LAG_MAX; exact while airborne)
+    if (this.grounded && Math.abs(this.pos.y - this.viewY) < 0.7) {
+      this.viewY = damp(this.viewY, this.pos.y, CONFIG.VIEW_SMOOTH, dt);
+      this.viewY = clamp(this.viewY, this.pos.y - CONFIG.VIEW_LAG_MAX, this.pos.y + CONFIG.VIEW_LAG_MAX);
+    } else this.viewY = this.pos.y;
+    Rig.placeFeet(this.pos.x, this.viewY, this.pos.z);
   },
 
   collideWalls() {
@@ -2203,7 +2235,8 @@ const Player = {
     const list = World.query(p.x - r - 0.2, p.z - r - 0.2, p.x + r + 0.2, p.z + r + 0.2);
     for (let i = 0; i < list.length; i++) {
       const c = list[i];
-      if (c.kind !== 0 || !c.active) continue;
+      if (!c.active) continue;
+      if (c.kind === 1) { this.collideRamp(c, yLo, yHi); continue; }
       if (c.maxY <= yLo || c.minY >= yHi) continue;
       const inside = p.x > c.minX && p.x < c.maxX && p.z > c.minZ && p.z < c.maxZ;
       if (inside && c.minY > p.y + this.height * 0.5) {
@@ -2235,6 +2268,36 @@ const Player = {
         }
       }
     }
+  },
+
+  // stairs are solid wedges (STAIR_THICK under the slope): walls from the side, ceilings from below
+  collideRamp(c, yLo, yHi) {
+    const r = CONFIG.RADIUS, p = this.pos;
+    const cx = clamp(p.x, c.minX, c.maxX), cz = clamp(p.z, c.minZ, c.maxZ);
+    const top = World.topAt(c, cx, cz), bottom = top - CONFIG.STAIR_THICK;
+    if (top <= yLo || bottom >= yHi) return;
+    const inside = p.x > c.minX && p.x < c.maxX && p.z > c.minZ && p.z < c.maxZ;
+    if (inside) {
+      if (bottom > p.y + this.height * 0.5) {
+        if (this.vel.y > 0) this.vel.y = 0;
+        p.y = Math.min(p.y, bottom - this.height);
+      } else if (top - p.y < 0.8) {
+        // clipped into the slope: stand on it
+        p.y = top; if (this.vel.y < 0) this.vel.y = 0;
+      } else {
+        // deep inside the side of the wedge: push out across the short axis
+        if (c.axis === 0) { const a = p.z - c.minZ, b = c.maxZ - p.z; p.z = a < b ? c.minZ - r : c.maxZ + r; this.vel.z = 0; }
+        else { const a = p.x - c.minX, b = c.maxX - p.x; p.x = a < b ? c.minX - r : c.maxX + r; this.vel.x = 0; }
+      }
+      return;
+    }
+    let nx = p.x - cx, nz = p.z - cz;
+    const d2 = nx * nx + nz * nz;
+    if (d2 >= r * r || d2 < 1e-10) return;
+    const d = Math.sqrt(d2); nx /= d; nz /= d;
+    p.x += nx * (r - d); p.z += nz * (r - d);
+    const vn = this.vel.x * nx + this.vel.z * nz;
+    if (vn < 0) { this.vel.x -= vn * nx; this.vel.z -= vn * nz; }
   },
 
   async fallRespawn(kind) {
@@ -2327,7 +2390,8 @@ const World = {
     return c.y0 + (c.y1 - c.y0) * clamp(t, 0, 1);
   },
   // highest walkable top at (x,z) that is <= maxY
-  groundAt(x, z, maxY) {
+  // rampExtra lets a ramp surface be found a bit higher (fast movement up steep stairs)
+  groundAt(x, z, maxY, rampExtra = 0) {
     const arr = this.grid.get(this.key(Math.floor(x / this.CELL), Math.floor(z / this.CELL)));
     if (!arr) return -Infinity;
     let best = -Infinity;
@@ -2335,7 +2399,7 @@ const World = {
       const c = arr[i];
       if (!c.active || x < c.minX || x > c.maxX || z < c.minZ || z > c.maxZ) continue;
       const t = this.topAt(c, x, z);
-      if (t <= maxY && t > best) best = t;
+      if (t <= (c.kind === 1 ? maxY + rampExtra : maxY) && t > best) best = t;
     }
     return best;
   },
@@ -4210,52 +4274,89 @@ class Fireball {
 }
 
 // ---------------- Glitch Guy (Lap 2) ----------------
+// Fair version: he appears beside the walkway ahead of you, a flickering stripe shows exactly
+// where he will cross, then he lunges 6 m ACROSS the walkway at shin/hip height. Dodge by
+// slowing down, sprinting past, stepping aside or jumping over him.
 const GlitchGuy = {
-  group: null, main: null, cyan: null, mag: null, state: 'off', t: 0, cycle: 0, pos: new THREE.Vector3(), dir: new THREE.Vector3(), hitDone: false, panner: null,
+  group: null, main: null, cyan: null, mag: null, stripe: null, state: 'off', t: 0, cycle: 0,
+  pos: new THREE.Vector3(), a: new THREE.Vector3(), b: new THREE.Vector3(), prev: new THREE.Vector3(), fwd: new THREE.Vector3(),
+  hitDone: false, panner: null, lineY: 0,
   init() {
     this.group = new THREE.Group(); this.group.visible = false; G.fx.add(this.group);
     const mk = (map, color, additive) => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map, color, transparent: true, alphaTest: additive ? 0 : 0.5, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending, depthWrite: !additive })); s.scale.set(0.9, 1.0, 1); this.group.add(s); return s; };
     this.cyan = mk(TEX.glitchMask, 0x00ffff, true); this.mag = mk(TEX.glitchMask, 0xff00ff, true); this.main = mk(TEX.glitch, 0xffffff, false);
+    // telegraph stripe on the walkway along the lunge path
+    const c = makeCanvas(32, 128), ctx = c.getContext('2d');
+    for (let i = 0; i < 8; i++) { ctx.fillStyle = i % 2 ? 'rgba(255,60,220,0.95)' : 'rgba(40,240,255,0.95)'; ctx.fillRect(0, i * 16, 32, 16); }
+    const tex = canvasTex(c, { nearest: true }); tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(1, 5);
+    const g = new THREE.PlaneGeometry(1, 1); g.rotateX(-Math.PI / 2);
+    this.stripe = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    this.stripe.renderOrder = 3; this.stripe.visible = false; G.fx.add(this.stripe);
   },
-  reset(delay) { this.state = 'wait'; this.cycle = delay; this.group.visible = false; },
-  stop() { this.state = 'off'; this.group.visible = false; },
+  reset(delay) { this.state = 'wait'; this.cycle = delay; this.group.visible = false; this.stripe.visible = false; },
+  stop() { this.state = 'off'; this.group.visible = false; this.stripe.visible = false; },
+  // a point on solid ground ahead of the player, along the walkway they are running on
   teleport() {
-    Rig.headForward(_v1);
-    const d = rr(6, 10), p = Player.pos;
-    let x = p.x + _v1.x * d, z = p.z + _v1.z * d;
-    const g = World.groundAt(x, z, p.y + 3);
-    const y = (g > -Infinity && g > p.y - 4 ? g : p.y) + 1.0;
-    this.pos.set(x, y, z);
+    const p = Player.pos, f = this.fwd;
+    if (Math.hypot(Player.vel.x, Player.vel.z) > 1) f.set(Player.vel.x, 0, Player.vel.z).normalize(); else Rig.headForward(f);
+    const axis = Nav.walkAxisAt(p);
+    if (axis) { const sgn = Math.sign(axis.x * f.x + axis.z * f.z) || 1; f.set(axis.x * sgn, 0, axis.z * sgn); }
+    let qx = 0, qz = 0, gy = -Infinity;
+    for (let tries = 0; tries < 4 && gy === -Infinity; tries++) {
+      const d = rr(CONFIG.GLITCH_AHEAD[0], CONFIG.GLITCH_AHEAD[1]) - tries * 1.5;
+      qx = p.x + f.x * d; qz = p.z + f.z * d;
+      const g = World.groundAt(qx, qz, p.y + 3);
+      if (g > -Infinity && g > p.y - 4) gy = g;
+    }
+    if (gy === -Infinity) { this.state = 'wait'; this.cycle = 1.0; return; }   // nothing solid ahead: try again soon
+    const side = Math.random() < 0.5 ? -1 : 1, lat = rr(CONFIG.GLITCH_SIDE[0], CONFIG.GLITCH_SIDE[1]);
+    const rx = -f.z, rz = f.x;
+    this.lineY = gy + CONFIG.GLITCH_HEIGHT;
+    this.a.set(qx + rx * side * lat, this.lineY, qz + rz * side * lat);
+    this.b.set(this.a.x - rx * side * CONFIG.GLITCH_LUNGE, this.lineY, this.a.z - rz * side * CONFIG.GLITCH_LUNGE);
+    this.pos.copy(this.a);
+    this.stripe.position.set((this.a.x + this.b.x) / 2, gy + 0.04, (this.a.z + this.b.z) / 2);
+    this.stripe.rotation.set(0, Math.atan2(rx, rz), 0);
+    this.stripe.scale.set(0.8, 1, CONFIG.GLITCH_LUNGE + 0.6);
+    this.stripe.visible = true;
     this.state = 'hover'; this.t = 0; this.hitDone = false; this.group.visible = true;
-    if (!this.panner) this.panner = Sfx.panner(x, y, z); else setPannerPos(this.panner, x, y, z);
-    Sfx.glitch(); FX.spark(x, y, z, 1, 0.2, 1);
+    if (!this.panner) this.panner = Sfx.panner(this.a.x, this.a.y, this.a.z); else setPannerPos(this.panner, this.a.x, this.a.y, this.a.z);
+    Sfx.glitch(); FX.spark(this.a.x, this.a.y, this.a.z, 1, 0.2, 1);
+    Captions.show('[ GLITCH CRACKLE ]', 1.0);
   },
   update(dt) {
     if (this.state === 'off') return;
     this.t += dt;
     if (this.state === 'wait') { this.cycle -= dt; if (this.cycle <= 0) this.teleport(); return; }
-    if (this.state === 'hover' && this.t >= 1.0) {
-      this.state = 'lunge'; this.t = 0;
-      this.dir.set(Player.pos.x - this.pos.x, Player.pos.y + 1.0 - this.pos.y, Player.pos.z - this.pos.z).normalize();
-      this.lungeFrom = this.pos.clone();
-      Sfx.glitch();
+    const reduce = Save.s.reduceFlash;
+    if (this.state === 'hover') {
+      const k = this.t / CONFIG.GLITCH_HOVER;
+      this.stripe.material.opacity = reduce ? 0.3 + 0.3 * k : (Math.sin(this.t * 30) > 0 ? 0.75 : 0.35) * (0.5 + 0.5 * k);
+      this.stripe.material.map.offset.y = -this.t * 2;
+      this.pos.set(this.a.x, this.lineY + Math.sin(this.t * 9) * 0.05, this.a.z);
+      if (this.t >= CONFIG.GLITCH_HOVER) { this.state = 'lunge'; this.t = 0; this.prev.copy(this.a); Sfx.glitch(); }
     }
     if (this.state === 'lunge') {
-      const k = clamp(this.t / 0.35, 0, 1);
-      _v2.copy(this.pos);
-      this.pos.copy(this.lungeFrom).addScaledVector(this.dir, CONFIG.GLITCH_LUNGE * easeOutQuad(k));
-      if (!this.hitDone && (Player.capsuleSegDist(_v2, this.pos) < 0.45)) { this.hitDone = true; Player.damage(CONFIG.DMG.glitch, 'glitch'); }
-      if (k >= 1) { this.state = 'linger'; this.t = 0; }
+      const k = clamp(this.t / CONFIG.GLITCH_LUNGE_TIME, 0, 1);
+      this.prev.copy(this.pos);
+      this.pos.copy(this.a).lerp(this.b, k);
+      setPannerPos(this.panner, this.pos.x, this.pos.y, this.pos.z);
+      this.stripe.material.opacity = 0.6 * (1 - k);
+      if (!this.hitDone && Player.capsuleSegDist(this.prev, this.pos) < CONFIG.GLITCH_HIT) { this.hitDone = true; Player.damage(CONFIG.DMG.glitch, 'glitch'); FX.spark(this.pos.x, this.pos.y, this.pos.z, 0.2, 1, 1); }
+      if (k >= 1) { this.state = 'linger'; this.t = 0; this.stripe.visible = false; }
     }
-    if (this.state === 'linger' && this.t >= 1.0) { this.state = 'wait'; this.cycle = Math.max(0.3, CONFIG.GLITCH_PERIOD / diff().threat - 2.35); this.group.visible = false; return; }
-    // chromatic-aberration jitter
-    const j = Save.s.reduceFlash ? 0.02 : 0.07;
+    if (this.state === 'linger' && this.t >= 0.6) {
+      this.state = 'wait';
+      this.cycle = Math.max(0.5, CONFIG.GLITCH_PERIOD / diff().threat - (CONFIG.GLITCH_HOVER + CONFIG.GLITCH_LUNGE_TIME + 0.6));
+      this.group.visible = false; return;
+    }
+    // chromatic-aberration jitter (he never fully vanishes while he is a threat)
+    const j = reduce ? 0.02 : 0.07;
     camera.getWorldDirection(_v3); _v4.set(-_v3.z, 0, _v3.x).normalize();
     this.group.position.copy(this.pos);
     this.cyan.position.copy(_v4).multiplyScalar(-j - Math.random() * j);
     this.mag.position.copy(_v4).multiplyScalar(j + Math.random() * j);
-    this.main.position.set(0, Math.random() < 0.08 ? (Math.random() - 0.5) * 0.1 : 0, 0);
-    this.group.visible = Save.s.reduceFlash || Math.random() > 0.06;
+    this.main.position.set(0, !reduce && Math.random() < 0.08 ? (Math.random() - 0.5) * 0.08 : 0, 0);
   },
 };
 
