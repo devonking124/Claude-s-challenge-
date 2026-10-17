@@ -66,15 +66,55 @@ browser and shows on your name tag, in the server list and on the escape screen.
 ## Avatar
 
 Press **AVATAR** in the lobby:
-- **Outfit:** suit, tuxedo, hoodie, tracksuit, knight armour, spacesuit, lab coat or overalls
+- **Outfit:** suit, tuxedo, hoodie, tracksuit, knight armour, spacesuit, lab coat, overalls or the
+  **I HATE RORY** shirt. Unlockable: inferno, diver suit and the golden suit.
 - **Colour** and **tie / trim colour**
-- **Head:** fishbowl, blocky, Lil' Guy, robot, pumpkin, TV, cat, alien, skull, ghost or frog
+- **Head:** fishbowl, blocky, Lil' Guy, robot, pumpkin, TV, cat, alien, skull, ghost, frog or **kurimanju** (the
+  chestnut bun itself, with a `:3` face). Unlockable: diver helmet.
 - **Hat:** Wega cap, top hat, crown, party hat, halo, **tin pot** (a saucepan with its handle sticking out) or
-  **kurimanju** (a little chestnut bun friend with rosy cheeks)
+  **kurimanju** (the shiny golden-brown chestnut bun with its pale base, `:3` face and rosy cheeks). Unlockable:
+  Lil' Guy buddy, idol hat, devil horns, hard hat, shoe hat and the **golden hat** (it gives off sparkles).
+- **Moves** (animation packs): how your avatar runs, jumps and idles. Classic and Swagger to start with; Ninja Run,
+  Bouncy, Robot, Zombie, Disco and Float are unlocked with achievements.
 - the fish in your fishbowl
 
-A turntable shows the result, the lobby mirror shows you wearing it, your first-person body uses your colours,
-and other players see it online. Your choice is saved in the browser.
+Locked items are skipped until you earn them (the page says how many are left; the trophy wall says what unlocks
+what). Earned items show in gold. A turntable shows the result, the lobby mirror
+shows you wearing it, your first-person body uses your colours, and other players see it online (moves included).
+Your choice is saved in the browser.
+
+## Achievements
+
+Each achievement unlocks a cosmetic. See them on the **trophy wall** in the lobby (the right-hand kiosk); a gold
+banner and a toast tell you when you unlock one, and other players online see it too.
+
+| Achievement | How | Unlocks |
+|---|---|---|
+| FIRST STEPS | Clear Lap 1 | Lil' Guy buddy hat |
+| ESCAPE ARTIST | Escape with the idol | Idol hat |
+| INFERNO | Clear Lap 2 | Inferno outfit |
+| WEGA'S REVENGE | Clear Lap 3 | Devil horns |
+| THE LAST LAP | Clear Lap 4 | Diver suit + diver helmet |
+| SPEED DEMON | Hit 80 s/s | Ninja Run moves |
+| HOPPER | Jump 500 times | Bouncy moves |
+| COLLECTOR | Collect 1,000 Lil' Guys | Robot moves |
+| BACK FROM THE DEAD | Get wiped out 10 times | Zombie moves |
+| TEAM PLAYER | Escape in a shared run with someone else | Disco moves |
+| UNTOUCHABLE | Clear a lap without getting hit | Float moves |
+| SHOEBENCH SURVIVOR | Clear a lap after Shoebench came for you | Shoe hat |
+| HARD MODE | Escape on HARD or WEGA MODE | Hard hat |
+| **WEGA MASTER** | Clear all 4 laps and escape on WEGA MODE | **Golden hat (with sparkles) + golden suit** |
+
+Achievements are saved in the browser. Runs that use the debug helpers don't count.
+
+## The lobby
+
+The lobby is bigger now: a wider floor with pillars, speaker stacks that pulse to the music, play blocks to climb,
+a **jump pad** that launches you into the air, a golden idol trophy on top of the climb and Lil' Guys floating
+around the edge.
+- **Character guide** (left kiosk): every enemy and hazard with its sprite, where it shows up and how to beat it.
+  Flip through the pages with the arrows.
+- **Trophy wall** (right kiosk): your achievements, their progress and what they unlock.
 
 ## Laps
 
@@ -93,7 +133,29 @@ and other players see it online. Your choice is saved in the browser.
 - **Lap 4: the Diver.** Deep-sea lap with the "DIVE" music. A hulking diver in a brass helmet leaps into the sky,
   a red ring marks where he'll land (where you're heading), then he plunges down. Get out of the ring, then
   **jump the shockwave** that rolls out from the impact, and don't bump into him while he stands there. Late in
-  the lap he dives twice in a row.
+  the lap he dives twice in a row. Glowing **jellyfish** drift over the walkways (touching one zaps you). The deep
+  has a kelp forest, branching coral, light shafts from the surface, schools of fish, caustics rippling over the
+  walkways and a huge leviathan swimming past in the dark.
+- **Wega's eye lasers are dodgeable.** He holds still while he fires, so the beams never follow you. Only the
+  burning spot where they hit the floor hurts: step off the stripe, or jump over the spot as it sweeps past.
+- **Each lap raises the speed cap** (Lap 1: 66 s/s, Lap 2: 71, Lap 3: 76, Lap 4: 82; the chase uses the cap of
+  the lap you came from).
+
+## The chase
+
+Grabbing the idol starts the collapse: the path falls away behind you and you run for the white door. **The lap
+you reached the idol from decides the chase.** Each later lap adds another stretch of route, a new look, a faster
+collapse and more hazards:
+
+| From | Chase | Length | What's new |
+|---|---|---|---|
+| Lap 1 | RUN FOR YOUR LIFE | about 330 m | laser gates, two Screamer dashes, a Rory ambush |
+| Lap 2 | THE INFERNO CHASE | about 450 m | orange neon over a lava sea, fireballs rain onto the walkway ahead, longer gaps |
+| Lap 3 | WEGA'S REVENGE CHASE | about 580 m | blood storm; Wega follows you, sweeping his eye lasers across the walkway right where you're about to be (jump the burning spot) and spitting fireballs round the corners ahead; a second Rory ambush; more X gates |
+| Lap 4 | THE DEEP CHASE | about 710 m | the deep sea; the Diver keeps plunging onto the walkway just ahead of you (keep running, and jump his shockwave as he lands); a third Rory ambush; a double hurdle; 3 m gaps |
+
+The collapse also starts closer behind you and moves faster each tier, and the chase plays that lap's song sped up.
+In a shared run, the run's lap decides the chase for everyone.
 
 ## Difficulty
 
@@ -111,6 +173,11 @@ Online, the lobby owner picks the difficulty for everyone; offline it's your own
 Walking, sprinting, sliding or getting shoved can't take you off a ledge into the void: you stop at the edge
 (or slide along it). Jumping off is still up to you, and dropping down onto a lower platform still works.
 Turn it off in **SETTINGS > EDGE GUARD**.
+
+Spamming jump can no longer throw you into the void either: a hop that would come down over nothing is caught at
+the edge, and landing on the top edge of a wall or a staircase puts you on top of it instead of bouncing you off.
+If you jump too early before a gap, the guard catches you at the lip, and your next jump from there keeps your
+run-up, so you can still make it across.
 
 ## Play
 
