@@ -2,8 +2,9 @@
 // =====================================================================================
 // SHARED RUNS — the authority for one server room (WEGA-1 ... WEGA-6).
 // It owns the run everyone on that server plays together: which stage the run is at,
-// which Lil' Guys have been collected (one collect counts for everyone), the lap 2-4 timer,
-// who grabbed the idol, who escaped. It also owns the lobby: the first player to join is the
+// which Lil' Guys have been collected (one collect counts for everyone), the lap 2-5 timer,
+// who grabbed the idol, the chase clock (everyone's collapse follows it), OMNIWEGA's health at the
+// end of the Lap 5 chase (and the seed its attacks are drawn from), who escaped. It also owns the lobby: the first player to join is the
 // owner (the next earliest takes over if they leave), and only the owner can START and change
 // the lobby settings (difficulty, how many laps, run modifiers). The real server (server/server.js) runs one
 // per room; on a public relay the game itself runs one in the player with the lowest id (and
@@ -14,14 +15,15 @@
 // =====================================================================================
 const WegaShared = (() => {
   const TOTAL = 207, MAX_TOTAL = 330;     // Lil' Guys per lap (the owner's difficulty can ask for more)
-  const MAX_LAP = 4;
+  const MAX_LAP = 5;
   const MOD_MAX = 0xffff;                 // run modifier bits (the game decides what each one does)
   const DIFFS = ['chill', 'normal', 'hard', 'wega'];
   const BONUS = 3, BONUS_EVERY = 25;      // laps 2-4: +3 s on the shared timer every 25 collected
   const CUT_DELAY = 4.2;        // the lap cutscene plays before the lap timer matters
   const RUNNER_TIMEOUT = 12000; // ms without a heartbeat -> no longer in the run / on the server
   const EMPTY_RESET = 15000;    // ms with nobody left in the run -> back to idle
-  const FINISH_AFTER_WIN = 90000, ESCAPE_MAX = 240000, DONE_HOLD = 4000;
+  const FINISH_AFTER_WIN = 90000, ESCAPE_MAX = 240000, ESCAPE_MAX_BOSS = 600000, DONE_HOLD = 4000;
+  const BOSS_HP = 6, BOSS_HP_PER = 2, BOSS_HP_MAX = 14;  // OMNIWEGA: cores to break (more with more players)
   const NAME_MAX = 16;
   // a tiny filter so names shown to other players stay friendly
   const BLOCK = ['FUCK', 'SHIT', 'CUNT', 'NIGG', 'FAGG', 'BITCH', 'WHORE', 'SLUT', 'RAPE', 'NAZI', 'HITLER', 'PENIS', 'VAGINA', 'PUSSY', 'COCK', 'DICK', 'PORN', 'RETARD', 'TWAT', 'WANK', 'ASSHOLE', 'KYS'];
@@ -57,8 +59,9 @@ const WegaShared = (() => {
     reset(run) {
       this.ph = 'idle'; this.run = run; this.st = ''; this.lap = 0;
       this.tot = TOTAL; this.bits = new Uint8Array(Math.ceil(MAX_TOTAL / 8)); this.left = TOTAL; this.lapCount = 0;
-      this.tEnd = 0; this.shoe = false; this.d = 'normal'; this.rml = MAX_LAP; this.md = 0; this.times = [0, 0, 150, 120, 105];
+      this.tEnd = 0; this.shoe = false; this.d = 'normal'; this.rml = MAX_LAP; this.md = 0; this.times = [0, 0, 150, 120, 105, 120];
       this.by = ''; this.gr = ''; this.runners = new Map(); this.startT = this.now(); this.escT = 0; this.winT = 0; this.doneT = 0; this.emptyT = 0;
+      this.bm = 0; this.bh = 0; this.bs = 0; this.bossT = 0;
     }
     event(kind, who, id, extra) { this.ev = [this.ev[0] + 1, kind, who, id || '']; if (extra != null) this.ev.push(extra); }
     changed() { this.sq++; this.dirty = true; }
@@ -123,7 +126,7 @@ const WegaShared = (() => {
           this.reset(Math.floor(Math.random() * 2147483646) + 1);
           this.ph = 'run'; this.by = who; this.d = this.ld; this.rml = this.ml; this.md = this.lm;
           this.tot = Math.round(clampNum(m.tot, 50, MAX_TOTAL, TOTAL));
-          this.times = [0, 0, clampNum(m.t2, 60, 400, 150), clampNum(m.t3, 60, 400, 120), clampNum(m.t4, 60, 400, 105)];
+          this.times = [0, 0, clampNum(m.t2, 50, 400, 150), clampNum(m.t3, 50, 400, 120), clampNum(m.t4, 50, 400, 105), clampNum(m.t5, 50, 400, 120)];
           this.startLap(1, 0); this.startT = now;
           this.runner(m.i, who);
           this.event('start', who, m.i); this.changed();
@@ -162,8 +165,23 @@ const WegaShared = (() => {
           this.st = 'escape'; this.gr = who; this.escT = now;
           this.event('grab', who, m.i); this.changed();
           return;
+        case 'hand':                // Lap 5 chase: someone reached the arena and OMNIWEGA grabs the exit
+          if (!mine || this.st !== 'escape' || this.lap < MAX_LAP) return;
+          this.runner(m.i, who);
+          this.st = 'boss'; this.bossT = now; this.bs = Math.floor(Math.random() * 2147483646) + 1;
+          this.bm = Math.min(BOSS_HP_MAX, BOSS_HP + BOSS_HP_PER * Math.max(0, this.runners.size - 1)); this.bh = this.bm;
+          this.event('hand', who, m.i); this.changed();
+          return;
+        case 'core':                // a core grabbed in the arena: OMNIWEGA takes a hit (each core counts once)
+          if (!mine || this.st !== 'boss' || m.c !== this.bm - this.bh) return;
+          this.runner(m.i, who);
+          this.bh--; this.event('core', who, m.i, this.bh);
+          if (this.bh <= 0) { this.bh = 0; this.st = 'freed'; this.event('bossdown', who, m.i); }
+          this.changed();
+          return;
         case 'win': {
-          if (!mine || (this.st !== 'escape' && this.st !== 'done')) return;
+          if (!mine || (this.st !== 'escape' && this.st !== 'freed' && this.st !== 'done')) return;
+          if (this.lap >= MAX_LAP && this.st === 'escape') return;          // Lap 5: OMNIWEGA has the exit until it's beaten
           const r = this.runner(m.i, who);
           if (r.won) return;
           r.won = true; if (!this.winT) this.winT = now;
@@ -178,10 +196,11 @@ const WegaShared = (() => {
       }
     }
     checkDone() {
-      if (this.st !== 'escape') return;
+      if (this.st !== 'escape' && this.st !== 'boss' && this.st !== 'freed') return;
       let all = this.runners.size > 0;
       for (const r of this.runners.values()) if (!r.won) all = false;
-      if (all || (this.winT && this.now() - this.winT > FINISH_AFTER_WIN) || this.now() - this.escT > ESCAPE_MAX) { this.st = 'done'; this.doneT = this.now(); }
+      const max = this.lap >= MAX_LAP ? ESCAPE_MAX_BOSS : ESCAPE_MAX;
+      if ((this.st !== 'boss' && (all || (this.winT && this.now() - this.winT > FINISH_AFTER_WIN))) || this.now() - this.escT > max) { this.st = 'done'; this.doneT = this.now(); }
     }
     // call a few times a second
     tick() {
@@ -202,7 +221,7 @@ const WegaShared = (() => {
           if (!this.emptyT) this.emptyT = now;
           else if (now - this.emptyT > EMPTY_RESET) { this.ph = 'idle'; this.st = ''; this.changed(); }
         } else this.emptyT = 0;
-        if (/^(lap|beacon)[234]$/.test(this.st) && !this.shoe && now >= this.tEnd) { this.shoe = true; this.event('shoe', '', ''); this.changed(); }
+        if (/^(lap|beacon)[2-5]$/.test(this.st) && !this.shoe && now >= this.tEnd) { this.shoe = true; this.event('shoe', '', ''); this.changed(); }
         const was = this.st;
         this.checkDone(); if (this.st !== was) this.changed();
         if (this.st === 'done' && now - this.doneT > DONE_HOLD) { this.ph = 'idle'; this.changed(); }
@@ -224,9 +243,11 @@ const WegaShared = (() => {
       return {
         v: 1, a: this.src, sq: this.sq, ph: this.ph, run: this.run, st: this.st, lap: this.lap, c: hex, left: this.left, tot: this.tot,
         tl: this.tEnd ? Math.round(Math.max(0, this.tEnd - now) / 100) / 10 : 0, shoe: this.shoe ? 1 : 0,
-        d: this.d, rml: this.rml, md: this.md, t2: this.times[2], t3: this.times[3], t4: this.times[4], by: this.by, gr: this.gr, nr: this.runners.size, rn: names,
+        d: this.d, rml: this.rml, md: this.md, t2: this.times[2], t3: this.times[3], t4: this.times[4], t5: this.times[5], by: this.by, gr: this.gr, nr: this.runners.size, rn: names,
         ow: this.owner, on: this.ownerName(), ld: this.ld, ml: this.ml, lm: this.lm, hp: here,
         ag: Math.round((now - this.startT) / 100) / 10, e: this.ev,
+        ea: this.escT ? Math.round((now - this.escT) / 100) / 10 : 0,             // the chase clock
+        bm: this.bm, bh: this.bh, bs: this.bs, ba: this.bossT ? Math.round((now - this.bossT) / 100) / 10 : 0,
       };
     }
     // take over from a snapshot (a new host after the old one left): the lobby owner and settings,
@@ -248,9 +269,10 @@ const WegaShared = (() => {
       this.tEnd = s.tl > 0 ? this.now() + s.tl * 1000 : (this.lap >= 2 ? this.now() : 0);
       this.d = DIFFS.includes(s.d) ? s.d : 'normal'; this.rml = clampNum(s.rml | 0, 1, MAX_LAP, MAX_LAP);
       this.md = Number.isInteger(s.md) && s.md >= 0 && s.md <= MOD_MAX ? s.md : 0;
-      this.times = [0, 0, clampNum(s.t2, 60, 400, 150), clampNum(s.t3, 60, 400, 120), clampNum(s.t4, 60, 400, 105)];
+      this.times = [0, 0, clampNum(s.t2, 50, 400, 150), clampNum(s.t3, 50, 400, 120), clampNum(s.t4, 50, 400, 105), clampNum(s.t5, 50, 400, 120)];
       this.by = String(s.by || ''); this.gr = String(s.gr || ''); this.startT = this.now() - clampNum(s.ag, 0, 1e6, 0) * 1000;
-      if (this.st === 'escape' || this.st === 'done') this.escT = this.now();
+      if (this.st === 'escape' || this.st === 'boss' || this.st === 'freed' || this.st === 'done') this.escT = this.now() - clampNum(s.ea, 0, 1e6, 0) * 1000;
+      if (Number.isInteger(s.bm) && s.bm > 0) { this.bm = clampNum(s.bm, 1, BOSS_HP_MAX, BOSS_HP); this.bh = clampNum(s.bh | 0, 0, this.bm, this.bm); this.bs = s.bs | 0; this.bossT = this.now() - clampNum(s.ba, 0, 1e6, 0) * 1000; }
       if (this.st === 'done') this.doneT = this.now();
     }
   }
