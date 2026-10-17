@@ -144,6 +144,7 @@ const CONFIG = {
   // ---- collectibles ----
   COLLECT_TOTAL: 207, COLLECT_SPACING: 1.7, COLLECT_HOVER: 1.1, COLLECT_SIZE: 0.72,
   PICKUP_BODY: 1.1, PICKUP_HAND: 0.35, COMBO_WINDOW: 1.2,
+  JUMP_OVER_REACH: 2.2,       // jumping over a Lil' Guy collects it if it's up to this far below your feet
   GOLD_FLASH_AT: [100, 50, 25, 10],
 
   // ---- Shoebench (chases you once a lap timer hits 0:00) ----
@@ -2364,7 +2365,8 @@ const Player = {
     // ---- jump (coyote time + buffer) ----
     this.sinceGround = this.grounded ? 0 : this.sinceGround + dt;
     if (Input.jumpPressed) this.jumpBuf = CONFIG.JUMP_BUFFER; else this.jumpBuf = Math.max(0, this.jumpBuf - dt);
-    if (this.jumpBuf > 0 && this.sinceGround <= CONFIG.COYOTE && this.vel.y <= 0.5) {
+    // holding jump keeps bouncing: you jump again the moment you land
+    if ((this.jumpBuf > 0 || Input.jumpHeld) && this.sinceGround <= CONFIG.COYOTE && this.vel.y <= 0.5) {
       this.vel.y = CONFIG.JUMP_VEL; this.grounded = false; this.sinceGround = CONFIG.COYOTE + 1; this.jumpBuf = 0;
       Sfx.jump();
     }
@@ -3369,7 +3371,7 @@ const LOBBY_PAGES = {
     p.bg();
     drawText(ctx, 'HOW TO PLAY', 256, 36, { size: 32, style: 'italic 900', font: FONT_IMPACT, fill: '#fff', stroke: '#000', lw: 5, spacing: 0.15 });
     const rows = [
-      ['lilguy', "COLLECT ALL 207 LIL' GUYS", 'RUN THROUGH THEM OR GRAB THEM'],
+      ['lilguy', "COLLECT ALL 207 LIL' GUYS", 'RUN, JUMP OVER OR GRAB THEM. HOLD JUMP TO HOP'],
       ['rory', 'AVOID RORY, LASERS, SCREAMERS', 'BUILD SPEED TO OUTRUN RORY'],
       ['beacon', 'AT 0 LEFT: BEACON OR LAP PORTAL', 'PORTAL = OPTIONAL LAP 2 / LAP 3'],
       ['wega', 'LAPS 2 + 3: BEAT THE TIMER', 'AT 0:00 SHOEBENCH HUNTS YOU'],
@@ -4224,18 +4226,22 @@ const Collect = {
   update(dt) {
     if (!this.mesh.visible) return;
     this.comboT = Math.max(0, this.comboT - dt);
-    const p = Player.pos, r = CONFIG.PICKUP_BODY, hr = CONFIG.PICKUP_HAND;
+    const p = Player.pos, q = Player.prevPos, r = CONFIG.PICKUP_BODY, hr = CONFIG.PICKUP_HAND;
     const hl = Hands.pos('left'), hlx = hl ? hl.x : 0, hly = hl ? hl.y : 0, hlz = hl ? hl.z : 0;
     const hrp = Hands.pos('right'), hrx = hrp ? hrp.x : 0, hry = hrp ? hrp.y : 0, hrz = hrp ? hrp.z : 0;
-    const top = p.y + Player.height;
+    // swept pickup: the path you moved this frame (so fast running never skips one), and a tall
+    // zone reaching JUMP_OVER_REACH below your feet (so jumping over a Lil' Guy collects it)
+    let sx = q.x, sz = q.z;
+    if ((p.x - sx) ** 2 + (p.z - sz) ** 2 > 4) { sx = p.x; sz = p.z; }   // teleports don't sweep
+    const ex = p.x - sx, ez = p.z - sz, el2 = ex * ex + ez * ez;
+    const yLo = Math.min(q.y, p.y) - CONFIG.JUMP_OVER_REACH, yHi = Math.max(q.y, p.y) + Player.height + 0.3;
     for (let i = 0; i < this.base.length; i++) {
       if (!this.alive[i]) continue;
       const b = this.base[i];
-      const dx = b.x - p.x, dz = b.z - p.z, d2 = dx * dx + dz * dz;
-      if (d2 < r * r + 0.01) {
-        // distance from the capsule axis
-        const cy = clamp(b.y, p.y + CONFIG.RADIUS, top - CONFIG.RADIUS), dy = b.y - cy;
-        if (d2 + dy * dy < r * r) { this.take(i, null); continue; }
+      if (b.y >= yLo && b.y <= yHi) {
+        const t = el2 > 1e-8 ? clamp(((b.x - sx) * ex + (b.z - sz) * ez) / el2, 0, 1) : 0;
+        const dx = b.x - (sx + ex * t), dz = b.z - (sz + ez * t);
+        if (dx * dx + dz * dz < r * r) { this.take(i, null); continue; }
       }
       if (hl && (b.x - hlx) ** 2 + (b.y - hly) ** 2 + (b.z - hlz) ** 2 < hr * hr) { this.take(i, 'left'); continue; }
       if (hrp && (b.x - hrx) ** 2 + (b.y - hry) ** 2 + (b.z - hrz) ** 2 < hr * hr) { this.take(i, 'right'); continue; }

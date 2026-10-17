@@ -47,7 +47,7 @@ see it online. Your choice is saved in the browser.
 
 ## Laps
 
-- **Lap 1:** collect all 207 Lil' Guys. At 0 left, a beacon appears (go to the Idol Chamber) and a
+- **Lap 1:** collect all 207 Lil' Guys (run through them, jump over them or grab them). At 0 left, a beacon appears (go to the Idol Chamber) and a
   **LAP 2 portal** opens at the start. The portal is optional.
 - **Lap 2 (Inferno)** and **Lap 3 (Wega's Revenge)** are timed. If the timer hits 0:00, **Shoebench** comes
   flying after you; keep moving and finish the lap, because if it touches you it's game over.
@@ -65,13 +65,13 @@ The game still runs if `wega-music.js` is missing (just without music).
 |---|---|
 | Left stick | Move (speed builds up the longer you run) |
 | Right stick | Snap turn (or smooth turn in Settings) |
-| A / X | Jump |
+| A / X | Jump (hold it to keep hopping) |
 | Left stick click | Toggle sprint lock |
 | Grip | Grab the idol |
 | Trigger | Click menu buttons with the laser |
 | B / Y | Pause (hold 1 s to recentre) |
 
-Desktop: WASD move, mouse look (click to lock the pointer), Space jump, E grab, Shift sprint lock,
+Desktop: WASD move, mouse look (click to lock the pointer), Space jump (hold to keep hopping), E grab, Shift sprint lock,
 Esc or P pause, M mute, F full screen. Aim the crosshair at a menu button and click.
 
 Phone / tablet: tap **TAP TO PLAY** (it goes full screen and asks for landscape). Left stick moves, drag the
