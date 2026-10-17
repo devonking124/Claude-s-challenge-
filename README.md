@@ -6,6 +6,7 @@
 index.html          the whole game (Three.js r160 from jsDelivr, everything else inline)
 wega-music.js       the music pack (Lap 1 + Lap 2 songs as base64 MP3 + the WegaMusic player)
 wega-music-lap3.js  Lap 3 song add-on ("Pillar John's Revenge"); optional, Lap 3 falls back to a sped-up Lap 2 song
+wega-music-lap4.js  Lap 4 song add-on ("DIVE", the last-lap song); optional, Lap 4 falls back to a sped-up Lap 3 song
 wega-relay.json     optional: which multiplayer server to use (empty = free public relays)
 server/             the multiplayer server (Node 20+): hosts the game, relays player data and runs the shared runs
 render.yaml         one-click deploy of server/ on Render
@@ -18,12 +19,17 @@ joins the busiest server that isn't full. You see other players' avatars and nam
 whichever level you are both in.
 
 Everyone on a server plays **one shared run**:
+- **The lobby owner:** the first player to join a server owns its lobby (shown on the main menu and the **LOBBY**
+  page, with a ★ in the player list). Only the owner can **START** and change the lobby settings (difficulty and
+  how many laps the portals go up to). Everyone else's START button says WAITING… If the owner leaves, the
+  player who joined next becomes the owner.
 - **START** starts the run for everyone on the server who is in the lobby (or on the win / game-over screen).
-  If a run is already going, the button says **JOIN RUN** and drops you in where it is.
+  If a run is already going, the button says **JOIN RUN** (for anyone) and drops you in where it is.
 - **Lil' Guys are shared:** when anyone collects one, it's gone for everybody, and the counter is the same for all.
 - When the last one is collected, everyone gets the same beacon. Whoever takes the **lap portal** takes the whole
   run to the next lap (cutscene for everyone); whoever reaches the **beacon** brings everyone to the Idol Chamber.
-- The Lap 2 / Lap 3 **timer is shared** (with the +3 s bonuses), and so is Shoebench when it runs out.
+- The Lap 2-4 **timer is shared** (with the +3 s bonuses), and so is Shoebench when it runs out.
+- The owner's **difficulty applies to everyone** in the run (Lil' Guy count, timers, how hostile the characters are).
 - Whoever **grabs the idol** starts the collapse for everyone; each player has to reach the exit.
 - If you die, **REJOIN RUN** puts you back where the run is now. **QUIT TO LOBBY** leaves the run.
 
@@ -59,18 +65,46 @@ browser and shows on your name tag, in the server list and on the escape screen.
 
 ## Avatar
 
-Press **AVATAR** in the lobby: suit colour, tie / trim colour, head (fishbowl, blocky, Lil' Guy, robot,
-pumpkin), hat (Wega cap, top hat, crown, party hat, halo) and the fish in your fishbowl. A turntable shows the
-result, the lobby mirror shows you wearing it, your first-person body uses your colours, and other players
-see it online. Your choice is saved in the browser.
+Press **AVATAR** in the lobby:
+- **Outfit:** suit, tuxedo, hoodie, tracksuit, knight armour, spacesuit, lab coat or overalls
+- **Colour** and **tie / trim colour**
+- **Head:** fishbowl, blocky, Lil' Guy, robot, pumpkin, TV, cat, alien, skull, ghost or frog
+- **Hat:** Wega cap, top hat, crown, party hat, halo, **tin pot** (a saucepan with its handle sticking out) or
+  **kurimanju** (a little chestnut bun friend with rosy cheeks)
+- the fish in your fishbowl
+
+A turntable shows the result, the lobby mirror shows you wearing it, your first-person body uses your colours,
+and other players see it online. Your choice is saved in the browser.
 
 ## Laps
 
 - **Lap 1:** collect all 207 Lil' Guys (run through them, jump over them or grab them). At 0 left, a beacon appears (go to the Idol Chamber) and a
   **LAP 2 portal** opens at the start. The portal is optional.
-- **Lap 2 (Inferno)** and **Lap 3 (Wega's Revenge)** are timed. If the timer hits 0:00, **Shoebench** comes
-  flying after you; keep moving and finish the lap, because if it touches you it's game over.
-  Lap 2 ends with a beacon plus a LAP 3 portal; Lap 3 ends with the beacon.
+- **Lap 2 (Inferno)**, **Lap 3 (Wega's Revenge)** and **Lap 4 (The Last Lap)** are timed. If the timer hits 0:00,
+  **Shoebench** comes flying after you; keep moving and finish the lap, because if it touches you it's game over.
+  Each lap ends with a beacon plus the next lap's portal (Lap 4 ends with just the beacon).
+- **Lap 3: Wega hunts you.** A giant glitching Wega face floats over the maze in front of you for the whole lap
+  and attacks on a rhythm that gets faster as the Lil' Guys run out:
+  - **Glare:** a red stripe flashes across your walkway, then his eye lasers sweep along it. Don't be on it.
+  - **Cage** (late in the lap): two stripes, one ahead and one behind. Stop between them.
+  - **Pixel barrage:** he spits fireballs along the path you're running. Change course.
+  - **Summon:** he sends Rory straight at you (or makes the Glitch Guy strike right away).
+  - **Roar** (from the middle of the lap): a pixel flood rolls out from under him. Jump it.
+- **Lap 4: the Diver.** Deep-sea lap with the "DIVE" music. A hulking diver in a brass helmet leaps into the sky,
+  a red ring marks where he'll land (where you're heading), then he plunges down. Get out of the ring, then
+  **jump the shockwave** that rolls out from the impact, and don't bump into him while he stands there. Late in
+  the lap he dives twice in a row.
+
+## Difficulty
+
+| | Lil' Guys a lap | Characters |
+|---|---|---|
+| CHILL | 207 | calm, less damage, longer timers |
+| NORMAL | 207 | |
+| **HARD** | **260** | hostile: shorter warnings, more lasers and fireballs, Rory chases longer and faster, more damage |
+| WEGA MODE | **300** | ruthless: all of HARD and more, no health regen, the Diver re-aims mid-dive |
+
+Online, the lobby owner picks the difficulty for everyone; offline it's your own setting.
 
 ## Edge guard
 
@@ -105,7 +139,7 @@ The full-screen button is in the top-right corner.
 
 ## Debug
 
-Open `index.html?debug`: keys `1`–`6` jump to Lap 1 / Lap 2 / Idol Chamber / Escape / Win / Lap 3.
-`window.WEGA_DEBUG` has `skipToLap2()`, `skipToLap3()`, `skipToIdol()`, `skipToEscape()`, `win()`, `godMode(bool)`,
+Open `index.html?debug`: keys `1`–`7` jump to Lap 1 / Lap 2 / Idol Chamber / Escape / Win / Lap 3 / Lap 4.
+`window.WEGA_DEBUG` has `skipToLap2()`, `skipToLap3()`, `skipToLap4()`, `skipToIdol()`, `skipToEscape()`, `win()`, `godMode(bool)`,
 `setLeft(n)` and `spawnShoebench()`.
 Runs that use debug helpers don't save a best time. Add `?offline` to play without connecting to any server.
