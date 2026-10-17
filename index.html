@@ -62,6 +62,10 @@
 <script src="wega-music-lap3.js"></script>
 <!-- Optional Lap 4 track add-on ("DIVE"). Optional too: Lap 4 falls back to a sped-up Lap 3 song. -->
 <script src="wega-music-lap4.js"></script>
+<!-- Optional Lap 5 track add-on ("I made it better"). Lap 5 falls back to a sped-up Lap 4 song. -->
+<script src="wega-music-lap5.js"></script>
+<!-- Optional OMNIWEGA boss track add-on (Mario & Luigi boss battle). The boss falls back to the Lap 5 song. -->
+<script src="wega-music-boss.js"></script>
 </head>
 <body>
 <div id="overlay">
@@ -597,6 +601,9 @@ const Save = {
       ach: {},              // achievement id -> unlock time
       stats: { jumps: 0, collected: 0, deaths: 0, pads: 0, meters: 0, guide: 0 },
       best: null,
+      coins: 0,             // the Lil' Guy wallet (shop money)
+      owned: {},            // shop items bought: 'hat:22' -> time
+      chal: {},             // challenges cleared: id -> time
       avatar: { suit: 0, tie: 2, head: 0, hat: 0, fish: 0 },
       online: true,
       server: null,
@@ -613,11 +620,15 @@ const Save = {
           Object.assign(this.data.settings, d.settings || {});
           if (!(d.settings && d.settings.edgeGuardV >= 1)) { this.data.settings.edgeGuard = false; this.data.settings.edgeGuardV = 1; }
           if (!Number.isInteger(this.data.settings.mods) || this.data.settings.mods < 0) this.data.settings.mods = 0;
+          this.data.settings.mods &= 0x0d3f;           // drop the retired BIG HEADS / HALF / EXTRA TIME bits
           if (typeof d.nameIdx === 'number') this.data.nameIdx = d.nameIdx % CONFIG.NAMES.length;
           if (typeof d.customName === 'string') this.data.customName = WegaShared.cleanName(d.customName).trim();
           if (d.ach && typeof d.ach === 'object') for (const k of Object.keys(d.ach)) if (typeof d.ach[k] === 'number') this.data.ach[k] = d.ach[k];
           if (d.stats && typeof d.stats === 'object') for (const k of Object.keys(this.data.stats)) if (Number.isFinite(d.stats[k])) this.data.stats[k] = d.stats[k];
           if (typeof d.best === 'number') this.data.best = d.best;
+          // the wallet started in round 5: older saves get every Lil' Guy they ever collected
+          this.data.coins = Number.isFinite(d.coins) ? Math.max(0, d.coins) : (Number.isFinite(d.stats && d.stats.collected) ? d.stats.collected : 0);
+          for (const k of ['owned', 'chal']) if (d[k] && typeof d[k] === 'object') for (const x of Object.keys(d[k])) if (typeof d[k][x] === 'number') this.data[k][x] = d[k][x];
           if (d.avatar && typeof d.avatar === 'object') this.data.avatar = d.avatar;
           if (typeof d.online === 'boolean') this.data.online = d.online;
           if (typeof d.server === 'string') this.data.server = d.server;
@@ -632,35 +643,41 @@ const Save = {
 };
 // online, the lobby owner's difficulty applies to everyone (the run's, once it starts)
 const diff = () => CONFIG.DIFF[Session.difficultyKey() || Save.s.difficulty] || CONFIG.DIFF.normal;
-// ---------------- run modifiers ----------------
+// ---------------- modifiers + challenges ----------------
 // The lobby owner switches them on for everyone on the server (they're fixed once a run starts);
-// offline they're your own. [id, name, what it does]
+// offline they're your own. MODIFIERS just change how the game plays. CHALLENGES make it harder and pay
+// out: more Lil' Guys for the shop (bonus %), and a one-time bonus the first time you escape with each.
+// bit: the run's bit number (kept stable for older saves / servers; 6, 7 and 9 were BIG HEADS, HALF LIL' GUYS
+// and EXTRA TIME, which are gone: BIG HEAD is a shop effect now)
 const MODS = [
-  ['lowgrav', 'LOW GRAVITY', 'FLOATY, SUPER HIGH JUMPS'],
-  ['speed', 'SPEED RUSH', 'YOU GO 30% FASTER (SO DOES DANGER)'],
-  ['onehit', 'ONE HIT', 'ANY HIT KNOCKS YOU OUT'],
-  ['rory', 'RORY RAMPAGE', 'RORY NEVER STOPS COMING'],
-  ['lasers', 'LASER PARTY', 'MORE LASERS, FASTER GATES'],
-  ['dark', 'LIGHTS OUT', 'THICK DARKNESS EVERYWHERE'],
-  ['bighead', 'BIG HEADS', 'EVERYONE GETS A HUGE HEAD'],
-  ['half', "HALF LIL' GUYS", 'HALF AS MANY A LAP'],
-  ['turbo', 'TURBO COLLAPSE', 'THE CHASE FALLS AWAY FASTER'],
-  ['time', 'EXTRA TIME', 'LAP TIMERS +50%'],
+  { id: 'lowgrav', bit: 0, kind: 'mod', name: 'LOW GRAVITY', desc: 'FLOATY, SUPER HIGH JUMPS' },
+  { id: 'speed', bit: 1, kind: 'mod', name: 'SPEED RUSH', desc: 'YOU GO 30% FASTER (SO DOES DANGER)' },
+  { id: 'onehit', bit: 2, kind: 'chal', name: 'ONE HIT', desc: 'ANY HIT KNOCKS YOU OUT', bonus: 100 },
+  { id: 'rory', bit: 3, kind: 'chal', name: 'RORY RAMPAGE', desc: 'RORY NEVER STOPS COMING', bonus: 50 },
+  { id: 'lasers', bit: 4, kind: 'chal', name: 'LASER PARTY', desc: 'MORE LASERS, FASTER GATES', bonus: 40 },
+  { id: 'dark', bit: 5, kind: 'chal', name: 'LIGHTS OUT', desc: 'THICK DARKNESS EVERYWHERE', bonus: 40 },
+  { id: 'turbo', bit: 8, kind: 'chal', name: 'TURBO COLLAPSE', desc: 'THE CHASE FALLS AWAY FASTER', bonus: 40 },
+  { id: 'clock', bit: 10, kind: 'chal', name: 'ON THE CLOCK', desc: 'LAP TIMERS 40% SHORTER', bonus: 50 },
+  { id: 'noregen', bit: 11, kind: 'chal', name: 'NO REGEN', desc: 'YOUR HEALTH NEVER COMES BACK', bonus: 30 },
 ];
-const MOD = {}; MODS.forEach((m, i) => { MOD[m[0]] = 1 << i; });
+const MOD = {}; MODS.forEach((m) => { MOD[m.id] = 1 << m.bit; });
 const Mods = {
-  ALL: (1 << MODS.length) - 1,
+  ALL: MODS.reduce((a, m) => a | (1 << m.bit), 0),
+  MOD_BITS: MODS.filter((m) => m.kind === 'mod').reduce((a, m) => a | (1 << m.bit), 0),
   bits() { return Session.modBits() & this.ALL; },
   on(id) { return (this.bits() & MOD[id]) !== 0; },
-  names(bits = this.bits()) { return MODS.filter((m, i) => bits & (1 << i)).map((m) => m[1]); },
-  // anything but BIG HEADS changes the game: no best time, no SPEEDRUNNER
-  ranked(bits = this.bits()) { return (bits & ~MOD.bighead) === 0; },
-  // modifiers that make a run harder (for MOD SQUAD)
-  challenges(bits = this.bits()) { let n = 0; for (let i = 0; i < MODS.length; i++) if (bits & (1 << i) & ~(MOD.bighead | MOD.half | MOD.time)) n++; return n; },
+  list(bits = this.bits()) { return MODS.filter((m) => bits & (1 << m.bit)); },
+  names(bits = this.bits()) { return this.list(bits).map((m) => m.name); },
+  // MODIFIERS change the game (no best time, no SPEEDRUNNER); CHALLENGES only make it harder
+  ranked(bits = this.bits()) { return (bits & this.MOD_BITS) === 0; },
+  challenges(bits = this.bits()) { return this.list(bits).filter((m) => m.kind === 'chal').length; },
+  // Lil' Guys you earn for the shop: x1 + every challenge's bonus
+  payK(bits = this.bits()) { return 1 + this.list(bits).reduce((a, m) => a + (m.bonus || 0), 0) / 100; },
   gravity() { return CONFIG.GRAVITY * (this.on('lowgrav') ? 0.55 : 1); },
   jumpVel() { return CONFIG.JUMP_VEL * (this.on('lowgrav') ? 0.9 : 1); },
   speedK() { return this.on('speed') ? 1.3 : 1; },        // your speed cap
   foeK() { return this.on('speed') ? 1.2 : 1; },          // Rory, Shoebench and the collapse keep up (a bit)
+  timeK() { return this.on('clock') ? 0.6 : 1; },         // ON THE CLOCK
 };
 const playerName = () => {
   const c = Save.data.customName;
@@ -802,7 +819,7 @@ const Music = {
   stop(secs) { this.desired.track = null; if (this.ok()) window.WegaMusic.stop(secs); },
   hasTrack(t) { return !!(window.WegaMusic && window.WegaMusic.data && window.WegaMusic.data[t]); },
   toast(track) {
-    let title = track === 'lap1' ? 'WEXECUTION' : track === 'lap3' ? "PILLAR JOHN'S REVENGE" : track === 'lap4' ? 'DIVE' : 'WEGAFADENCE';
+    let title = track === 'lap1' ? 'WEXECUTION' : track === 'lap3' ? "PILLAR JOHN'S REVENGE" : track === 'lap4' ? 'DIVE' : track === 'lap5' ? 'I MADE IT BETTER' : track === 'boss' ? 'BOSS BATTLE' : 'WEGAFADENCE';
     try { if (window.WegaMusic && window.WegaMusic.data[track]) title = window.WegaMusic.data[track].title.split('(')[0].trim(); } catch (e) { /* ignore */ }
     UI.toast('♪ ' + title.toUpperCase());
   },
@@ -852,14 +869,34 @@ const Music = {
     else { this.setRate(1.2, 0.05); this.play('lap2', 0.05); this.toast('lap2'); }
     this.lapRate = this.desired.rate;
   },
+  // Lap 5: "I made it better" (wega-music-lap5.js); falls back to a sped-up Lap 4 / Lap 3 / Lap 2 song
+  cueLap5Start() {
+    this.deathTok++;
+    this.setMuffled(false, 0.2); this.setLevel(0.85, 0.2);
+    const t = ['lap5', 'lap4', 'lap3', 'lap2'].find((k) => k === 'lap2' || this.hasTrack(k));
+    this.setRate(t === 'lap5' ? 1 : 1.15, 0.05); this.play(t, 0.05); this.toast(t);
+    this.lapRate = this.desired.rate;
+  },
+  // OMNIWEGA: the boss theme (wega-music-boss.js), else the Lap 5 song pushed faster
+  cueBoss() {
+    this.setMuffled(false, 0.2); this.setLevel(0.95, 0.3);
+    const t = this.hasTrack('boss') ? 'boss' : this.hasTrack('lap5') ? 'lap5' : 'lap2';
+    this.setRate(t === 'boss' ? 1 : 1.12, 0.3);
+    if (!this.ok() || window.WegaMusic.currentTrack() !== t) this.play(t, 0.1);
+    this.desired.track = t; this.toast(t);
+  },
   lapRate: 1,
   cueLap2Tension() { this.setRate(this.lapRate * 1.04, 2); },
   cueShoebench() { this.setRate(this.lapRate * 1.1, 1.5); },
   cueChamber() { this.setRate(1.0, 0.5); this.setMuffled(true, 1.0); this.setLevel(0.5, 1.0); },
   // the chase plays the song of the lap you came from, pushed faster (lap 1/2: the Lap 2 song)
+  chaseTrack(tier) {
+    for (let t = Math.min(5, tier); t >= 3; t--) if (this.hasTrack('lap' + t)) return 'lap' + t;
+    return 'lap2';
+  },
   cueRun(tier = 1) {
-    const track = tier >= 4 && this.hasTrack('lap4') ? 'lap4' : tier >= 3 && this.hasTrack('lap3') ? 'lap3' : 'lap2';
-    const rate = track === 'lap2' ? [1.08, 1.08, 1.13, 1.18, 1.22][tier] || 1.08 : track === 'lap3' ? (tier >= 4 ? 1.12 : 1.06) : 1.05;
+    const track = this.chaseTrack(tier), n = +track[3];
+    const rate = track === 'lap2' ? [1.08, 1.08, 1.13, 1.18, 1.22, 1.26][tier] || 1.08 : 1.04 + Math.max(0, tier - n) * 0.07;
     this.setMuffled(false, 0.2); this.setLevel(0.9, 0.3); this.setRate(rate, 1.0);
     if (this.ok() && window.WegaMusic.currentTrack() !== track) this.play(track, 0.1);
     this.desired.track = track;
@@ -877,10 +914,11 @@ const Music = {
     if (kind === 'LAP2') { this.lapRate = 1; this.setRate(1, 0.01); this.setMuffled(false, 0.1); this.setLevel(0.8, 0.2); this.play('lap2', 0.05); this.toast('lap2'); return; }
     if (kind === 'LAP3') { this.cueLap3Start(); return; }
     if (kind === 'LAP4') { this.cueLap4Start(); return; }
+    if (kind === 'LAP5') { this.cueLap5Start(); return; }
+    if (kind === 'BOSS') { this.setRate(1, 0.01); this.cueBoss(); return; }
     // escape retry: the chase's track fresh, RUN settings
     const tier = typeof kind === 'number' ? kind : 1;
-    const track = tier >= 4 && this.hasTrack('lap4') ? 'lap4' : tier >= 3 && this.hasTrack('lap3') ? 'lap3' : 'lap2';
-    this.setRate(1, 0.01); this.play(track, 0.05); this.cueRun(tier);
+    this.setRate(1, 0.01); this.play(this.chaseTrack(tier), 0.05); this.cueRun(tier);
   },
   // Wega Glitch Head "tape warble"
   warble() {
@@ -2874,7 +2912,7 @@ const Player = {
 
     // ---- regen ----
     const rd = diff().regenDelay;
-    if (this.hp > 0 && this.hp < CONFIG.MAX_HP && this.sinceDamage > rd) this.hp = Math.min(CONFIG.MAX_HP, this.hp + CONFIG.REGEN * dt);
+    if (this.hp > 0 && this.hp < CONFIG.MAX_HP && this.sinceDamage > rd && !Mods.on('noregen')) this.hp = Math.min(CONFIG.MAX_HP, this.hp + CONFIG.REGEN * dt);
 
     // ---- gloves blink while invulnerable ----
     if (this.invuln > 0) Hands.blink(Math.sin(this.invuln * (Save.s.reduceFlash ? 18 : 60)) > 0);
@@ -3927,7 +3965,7 @@ const Lobby = {
     ped.position.set(0, -0.12, 0); this.preview.pedestal = ped;
     const pg = new THREE.Group(); pg.position.set(-1.35, 0.25, -2.5); pg.add(ped); pg.visible = false; g.add(pg); this.previewPed = pg;
     Mirror.init(g);
-    LobbyPlus.init(g);
+    LobbyPlus.init(g); Shop.init(g);
   },
   drawTitle() {
     const c = this.titleCanvas, ctx = c.getContext('2d'), rng = mulberry32(12);
@@ -3955,7 +3993,7 @@ const Lobby = {
     if (this.menu.page !== 'name') NameEdit.closeInput();
     if (this.preview && this.preview.root.visible) this.preview.pose({ x: -1.35, y: 0.25, z: -2.5, yaw: Clock.real * 0.8, speed: 0, grounded: true }, dt);
     this.title.position.y = 6.5 + Math.sin(Clock.real * 0.9) * 0.2;
-    LobbyPlus.update(dt);
+    LobbyPlus.update(dt); Shop.update(dt);
     this.title.rotation.z = Math.sin(Clock.real * 0.6) * 0.015;
     Mirror.update();
   },
@@ -4133,7 +4171,7 @@ const LobbyPlus = {
   addColliders() {
     for (const [x, top, z, sz] of LOBBY_BLOCKS) World.addBox(x - sz / 2, top - 0.5, z - sz / 2, x + sz / 2, top, z + sz / 2, 'lobby');
   },
-  panels() { return [this.guide, this.trophies]; },
+  panels() { return [this.guide, this.trophies, Shop.panel]; },
   update(dt) {
     if (this.achVer !== Achievements.version) { this.achVer = Achievements.version; this.trophies.redraw(); }
     const lvl = Music.getLevel ? Music.getLevel() : 0, t = Clock.real;
@@ -4151,6 +4189,114 @@ const LobbyPlus = {
       this.padCD = 0.6; Player.vel.y = 12.5; Player.grounded = false; Player.sinceGround = 1; Achievements.stat('pads');
       Sfx.lapPortal(); FX.spark(JUMP_PAD.x, 0.2, JUMP_PAD.z, 0.3, 0.9, 1); Hands.pulse('both', 0.4, 80);
     }
+  },
+};
+
+// ---------------- the Lil' Guy shop ----------------
+// Spend the Lil' Guys you collect (Wallet) on cosmetics nobody can earn any other way. A kiosk on the
+// left of the lobby with a mannequin next to it: pick an item to try it on, BUY, then it's yours to wear.
+// [key, index, price, name shown, blurb]
+const SHOP = [
+  ['hat', 22, 600, 'STARS THAT GLOW IN THE DARK'], ['hat', 23, 700, 'HORNS UP!'], ['hat', 24, 650, 'ARRR'], ['hat', 25, 1500, 'A FLYING SAUCER HOVERS OVER YOU'],
+  ['hat', 26, 450, 'THE CUPS GLOW IN YOUR TRIM COLOUR'], ['hat', 27, 900, 'NEON WRAP-AROUND SHADES'], ['hat', 28, 350, 'LET HIM COOK'], ['hat', 29, 500, 'TAILS FLYING BEHIND YOU'], ['hat', 30, 300, 'GLOWING BOBBLES'],
+  ['style', 14, 1200, 'LACQUERED PLATES LACED IN GOLD'], ['style', 15, 1500, 'GLOWING STARS ALL OVER'], ['style', 16, 800, '8-BIT CHECKERS WITH A HEART'], ['style', 17, 1800, 'GLOWING CRACKS IN BLACK ROCK'], ['style', 18, 1000, 'ERMINE COLLAR, GOLD TRIM'],
+  ['head', 14, 2500, 'BECOME WEGA'], ['head', 15, 2000, 'I HATE RORY? I AM RORY'], ['head', 16, 700, 'A GLOWING :3 ON A CRT'], ['head', 17, 600, 'LIT UP FROM THE INSIDE'], ['head', 18, 900, 'FACETED, WITH A GLOWING CORE'],
+  ['anim', 11, 800, 'STAND STILL TO FLOSS'], ['anim', 12, 1500, 'STAND STILL: SPIN ON YOUR HEAD'], ['anim', 13, 400, 'WADDLE WADDLE'], ['anim', 14, 1000, 'FIST FORWARD WHEN YOU RUN'], ['anim', 15, 300, 'ASSERT DOMINANCE'],
+  ['suit', 12, 250, 'A COLOUR FOR SUIT + TRIM'], ['suit', 13, 300, 'DARKER THAN BLACK'], ['suit', 14, 250, 'A COLOUR FOR SUIT + TRIM'], ['suit', 15, 250, 'A COLOUR FOR SUIT + TRIM'],
+  ['fx', 1, 500, 'YOUR HEAD, BUT HUGE'], ['fx', 2, 1200, 'FLAMES WHEREVER YOU RUN'], ['fx', 3, 1500, 'A RAINBOW BEHIND YOU'], ['fx', 4, 1000, 'GOLD SPARKLES CIRCLE YOU'], ['fx', 5, 1800, 'CRACKLING ELECTRICITY'],
+  ['fx', 6, 1200, 'PIXELS BREAK OFF YOU'], ['fx', 7, 800, 'BUBBLES RISE OFF YOU'], ['fx', 8, 2500, 'THEY FLAP WHEN YOU RUN'], ['fx', 9, 2500, 'BAT WINGS WITH GLOWING CLAWS'], ['fx', 10, 600, 'YOU, BUT SMALL'],
+].map(([k, v, price, blurb]) => ({ k, v, price, blurb }));
+const SHOP_CATS = [['hat', 'HATS'], ['style', 'OUTFITS'], ['head', 'HEADS'], ['anim', 'MOVES'], ['suit', 'COLOURS'], ['fx', 'EFFECTS']];
+const SHOP_PER = 5;
+const SHOP_PAGES = {
+  shop(ctx, p) {
+    p.bg('rgba(4,16,10,0.94)', '#40ff90');
+    drawText(ctx, "LIL' GUY SHOP", 196, 30, { size: 28, style: 'italic 900', font: FONT_IMPACT, fill: '#5aff9a', stroke: '#000', lw: 5, spacing: 0.1 });
+    drawLilGuy(ctx, 384, 10, 34);
+    drawText(ctx, String(Wallet.get()), 496, 30, { size: 24, align: 'right', fill: '#ffd84a', stroke: '#000', lw: 4 });
+    SHOP_CATS.forEach(([k, name], i) => {
+      const on = Shop.cat === i;
+      p.button('c' + i, 12 + i * 82, 52, 78, 34, name, () => { Shop.cat = i; Shop.page = 0; Shop.select(Shop.items()[0]); p.redraw(); }, { size: 13, r: 8, fill: on ? '#145a34' : '#0e2418', border: on ? '#5aff9a' : '#2a6a44', hoverFill: '#1e7a48' });
+    });
+    const list = Shop.items(), pages = Math.max(1, Math.ceil(list.length / SHOP_PER)), pg = Shop.page % pages, a = AV.sanitize(Save.data.avatar);
+    list.slice(pg * SHOP_PER, pg * SHOP_PER + SHOP_PER).forEach((it, i) => {
+      const y = 96 + i * 60, sel = Shop.sel === it, own = Shop.owns(it.k, it.v), wearing = a[it.k] === it.v;
+      p.button('i' + i, 12, y, 300, 50, AV.label(it.k, it.v), () => { Shop.select(it); p.redraw(); }, { size: 19, r: 10, fill: sel ? '#1e5a3a' : '#10241a', border: sel ? '#ffffff' : '#2a6a44', hoverFill: '#1e7a48' });
+      const lbl = wearing ? 'WEARING' : own ? 'EQUIP' : String(it.price);
+      p.button('b' + i, 320, y, 180, 50, lbl, () => { Shop.act(it); p.redraw(); }, { size: 20, r: 10, fill: wearing ? '#0a4a6a' : own ? '#145a34' : Wallet.get() >= it.price ? '#5a4a08' : '#2a1a1a', border: wearing ? '#40d0ff' : own ? '#5aff9a' : Wallet.get() >= it.price ? '#ffd84a' : '#7a4a4a', hoverFill: '#6a6a20' });
+      if (!own) drawLilGuy(ctx, 330, y + 10, 30);
+    });
+    const it = Shop.sel;
+    if (it) drawText(ctx, it.blurb + (Shop.owns(it.k, it.v) ? '' : ' · ' + it.price + " LIL' GUYS"), 256, 408, { size: 14, fill: '#c8ffe0', stroke: '#000', lw: 3, maxWidth: 488 });
+    p.button('pPrev', 12, 432, 110, 48, '<', () => { Shop.page = (pg - 1 + pages) % pages; p.redraw(); }, { size: 24, fill: '#0e2418', border: '#2a6a44', hoverFill: '#1e7a48' });
+    p.button('pNext', 390, 432, 110, 48, '>', () => { Shop.page = (pg + 1) % pages; p.redraw(); }, { size: 24, fill: '#0e2418', border: '#2a6a44', hoverFill: '#1e7a48' });
+    drawText(ctx, 'PAGE ' + (pg + 1) + '/' + pages + ' · TRY IT ON: PICK AN ITEM', 256, 458, { size: 12, fill: '#8ad8a8', stroke: '#000', lw: 3, maxWidth: 250 });
+    drawText(ctx, "EARN LIL' GUYS BY COLLECTING THEM (MORE WITH CHALLENGES)", 256, 498, { size: 11, fill: '#7aa890', stroke: '#000', lw: 2, maxWidth: 490 });
+  },
+};
+const Shop = {
+  panel: null, rig: null, cat: 0, page: 0, sel: null, t: 0, ver: -1, pos: new THREE.Vector3(-6.7, 1.75, 2.8),
+  owns(k, v) { return !!(Save.data.owned && Save.data.owned[k + ':' + v]); },
+  items() { return SHOP.filter((it) => it.k === SHOP_CATS[this.cat][0]); },
+  select(it) { this.sel = it || null; this.tryOn(); },
+  // the mannequin wears your avatar with the picked item on
+  tryOn() {
+    const a = AV.sanitize(Save.data.avatar);
+    if (this.sel) a[this.sel.k] = this.sel.v;
+    if (this.sel && this.sel.k === 'suit') a.tie = this.sel.v;
+    this.rig.setConfig(a);
+  },
+  act(it) {
+    const a = AV.sanitize(Save.data.avatar);
+    this.sel = it;
+    if (a[it.k] === it.v) {                       // WEARING: take it off (colours stay)
+      if (it.k !== 'suit') { a[it.k] = 0; this.equip(a); Sfx.hover(); }
+      return;
+    }
+    if (!this.owns(it.k, it.v)) {
+      if (!Wallet.spend(it.price)) { UI.toast("NEED " + (it.price - Wallet.get()) + " MORE LIL' GUYS"); Sfx.hover(); return; }
+      Save.data.owned[it.k + ':' + it.v] = Date.now(); Save.save();
+      UI.announce('BOUGHT ' + AV.label(it.k, it.v) + '!', { color: '#5aff9a' });
+      Sfx.gold(); Sfx.beacon(); Hands.pulse('both', 0.5, 160);
+      const r = this.rig.root.position; for (let i = 0; i < 3; i++) FX.spark(r.x, 1 + i * 0.4, r.z, 0.3, 1, 0.5);
+      Net.event('buy', { k: it.k, v: it.v });
+    }
+    a[it.k] = it.v; this.equip(a);
+  },
+  equip(a) { Save.data.avatar = a; Save.save(); Lobby.onAvatarChanged(); this.tryOn(); },
+  init(g) {
+    this.panel = new Panel({ w: 1.7, h: 1.7, cw: 512, ch: 512, page: 'shop', pages: SHOP_PAGES });
+    LobbyPlus.face(this.panel.mesh, this.pos.x, this.pos.y, this.pos.z); g.add(this.panel.mesh);
+    const stand = new THREE.Mesh(mergeGeometries([new THREE.BoxGeometry(1.9, 0.2, 0.25).translate(0, 0.82, 0), new THREE.BoxGeometry(0.16, 0.8, 0.16).translate(0, 0.4, 0)]), new THREE.MeshLambertMaterial({ color: 0x0e2418, emissive: 0x04140a }));
+    stand.position.set(this.pos.x, 0, this.pos.z); stand.rotation.y = this.panel.mesh.rotation.y; g.add(stand);
+    // the mannequin stands on a glowing pedestal beside the kiosk (towards the middle of the lobby)
+    const ry = this.panel.mesh.rotation.y, rx = Math.cos(ry), rz = -Math.sin(ry);
+    const mx = this.pos.x + rx * 1.35, mz = this.pos.z + rz * 1.35;
+    this.rig = new AvatarRig(Save.data.avatar, 0); this.rig.root.position.set(mx, 0.2, mz); g.add(this.rig.root);
+    this.ped = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.65, 0.2, 24), new THREE.MeshLambertMaterial({ color: 0x0e2418, emissive: 0x04140a }));
+    this.ped.position.set(mx, 0.1, mz); g.add(this.ped);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.025, 4, 32), new THREE.MeshBasicMaterial({ color: 0x40ff90 }));
+    ring.rotation.x = Math.PI / 2; ring.position.set(mx, 0.21, mz); g.add(ring);
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0x40ff90, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }));
+    glow.scale.set(2.2, 3.2, 1); glow.position.set(mx, 1.2, mz); g.add(glow);
+    // a neon SHOP sign over the kiosk
+    const c = makeCanvas(256, 64), ctx = c.getContext('2d');
+    drawText(ctx, "LIL' GUY SHOP", 128, 34, { size: 34, style: 'italic 900', font: FONT_IMPACT, fill: '#5aff9a', stroke: '#04140a', lw: 6, glow: '#40ff90', glowBlur: 12 });
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 0.42), new THREE.MeshBasicMaterial({ map: canvasTex(c), transparent: true, depthWrite: false }));
+    sign.position.set(0, 1.1, 0.01); this.panel.mesh.add(sign);
+    this.select(this.items()[0]);
+    this.panel.redraw();
+  },
+  update(dt) {
+    this.t += dt;
+    if (!this.rig) return;
+    // redraw when the wallet or your avatar changes
+    const v = Wallet.get() + ':' + AV.toArr(AV.sanitize(Save.data.avatar)).join(',');
+    if (v !== this.ver) { this.ver = v; this.panel.redraw(); }
+    // moves: walk a bit, then stand (so idle moves like FLOSS show too)
+    const walking = this.sel && this.sel.k === 'anim' && Math.floor(this.t / 3) % 2 === 1;
+    const p = this.rig.root.position;
+    this.rig.pose({ x: p.x, y: 0.2, z: p.z, yaw: this.t * 0.7, speed: walking ? 6 : 0, grounded: true }, dt);
   },
 };
 
@@ -4226,9 +4372,9 @@ const LOBBY_PAGES = {
     p.button('online', 261, 220, 205, 50, Net.status === 'online' && Net.server ? Net.server + ' (' + Net.count(Net.server) + ')' : 'ONLINE', () => p.setPage('online'), { size: 21 });
     p.button('name', 46, 280, 280, 50, 'NAME: ' + playerName() + ' #' + Save.data.num + ' ✎', () => NameEdit.open(), { size: 20 });
     p.button('lobby', 336, 280, 130, 50, 'LOBBY', () => p.setPage('lobby'), { size: 21 });
-    drawText(ctx, 'BEST TIME: ' + (Save.data.best != null ? fmtTime(Save.data.best) : '--:--'), 256, 354, { size: 24, fill: '#ffd21f', stroke: '#000', lw: 5 });
-    const nm = Mods.names().length;
-    drawText(ctx, 'DIFFICULTY: ' + diff().label + (nm ? '  ·  ' + nm + (nm > 1 ? ' MODS' : ' MOD') : '') + (A ? '  ·  OWNER: ' + Session.ownerLabel() : ''), 256, 386, { size: 17, fill: '#e6d0ff', stroke: '#000', lw: 4, maxWidth: 480 });
+    drawText(ctx, 'BEST: ' + (Save.data.best != null ? fmtTime(Save.data.best) : '--:--') + "  ·  LIL' GUYS: " + Wallet.get(), 256, 354, { size: 22, fill: '#ffd21f', stroke: '#000', lw: 5, maxWidth: 480 });
+    const nc = Mods.challenges(), nm = Mods.names().length - nc;
+    drawText(ctx, 'DIFFICULTY: ' + diff().label + (nc ? '  ·  ' + nc + (nc > 1 ? ' CHALLENGES' : ' CHALLENGE') : '') + (nm ? '  ·  ' + nm + (nm > 1 ? ' MODS' : ' MOD') : '') + (A ? '  ·  OWNER: ' + Session.ownerLabel() : ''), 256, 386, { size: 17, fill: '#e6d0ff', stroke: '#000', lw: 4, maxWidth: 480 });
     if (A) drawText(ctx, going ? 'RUN IN PROGRESS · ' + Session.stageLabel() + ' · ' + A.nr + ' PLAYING' : own ? 'YOU OWN THIS LOBBY · START = EVERYONE ON ' + Net.server + ' PLAYS' : 'THE OWNER STARTS THE RUN FOR EVERYONE', 256, 416, { size: 15, fill: going ? '#ffe94a' : '#9dffb0', stroke: '#000', lw: 3, maxWidth: 480 });
     drawText(ctx, Net.statusText(), 256, A ? 446 : 424, { size: 16, fill: Net.status === 'online' ? '#9dffb0' : '#ffb0b0', stroke: '#000', lw: 3, maxWidth: 470 });
     drawText(ctx, XR.inVR ? 'POINT + TRIGGER TO CLICK' : IS_TOUCH ? 'TAP A BUTTON' : 'AIM CROSSHAIR + CLICK', 256, 478, { size: 15, fill: '#b9a0d0', stroke: '#000', lw: 3 });
@@ -4254,9 +4400,9 @@ const LOBBY_PAGES = {
       p.button('lR' + i, 444, y + 2, 44, 40, '>', () => step(1), Object.assign({ size: 22, r: 8 }, lock));
     });
     const nm = Mods.names().length;
-    p.button('mods', 96, 226, 320, 46, 'MODIFIERS' + (nm ? ' (' + nm + ' ON)' : ''), () => p.setPage('mods'), { size: 22, fill: nm ? '#0a4a5a' : undefined, border: nm ? '#40f0ff' : undefined });
+    p.button('mods', 66, 226, 380, 46, 'CHALLENGES + MODS' + (nm ? ' (' + nm + ' ON)' : ''), () => p.setPage('mods'), { size: 21, fill: nm ? '#5a1a10' : undefined, border: nm ? '#ff7a50' : undefined });
     const mood = D.hostile >= 1.5 ? 'RUTHLESS' : D.hostile >= 1.25 ? 'HOSTILE' : D.hostile >= 1 ? 'NORMAL' : 'CALM';
-    drawText(ctx, Math.round(D.lilGuys * (Mods.on('half') ? 0.5 : 1)) + " LIL' GUYS A LAP · CHARACTERS: " + mood, 256, 292, { size: 15, fill: '#cbb6e0', stroke: '#000', lw: 3, maxWidth: 480 });
+    drawText(ctx, D.lilGuys + " LIL' GUYS A LAP · CHARACTERS: " + mood, 256, 292, { size: 15, fill: '#cbb6e0', stroke: '#000', lw: 3, maxWidth: 480 });
     const names = A && A.hp ? A.hp : [playerName() + ' #' + Save.data.num];
     drawText(ctx, 'PLAYERS (IN JOIN ORDER)', 256, 318, { size: 15, fill: '#b9a0d0', stroke: '#000', lw: 3 });
     names.slice(0, 8).forEach((n, i) => {
@@ -4269,16 +4415,23 @@ const LOBBY_PAGES = {
   // run modifiers: the lobby owner switches them on for everyone (offline: just you)
   mods(ctx, p) {
     p.bg();
-    drawText(ctx, 'MODIFIERS', 256, 34, { size: 32, style: 'italic 900', font: FONT_IMPACT, fill: '#40f0ff', stroke: '#000', lw: 5, spacing: 0.15 });
+    drawText(ctx, 'CHALLENGES', 256, 32, { size: 32, style: 'italic 900', font: FONT_IMPACT, fill: '#ff6a4a', stroke: '#000', lw: 5, spacing: 0.15 });
     const own = Session.isOwner(), bits = Mods.bits(), A = Session.active();
-    drawText(ctx, A ? (own ? 'YOU OWN THE LOBBY: THESE APPLY TO EVERYONE' : 'SET BY THE OWNER (' + Session.ownerLabel() + ')') : 'OFFLINE: THESE APPLY TO YOUR RUNS', 256, 64, { size: 15, fill: own ? '#9dffb0' : '#ffb0b0', stroke: '#000', lw: 3, maxWidth: 480 });
-    MODS.forEach(([, name, desc], i) => {
-      const on = !!(bits & (1 << i)), x = i % 2 ? 266 : 18, y = 82 + Math.floor(i / 2) * 68;
-      const st = on ? { fill: '#0f6a4a', border: '#5affb0', hoverFill: '#1a8a60' } : own ? { fill: '#2a2238', border: '#6a5a80' } : { fill: '#1e1828', border: '#4a3a5a', hoverFill: '#262032' };
-      p.button('m' + i, x, y, 228, 42, on ? name + ' · ON' : name, () => { Session.toggleMod(i); Sfx.hover(); p.redraw(); }, Object.assign({ size: 18, r: 10 }, st));
-      drawText(ctx, desc, x + 114, y + 54, { size: 11, fill: on ? '#c8ffe0' : '#a898b8', stroke: '#000', lw: 2, maxWidth: 226 });
-    });
-    drawText(ctx, Mods.ranked(bits) ? 'NO MODS (OR JUST BIG HEADS): BEST TIMES COUNT' : 'MODDED RUN: NO BEST TIME', 256, 438, { size: 14, fill: Mods.ranked(bits) ? '#ffd21f' : '#ff9a60', stroke: '#000', lw: 3 });
+    drawText(ctx, A ? (own ? 'YOU OWN THE LOBBY: THESE APPLY TO EVERYONE' : 'SET BY THE OWNER (' + Session.ownerLabel() + ')') : 'OFFLINE: THESE APPLY TO YOUR RUNS', 256, 60, { size: 14, fill: own ? '#9dffb0' : '#ffb0b0', stroke: '#000', lw: 3, maxWidth: 480 });
+    const btn = (m, x, y, w) => {
+      const on = !!(bits & (1 << m.bit));
+      const st = on ? (m.kind === 'chal' ? { fill: '#7a1a10', border: '#ff7a50', hoverFill: '#9a2a18' } : { fill: '#0f6a4a', border: '#5affb0', hoverFill: '#1a8a60' })
+        : own ? { fill: '#2a2238', border: '#6a5a80' } : { fill: '#1e1828', border: '#4a3a5a', hoverFill: '#262032' };
+      p.button('m' + m.bit, x, y, w, 38, on ? m.name + ' · ON' : m.name, () => { Session.toggleMod(m.bit); Sfx.hover(); p.redraw(); }, Object.assign({ size: 17, r: 10 }, st));
+      const clr = m.kind === 'chal' && Save.data.chal[m.id];
+      drawText(ctx, m.kind === 'chal' ? '+' + m.bonus + "% LIL' GUYS" + (clr ? ' · CLEARED' : ' · CLEAR IT: +500') : m.desc, x + w / 2, y + 49, { size: 11, fill: clr ? '#9dffb0' : on ? '#ffe0c8' : '#a898b8', stroke: '#000', lw: 2, maxWidth: w });
+    };
+    drawText(ctx, 'MODIFIERS · JUST FOR FUN (NO BEST TIME)', 256, 82, { size: 13, fill: '#7af0ff', stroke: '#000', lw: 3 });
+    MODS.filter((m) => m.kind === 'mod').forEach((m, i) => btn(m, i ? 266 : 18, 92, 228));
+    drawText(ctx, "CHALLENGES · HARDER, BUT PAY MORE LIL' GUYS", 256, 160, { size: 13, fill: '#ff9a70', stroke: '#000', lw: 3 });
+    MODS.filter((m) => m.kind === 'chal').forEach((m, i) => btn(m, i % 2 ? 266 : 18, 170 + Math.floor(i / 2) * 62, 228));
+    const k = Mods.payK(bits);
+    drawText(ctx, (k > 1 ? "LIL' GUYS x" + k.toFixed(1) + ' THIS RUN' : 'NO CHALLENGES ON') + (Mods.ranked(bits) ? ' · BEST TIMES COUNT' : ' · NO BEST TIME'), 256, 436, { size: 14, fill: k > 1 ? '#ffd21f' : '#cbb6e0', stroke: '#000', lw: 3, maxWidth: 480 });
     p.button('back', 176, 456, 160, 42, 'BACK', () => p.setPage('lobby'), { size: 22 });
   },
   // pick your own name: 3D keyboard (VR / touch / mouse) or just type on a real keyboard
@@ -4329,12 +4482,12 @@ const LOBBY_PAGES = {
     p.bg();
     drawText(ctx, 'AVATAR', 256, 36, { size: 32, style: 'italic 900', font: FONT_IMPACT, fill: '#fff', stroke: '#000', lw: 5, spacing: 0.15 });
     const a = AV.sanitize(Save.data.avatar), n = AV.sizes();
-    const rows = [['style', 'OUTFIT'], ['suit', 'COLOUR'], ['tie', 'TIE + TRIM'], ['head', 'HEAD'], ['hat', 'HAT'], ['fish', 'BOWL FISH'], ['anim', 'MOVES']];
+    const rows = [['style', 'OUTFIT'], ['suit', 'COLOUR'], ['tie', 'TIE + TRIM'], ['head', 'HEAD'], ['hat', 'HAT'], ['fish', 'BOWL FISH'], ['anim', 'MOVES'], ['fx', 'EFFECT']];
     let locked = 0;
     for (const k of Object.keys(AV.LOCKS)) if (k !== 'tie') for (const v of Object.keys(AV.LOCKS[k])) if (!AV.unlocked(k, +v)) locked++;
     rows.forEach(([k, label], i) => {
-      const y = 58 + i * 44;
-      if (i % 2 === 0) { ctx.fillStyle = 'rgba(255,255,255,0.04)'; ctx.fillRect(20, y - 3, 472, 42); }
+      const y = 56 + i * 40;
+      if (i % 2 === 0) { ctx.fillStyle = 'rgba(255,255,255,0.04)'; ctx.fillRect(20, y - 3, 472, 38); }
       drawText(ctx, label, 34, y + 18, { size: 19, align: 'left', fill: k === 'fish' && a.head !== 0 ? '#7a6a8a' : '#e6d0ff', stroke: '#000', lw: 3 });
       if (k === 'suit' || k === 'tie') { roundedRect(ctx, 192, y + 4, 28, 28, 6); ctx.fillStyle = '#' + AV.COLORS[a[k]][1].toString(16).padStart(6, '0'); ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke(); }
       // locked items (earned with achievements) are skipped
@@ -4343,10 +4496,10 @@ const LOBBY_PAGES = {
       drawText(ctx, AV.label(k, a[k]), 362, y + 19, { size: 18, fill: AV.lockOf(k, a[k]) ? '#ffd84a' : '#fff', stroke: '#000', lw: 3, maxWidth: 150 });
       p.button('aR' + i, 444, y + 1, 44, 34, '>', () => step(1), { size: 20, r: 8 });
     });
-    p.button('rand', 46, 372, 205, 46, 'RANDOM', () => { Save.data.avatar = AV.random(); Save.save(); Lobby.onAvatarChanged(); }, { size: 22 });
-    p.button('back', 261, 372, 205, 46, 'BACK', () => { p.setPage('main'); Lobby.showPreview(false); }, { size: 22 });
-    drawText(ctx, locked ? locked + ' MORE ITEMS: EARN THEM ON THE TROPHY WALL' : 'EVERYTHING UNLOCKED!', 256, 444, { size: 15, fill: locked ? '#ffd84a' : '#9dffb0', stroke: '#000', lw: 3, maxWidth: 480 });
-    drawText(ctx, 'MIRROR ON YOUR RIGHT · OTHERS SEE THIS ONLINE', 256, 474, { size: 14, fill: '#cbb6e0', stroke: '#000', lw: 3, maxWidth: 480 });
+    p.button('rand', 46, 384, 205, 44, 'RANDOM', () => { Save.data.avatar = AV.random(); Save.save(); Lobby.onAvatarChanged(); }, { size: 22 });
+    p.button('back', 261, 384, 205, 44, 'BACK', () => { p.setPage('main'); Lobby.showPreview(false); }, { size: 22 });
+    drawText(ctx, locked ? locked + " MORE ITEMS: EARN THEM (TROPHY WALL) OR BUY THEM (LIL' GUY SHOP)" : 'EVERYTHING UNLOCKED!', 256, 450, { size: 15, fill: locked ? '#ffd84a' : '#9dffb0', stroke: '#000', lw: 3, maxWidth: 480 });
+    drawText(ctx, 'MIRROR ON YOUR RIGHT · OTHERS SEE THIS ONLINE', 256, 478, { size: 14, fill: '#cbb6e0', stroke: '#000', lw: 3, maxWidth: 480 });
   },
   // server browser
   online(ctx, p) {
@@ -5213,7 +5366,7 @@ const Collect = {
   take(i, hand) {
     this.alive[i] = 0; this.popT[i] = 0; this.popping.push(i);
     this.left--; this.lapCount++; Game.collectedTotal++;
-    if (!Game.debugRun) Achievements.stat('collected');
+    if (!Game.debugRun) { Achievements.stat('collected'); Wallet.add(Mods.payK()); }
     const b = this.base[i];
     FX.pickup(b.x, b.y, b.z);
     if (this.comboT > 0) this.combo++; else this.combo = 0;
@@ -6636,15 +6789,21 @@ const Hazards = {
 // =====================================================================================
 const AV = {
   COLORS: [['BLACK', 0x1c1c22], ['WHITE', 0xeeeeee], ['PURPLE', 0x7a2be2], ['RED', 0xd01e1e], ['BLUE', 0x1e5ad8], ['GREEN', 0x1f9a4a], ['GOLD', 0xe0a420], ['PINK', 0xff6fb5],
-    ['NEON GREEN', 0x39ff14], ['CHROME', 0xc8d0dc], ['LAVA', 0xff4a00], ['ICE', 0x9fe8ff]],
-  STYLES: ['SUIT', 'TUXEDO', 'HOODIE', 'TRACKSUIT', 'KNIGHT', 'SPACESUIT', 'LAB COAT', 'OVERALLS', 'I HATE RORY', 'GOLDEN SUIT', 'INFERNO', 'DIVER SUIT', 'GLITCH SUIT', 'NEON SUIT'],
-  HEADS: ['FISHBOWL', 'BLOCKY', "LIL' GUY", 'ROBOT', 'PUMPKIN', 'TV', 'CAT', 'ALIEN', 'SKULL', 'GHOST', 'FROG', 'KURIMANJU', 'DIVER HELMET', "GOLDEN LIL' GUY"],
+    ['NEON GREEN', 0x39ff14], ['CHROME', 0xc8d0dc], ['LAVA', 0xff4a00], ['ICE', 0x9fe8ff],
+    ['HOT PINK', 0xff1493], ['VOID', 0x0a0a10], ['MINT', 0x5affc8], ['SUNSET', 0xff7a3a]],
+  STYLES: ['SUIT', 'TUXEDO', 'HOODIE', 'TRACKSUIT', 'KNIGHT', 'SPACESUIT', 'LAB COAT', 'OVERALLS', 'I HATE RORY', 'GOLDEN SUIT', 'INFERNO', 'DIVER SUIT', 'GLITCH SUIT', 'NEON SUIT',
+    'SAMURAI ARMOUR', 'GALAXY SUIT', 'PIXEL SUIT', 'LAVA SUIT', 'ROYAL ROBE'],
+  HEADS: ['FISHBOWL', 'BLOCKY', "LIL' GUY", 'ROBOT', 'PUMPKIN', 'TV', 'CAT', 'ALIEN', 'SKULL', 'GHOST', 'FROG', 'KURIMANJU', 'DIVER HELMET', "GOLDEN LIL' GUY",
+    'WEGA HEAD', 'RORY HEAD', 'MONITOR', 'GLOWING PUMPKIN', 'CRYSTAL'],
   HATS: ['NONE', 'WEGA CAP', 'TOP HAT', 'CROWN', 'PARTY HAT', 'HALO', 'TIN POT', 'KURIMANJU', 'GOLDEN HAT', "LIL' GUY BUDDY", 'IDOL HAT', 'DEVIL HORNS', 'HARD HAT', 'SHOE HAT',
-    'FLAME CROWN', 'STORM CLOUD', 'SNORKEL MASK', 'PROPELLER CAP', 'NERD GLASSES', 'ICE CROWN', 'RAINBOW HALO', 'SWEATBAND'],
+    'FLAME CROWN', 'STORM CLOUD', 'SNORKEL MASK', 'PROPELLER CAP', 'NERD GLASSES', 'ICE CROWN', 'RAINBOW HALO', 'SWEATBAND',
+    'WIZARD HAT', 'VIKING HELMET', 'PIRATE HAT', 'UFO', 'HEADPHONES', 'CYBER VISOR', 'CHEF HAT', 'NINJA BAND', 'ANTENNAE'],
   FISH: [['ORANGE', 0xff7a1a], ['GOLD', 0xffd21f], ['BLUE', 0x3aa0ff], ['PINK', 0xff6fb5], ['GREEN', 0x3fdc6a], ['PURPLE', 0xa060ff]],
   // animation packs: how your avatar runs, jumps and idles (other players see it too)
-  ANIMS: ['CLASSIC', 'SWAGGER', 'NINJA RUN', 'BOUNCY', 'ROBOT', 'ZOMBIE', 'DISCO', 'FLOAT', 'MOONWALK', 'SPIN', 'HYPE'],
-  KEYS: ['suit', 'tie', 'head', 'hat', 'fish', 'style', 'anim'],     // new keys go at the end (older saves / players still parse)
+  ANIMS: ['CLASSIC', 'SWAGGER', 'NINJA RUN', 'BOUNCY', 'ROBOT', 'ZOMBIE', 'DISCO', 'FLOAT', 'MOONWALK', 'SPIN', 'HYPE', 'FLOSS', 'HEADSPIN', 'PENGUIN', 'SUPERHERO', 'T-POSE'],
+  // effects: trails, auras, wings and size (from the shop; other players see them too)
+  FX: ['NONE', 'BIG HEAD', 'FIRE TRAIL', 'RAINBOW TRAIL', 'SPARKLE AURA', 'LIGHTNING AURA', 'GLITCH TRAIL', 'BUBBLE TRAIL', 'ANGEL WINGS', 'DEMON WINGS', 'TINY'],
+  KEYS: ['suit', 'tie', 'head', 'hat', 'fish', 'style', 'anim', 'fx'],     // new keys go at the end (older saves / players still parse)
   // items earned with achievements (key -> index -> achievement id)
   LOCKS: {
     suit: { 8: 'rampage', 9: 'speedrun', 10: 'chase2', 11: 'chase4' },
@@ -6655,9 +6814,10 @@ const AV = {
     anim: { 2: 'speed', 3: 'hopper', 4: 'collector', 5: 'deaths', 6: 'team', 7: 'undying', 8: 'moonwalker', 9: 'flawless', 10: 'party' },
   },
   lockOf(k, v) { return (this.LOCKS[k] && this.LOCKS[k][v]) || null; },
-  unlocked(k, v) { const id = this.lockOf(k, v); return !id || Achievements.has(id); },
-  def() { return { suit: 0, tie: 2, head: 0, hat: 0, fish: 0, style: 0, anim: 0 }; },
-  sizes() { return { suit: this.COLORS.length, tie: this.COLORS.length, head: this.HEADS.length, hat: this.HATS.length, fish: this.FISH.length, style: this.STYLES.length, anim: this.ANIMS.length }; },
+  // achievement rewards: earned; shop items ('shop'): bought (a colour bought once works as suit + trim)
+  unlocked(k, v) { const id = this.lockOf(k, v); return !id || (id === 'shop' ? Shop.owns(k === 'tie' ? 'suit' : k, v) : Achievements.has(id)); },
+  def() { return { suit: 0, tie: 2, head: 0, hat: 0, fish: 0, style: 0, anim: 0, fx: 0 }; },
+  sizes() { return { suit: this.COLORS.length, tie: this.COLORS.length, head: this.HEADS.length, hat: this.HATS.length, fish: this.FISH.length, style: this.STYLES.length, anim: this.ANIMS.length, fx: this.FX.length }; },
   // never trust avatar data from the network (or old saves)
   sanitize(a) {
     const out = this.def(), n = this.sizes();
@@ -6672,7 +6832,7 @@ const AV = {
     return o;
   },
   same(a, b) { return this.KEYS.every((k) => a[k] === b[k]); },
-  label(k, v) { return k === 'head' ? this.HEADS[v] : k === 'hat' ? this.HATS[v] : k === 'fish' ? this.FISH[v][0] : k === 'style' ? this.STYLES[v] : k === 'anim' ? this.ANIMS[v] : this.COLORS[v][0]; },
+  label(k, v) { return k === 'head' ? this.HEADS[v] : k === 'hat' ? this.HATS[v] : k === 'fish' ? this.FISH[v][0] : k === 'style' ? this.STYLES[v] : k === 'anim' ? this.ANIMS[v] : k === 'fx' ? this.FX[v] : this.COLORS[v][0]; },
   // the NEON SUIT glows in your trim colour (cyan if that's too dark to glow)
   neon(a) { const c = new THREE.Color(this.COLORS[a.tie][1]); return c.r + c.g + c.b < 0.6 ? 0x30ffe0 : c.getHex(); },
   // main body + accent colours of an outfit (also used for the first-person body)
@@ -6689,18 +6849,34 @@ const AV = {
       case 11: return { torso: 0x3a4a3e, sleeve: 0x3a4a3e, leg: 0x3a4a3e, glove: 0x2a2a2a, foot: 0x26262c, accent: 0xc8963a }; // diver suit
       case 12: return { torso: 0x101018, sleeve: 0x101018, leg: 0x16161e, glove: 0xff20ff, foot: 0x20ffff, accent: 0xff20ff }; // glitch suit
       case 13: return { torso: 0x0a0a12, sleeve: 0x0a0a12, leg: 0x0a0a12, glove: 0x0a0a12, foot: 0x0a0a12, accent: AV.neon(a) }; // neon suit
+      case 14: return { torso: 0x9a1414, sleeve: 0x26262c, leg: 0x1a1a20, glove: 0x26262c, foot: 0x3a2412, accent: 0xe0b030 }; // samurai armour
+      case 15: return { torso: 0x16124a, sleeve: 0x16124a, leg: 0x100c34, glove: 0x2a1a6a, foot: 0x0a0820, accent: 0xb060ff }; // galaxy suit
+      case 16: return { torso: SUIT, sleeve: SUIT, leg: new THREE.Color(SUIT).multiplyScalar(0.7).getHex(), glove: 0xffffff, foot: 0x111111, accent: TIE }; // pixel suit
+      case 17: return { torso: 0x1c0d08, sleeve: 0x1c0d08, leg: 0x1c0d08, glove: 0x0c0604, foot: 0x0c0604, accent: 0xff5a10 }; // lava suit
+      case 18: return { torso: 0x5a1a9a, sleeve: 0x5a1a9a, leg: 0x3a1060, glove: 0xffffff, foot: 0xe0b030, accent: 0xe0b030 }; // royal robe
       default: return { torso: SUIT, sleeve: SUIT, leg: SUIT, glove: a.suit === 0 ? 0xf0f0f0 : 0x0b0b0e, foot: 0x0b0b0e, accent: TIE };
     }
   },
 };
-let AV_MAT = null, AV_GLASS = null, AV_KURI = null, AV_PRINT = null, AV_SPARK = null, AV_NEON = null;
+// shop items are locked until you buy them (a colour unlocks for suit + trim)
+for (const it of SHOP) { (AV.LOCKS[it.k] || (AV.LOCKS[it.k] = {}))[it.v] = 'shop'; if (it.k === 'suit') AV.LOCKS.tie[it.v] = 'shop'; }
+let AV_MAT = null, AV_GLASS = null, AV_KURI = null, AV_PRINT = null, AV_SPARK = null, AV_NEON = null, AV_FACES = null, AV_WING = null;
 function avMats() {
   if (!AV_MAT) {
     AV_MAT = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x141414 });
+    AV_WING = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x202020, side: THREE.DoubleSide });
     AV_GLASS = new THREE.MeshLambertMaterial({ color: 0xbfefff, transparent: true, opacity: 0.3, depthWrite: false, emissive: 0x101820 });
     AV_KURI = new THREE.MeshLambertMaterial({ map: TEX.kuri, emissiveMap: TEX.kuri, emissive: 0x6a6a6a });   // keeps its cream colour under coloured lights
     AV_PRINT = new THREE.MeshLambertMaterial({ map: TEX.roryShirt, transparent: true, alphaTest: 0.05, emissive: 0x101010 });
     AV_NEON = new THREE.MeshBasicMaterial({ vertexColors: true });      // unlit: glows in the dark (NEON SUIT, FLAME CROWN tips)
+    // WEGA HEAD / RORY HEAD (shop): the real character art on a head
+    const rory = TEX.rory.clone(); rory.repeat.set(1, 0.42); rory.offset.set(0, 0.56); rory.needsUpdate = true;
+    AV_FACES = {
+      wega: new THREE.MeshLambertMaterial({ map: TEX.wega, emissiveMap: TEX.wega, emissive: 0x777777 }),
+      wegaSide: new THREE.MeshLambertMaterial({ color: 0x2a0a3a, emissive: 0x1a0420 }),
+      rory: new THREE.MeshLambertMaterial({ map: rory, emissiveMap: rory, emissive: 0x666666, transparent: true, alphaTest: 0.3 }),
+      roryBall: new THREE.MeshLambertMaterial({ color: 0x8a24d0, emissive: 0x2a0840 }),
+    };
     AV_SPARK = new THREE.PointsMaterial({ map: TEX.glow, color: 0xffd84a, size: 0.09, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
   }
 }
@@ -6725,6 +6901,8 @@ function avPart(list, geo, color, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, s
 function avMerge(list) { const g = mergeGeometries(list); list.forEach((x) => x.dispose()); return g; }
 // GLITCH SUIT: magenta / cyan blocks scattered like a broken signal [x, y, w, h, cyan?]
 const AV_GLITCH = [[-0.12, 1.22, 0.1, 0.05, 0], [0.08, 1.13, 0.15, 0.035, 1], [-0.05, 1.01, 0.19, 0.028, 0], [0.11, 0.93, 0.07, 0.07, 1], [-0.15, 0.86, 0.06, 0.045, 1], [0.02, 1.3, 0.11, 0.025, 1], [-0.09, 0.76, 0.12, 0.03, 0]];
+// a fixed scatter of points for star / crack patterns (same on every machine)
+function avScatter(n, seed) { const out = []; let s = seed; for (let i = 0; i < n; i++) { s = (s * 9301 + 49297) % 233280; const a = s / 233280; s = (s * 9301 + 49297) % 233280; out.push([a, s / 233280]); } return out; }
 // torso + hips for each outfit style (front of the avatar is -Z); nb collects glowing (unlit) parts
 function avBody(b, style, SUIT, TIE, O, nb) {
   const WHITE = 0xf4f4f4, F = -0.125;
@@ -6803,6 +6981,32 @@ function avBody(b, style, SUIT, TIE, O, nb) {
     avPart(nb, new THREE.BoxGeometry(0.3, 0.018, 0.008), N, 0, 1.24, -0.123);
     avPart(nb, new THREE.BoxGeometry(0.42, 0.02, 0.23), N, 0, 0.84, 0);                   // belt
     avPart(nb, new THREE.TorusGeometry(0.12, 0.012, 4, 16), N, 0, 1.35, 0, Math.PI / 2);   // collar
+  } else if (style === 14) {         // samurai armour: lacquered plates laced in gold, an obi, hip plates
+    for (let i = 0; i < 4; i++) avPart(b, new THREE.BoxGeometry(0.47, 0.085, 0.27), i % 2 ? 0x7a0e0e : 0xa81818, 0, 1.24 - i * 0.1, 0);
+    for (let i = 0; i < 4; i++) avPart(b, new THREE.BoxGeometry(0.44, 0.012, 0.275), 0xe0b030, 0, 1.285 - i * 0.1, 0);
+    avPart(b, new THREE.BoxGeometry(0.44, 0.08, 0.26), 0xf0ead8, 0, 0.86, 0);                         // obi
+    avPart(b, new THREE.BoxGeometry(0.1, 0.06, 0.012), 0xe0b030, 0, 0.86, -0.132);
+    for (const z of [-0.13, 0.13]) for (const sx of [-1, 1]) avPart(b, new THREE.BoxGeometry(0.17, 0.2, 0.025), 0x9a1414, sx * 0.1, 0.72, z, z < 0 ? 0.12 : -0.12, 0, 0);
+    avPart(b, new THREE.BoxGeometry(0.06, 0.06, 0.012), 0xe0b030, 0, 1.18, -0.137, 0, 0, Math.PI / 4);   // crest
+  } else if (style === 15) {         // galaxy suit: a starry night sky, glowing
+    const ST = [0xffffff, 0xffb0ff, 0x9fe8ff, 0xffe080];
+    for (const z of [-0.123, 0.123]) avScatter(16, z < 0 ? 7 : 11).forEach(([u, v], i) => avPart(nb, new THREE.BoxGeometry(0.016, 0.016, 0.006), ST[i % 4], (u - 0.5) * 0.4, 0.8 + v * 0.52, z));
+    avPart(b, new THREE.BoxGeometry(0.3, 0.12, 0.012), 0x3a1a7a, 0.04, 1.08, -0.124, 0, 0, 0.35);     // a purple nebula band
+    avPart(b, new THREE.BoxGeometry(0.22, 0.08, 0.012), 0x1a3a8a, -0.06, 0.95, -0.124, 0, 0, 0.35);
+  } else if (style === 16) {         // pixel suit: an 8-bit checkerboard with a heart
+    const L = new THREE.Color(SUIT).lerp(new THREE.Color(0xffffff), 0.35).getHex();
+    for (const z of [-0.123, 0.123]) for (let r = 0; r < 6; r++) for (let c = 0; c < 5; c++) if ((r + c) % 2) avPart(b, new THREE.BoxGeometry(0.088, 0.088, 0.006), L, -0.176 + c * 0.088, 0.82 + r * 0.088, z);
+    [[0, 1], [0, 3], [1, 0], [1, 1], [1, 2], [1, 3], [1, 4], [2, 1], [2, 2], [2, 3], [3, 2]].forEach(([r, c]) => avPart(b, new THREE.BoxGeometry(0.03, 0.03, 0.008), 0xff2040, -0.06 + c * 0.03, 1.22 - r * 0.03, -0.128));
+  } else if (style === 17) {         // lava suit: glowing cracks all over black rock
+    avScatter(14, 5).forEach(([u, v], i) => { const z = i % 2 ? -0.123 : 0.123; avPart(nb, new THREE.BoxGeometry(0.1 + v * 0.08, 0.012, 0.006), i % 3 ? 0xff5a10 : 0xffc040, (u - 0.5) * 0.34, 0.82 + v * 0.5, z, 0, 0, (u - 0.5) * 2.4); });
+    avPart(nb, new THREE.BoxGeometry(0.42, 0.016, 0.23), 0xff7a10, 0, 0.84, 0);
+  } else if (style === 18) {         // royal robe: long purple robe, gold trim, ermine collar
+    avPart(b, new THREE.CylinderGeometry(0.25, 0.36, 0.62, 12, 1, true), O.torso, 0, 0.42, 0);
+    avPart(b, new THREE.TorusGeometry(0.355, 0.018, 4, 18), 0xe0b030, 0, 0.12, 0, Math.PI / 2);
+    avPart(b, new THREE.BoxGeometry(0.02, 0.62, 0.012), 0xe0b030, 0, 1.0, -0.128);
+    avPart(b, new THREE.TorusGeometry(0.17, 0.05, 6, 16), 0xf6f6f0, 0, 1.33, 0, Math.PI / 2);
+    for (let i = 0; i < 6; i++) { const an = i / 6 * Math.PI * 2; avPart(b, new THREE.SphereGeometry(0.014, 4, 3), 0x111111, Math.cos(an) * 0.19, 1.36, Math.sin(an) * 0.19); }
+    for (let i = 0; i < 3; i++) avPart(b, new THREE.SphereGeometry(0.018, 6, 4), 0xffd040, 0, 1.18 - i * 0.1, -0.13);
   } else if (style === 7) {          // overalls: bib, straps, gold buttons
     avPart(b, new THREE.BoxGeometry(0.32, 0.3, 0.012), O.leg, 0, 0.98, -0.127);
     for (const sx of [-1, 1]) {
@@ -6811,8 +7015,8 @@ function avBody(b, style, SUIT, TIE, O, nb) {
     }
   }
 }
-// heads added after the first five; returns where a hat sits
-function avHead(h, head, TIE) {
+// heads added after the first five; returns where a hat sits (hn: glowing parts)
+function avHead(h, head, TIE, hn) {
   if (head === 5) {                  // TV: wood box, glowing screen, rabbit ears
     avPart(h, new THREE.BoxGeometry(0.38, 0.28, 0.26), 0x6a4026, 0, 0.18, 0);
     avPart(h, new THREE.BoxGeometry(0.27, 0.2, 0.012), 0x67e0ff, -0.03, 0.19, -0.131);
@@ -6875,6 +7079,34 @@ function avHead(h, head, TIE) {
     avPart(h, new THREE.OctahedronGeometry(0.035), 0xfff4b0, 0, 0.33, -0.19);
     return 0.42;
   }
+  if (head === 14 || head === 15) {  // WEGA HEAD / RORY HEAD: the textured part is added by the rig; this is the neck
+    avPart(h, new THREE.CylinderGeometry(0.07, 0.085, 0.07, 12), head === 14 ? 0x2a0a3a : 0x7a20c0, 0, 0.01, 0);
+    return head === 14 ? 0.42 : 0.44;
+  }
+  if (head === 16) {                 // monitor: a chunky CRT with a glowing :3 on the screen
+    avPart(h, new THREE.BoxGeometry(0.42, 0.32, 0.3), 0xd8d2c0, 0, 0.2, 0);
+    avPart(h, new THREE.BoxGeometry(0.3, 0.2, 0.18), 0xc8c2b0, 0, 0.2, 0.2);
+    avPart(h, new THREE.BoxGeometry(0.34, 0.24, 0.01), 0x061a0e, 0, 0.21, -0.151);
+    for (const sx of [-1, 1]) avPart(hn, new THREE.BoxGeometry(0.03, 0.05, 0.008), 0x40ff70, sx * 0.065, 0.25, -0.158);
+    [[0.04, 0.17, 0.05], [0.02, 0.155, 0.03], [0.04, 0.14, 0.05]].forEach(([x, y, w]) => avPart(hn, new THREE.BoxGeometry(w, 0.012, 0.008), 0x40ff70, x - 0.04, y, -0.158));
+    avPart(hn, new THREE.BoxGeometry(0.012, 0.042, 0.008), 0x40ff70, 0.01, 0.155, -0.158);
+    avPart(h, new THREE.CylinderGeometry(0.012, 0.012, 0.012, 8), 0xff4040, 0.17, 0.08, -0.152, Math.PI / 2);
+    return 0.36;
+  }
+  if (head === 17) {                 // glowing pumpkin: a jack-o'-lantern lit from inside
+    avPart(h, new THREE.SphereGeometry(0.22, 12, 9), 0xff7a10, 0, 0.2, 0, 0, 0, 0, 1, 0.85, 1);
+    avPart(h, new THREE.CylinderGeometry(0.025, 0.035, 0.08, 6), 0x2f6a1f, 0, 0.42, 0);
+    for (const sx of [-1, 1]) avPart(hn, new THREE.ConeGeometry(0.045, 0.07, 3), 0xffd040, sx * 0.08, 0.25, -0.2, Math.PI / 2, 0, 0);
+    avPart(hn, new THREE.ConeGeometry(0.025, 0.04, 3), 0xffd040, 0, 0.19, -0.212, Math.PI / 2, 0, 0);
+    for (let i = 0; i < 4; i++) avPart(hn, new THREE.BoxGeometry(0.04, i % 2 ? 0.025 : 0.04, 0.012), 0xffd040, -0.06 + i * 0.04, 0.12, -0.205);
+    return 0.39;
+  }
+  if (head === 18) {                 // crystal: a faceted gem head with a glowing core
+    avPart(h, new THREE.IcosahedronGeometry(0.21, 0), 0x8fe8ff, 0, 0.22, 0, 0.3, 0.4, 0);
+    avPart(hn, new THREE.OctahedronGeometry(0.06), 0xe0fbff, 0, 0.22, -0.12);
+    for (const sx of [-1, 1]) avPart(h, new THREE.BoxGeometry(0.045, 0.03, 0.01), 0x0a2a3a, sx * 0.07, 0.25, -0.19);
+    return 0.42;
+  }
   if (head === 9) {                  // ghost
     avPart(h, new THREE.SphereGeometry(0.2, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2), 0xf8f8ff, 0, 0.2, 0);
     avPart(h, new THREE.CylinderGeometry(0.2, 0.23, 0.22, 14, 1, true), 0xf8f8ff, 0, 0.09, 0);
@@ -6894,11 +7126,70 @@ function avHead(h, head, TIE) {
   return 0.37;
 }
 
+// ---------------- shop effects: glowing trails / auras around an avatar ----------------
+// A ring buffer of points in world space (so trails stay where you were). One draw call per avatar.
+class AvatarFX {
+  constructor(kind, layer) {
+    this.kind = kind; this.n = kind === 5 ? 40 : 56; this.next = 0; this.t = 0; this.emitT = 0;
+    const n = this.n;
+    this.p = new Float32Array(n * 3); this.c = new Float32Array(n * 3); this.v = new Float32Array(n * 3); this.age = new Float32Array(n).fill(99); this.life = new Float32Array(n).fill(1);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(this.p, 3)); g.setAttribute('color', new THREE.BufferAttribute(this.c, 3));
+    const pixel = kind === 6;
+    this.pts = new THREE.Points(g, new THREE.PointsMaterial({ size: [0, 0, 0.16, 0.13, 0.09, 0.1, 0.07, 0.1][kind], map: pixel ? null : TEX.glow, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    this.pts.frustumCulled = false; this.pts.layers.set(layer); this.pts.renderOrder = 4;
+  }
+  dispose() { if (this.pts.parent) this.pts.parent.remove(this.pts); this.pts.geometry.dispose(); this.pts.material.dispose(); }
+  emit(x, y, z, vx, vy, vz, life) {
+    const i = this.next; this.next = (i + 1) % this.n;
+    this.p[i * 3] = x; this.p[i * 3 + 1] = y; this.p[i * 3 + 2] = z; this.v[i * 3] = vx; this.v[i * 3 + 1] = vy; this.v[i * 3 + 2] = vz;
+    this.age[i] = 0; this.life[i] = life;
+  }
+  update(dt, at, speed, air, sc) {
+    this.t += dt; const K = this.kind, t = this.t, n = this.n, moving = speed > 0.5 || air;
+    if (K === 4 || K === 5) {
+      // auras: sparkles orbiting you / electric crackle that jumps around you
+      for (let i = 0; i < n; i++) {
+        let a, r, y, b;
+        if (K === 4) { a = t * 1.6 + i * 2.39996; r = 0.42 + Math.sin(t * 2 + i) * 0.05; y = 0.15 + (i / n) * 1.75 + Math.sin(t * 3 + i * 1.7) * 0.06; b = 0.55 + 0.45 * Math.sin(t * 9 + i * 3.1); }
+        else { if (Math.random() < 0.35) { this.v[i * 3] = Math.random() * 6.283; this.v[i * 3 + 1] = 0.12 + Math.random() * 1.75; this.v[i * 3 + 2] = 0.3 + Math.random() * 0.28; } a = this.v[i * 3]; y = this.v[i * 3 + 1]; r = this.v[i * 3 + 2]; b = Math.random() < 0.5 ? 1 : 0.15; }
+        this.p[i * 3] = at.x + Math.cos(a) * r * sc; this.p[i * 3 + 1] = at.y + y * sc; this.p[i * 3 + 2] = at.z + Math.sin(a) * r * sc;
+        if (K === 4) { this.c[i * 3] = b; this.c[i * 3 + 1] = b * 0.82; this.c[i * 3 + 2] = b * 0.3; } else { this.c[i * 3] = b * 0.55; this.c[i * 3 + 1] = b * 0.95; this.c[i * 3 + 2] = b; }
+      }
+    } else {
+      // trails: drop glowing bits where you go (a slow trickle while standing still)
+      this.emitT -= dt;
+      const rate = moving ? 0.018 : 0.12;
+      while (this.emitT <= 0) {
+        this.emitT += rate;
+        const j = () => (Math.random() - 0.5);
+        if (K === 2) this.emit(at.x + j() * 0.3 * sc, at.y + 0.08, at.z + j() * 0.3 * sc, j() * 0.3, 0.7 + Math.random() * 0.8, j() * 0.3, 0.6 + Math.random() * 0.3);
+        else if (K === 3) this.emit(at.x + j() * 0.12, at.y + (0.75 + j() * 0.3) * sc, at.z + j() * 0.12, 0, 0, 0, 1.1);
+        else if (K === 6) this.emit(at.x + j() * 0.5 * sc, at.y + Math.random() * 1.7 * sc, at.z + j() * 0.5 * sc, j() * 0.2, 0, j() * 0.2, 0.45);
+        else this.emit(at.x + j() * 0.4 * sc, at.y + (0.3 + Math.random() * 1.2) * sc, at.z + j() * 0.4 * sc, j() * 0.15, 0.5 + Math.random() * 0.4, j() * 0.15, 1.4);
+      }
+      for (let i = 0; i < n; i++) {
+        const age = this.age[i] += dt, k = 1 - age / this.life[i];
+        if (k <= 0) { this.c[i * 3] = this.c[i * 3 + 1] = this.c[i * 3 + 2] = 0; continue; }
+        this.p[i * 3] += this.v[i * 3] * dt; this.p[i * 3 + 1] += this.v[i * 3 + 1] * dt; this.p[i * 3 + 2] += this.v[i * 3 + 2] * dt;
+        if (K === 7) this.p[i * 3] += Math.sin(t * 5 + i) * 0.004;
+        let r, g, b;
+        if (K === 2) { r = 1; g = 0.25 + 0.6 * k; b = 0.08 * k; }
+        else if (K === 3) { _c1.setHSL(((t * 0.35 + i / n) % 1), 1, 0.55); r = _c1.r; g = _c1.g; b = _c1.b; }
+        else if (K === 6) { const m = (i + Math.floor(t * 12)) % 2; r = m ? 1 : 0.1; g = m ? 0.15 : 1; b = 1; }
+        else { r = 0.55; g = 0.85; b = 1; }
+        this.c[i * 3] = r * k; this.c[i * 3 + 1] = g * k; this.c[i * 3 + 2] = b * k;
+      }
+    }
+    this.pts.geometry.attributes.position.needsUpdate = true; this.pts.geometry.attributes.color.needsUpdate = true;
+  }
+}
+
 // where each head's face is (eye height, how far forward) for glasses / masks
-const AV_EYE = [0.22, 0.24, 0.2, 0.21, 0.25, 0.21, 0.23, 0.24, 0.24, 0.22, 0.31, 0.24, 0.22, 0.2];
-const AV_FRONT = [0.21, 0.16, 0.2, 0.15, 0.22, 0.13, 0.21, 0.18, 0.19, 0.2, 0.19, 0.24, 0.24, 0.2];
+const AV_EYE = [0.22, 0.24, 0.2, 0.21, 0.25, 0.21, 0.23, 0.24, 0.24, 0.22, 0.31, 0.24, 0.22, 0.2, 0.24, 0.25, 0.25, 0.25, 0.24];
+const AV_FRONT = [0.21, 0.16, 0.2, 0.15, 0.22, 0.13, 0.21, 0.18, 0.19, 0.2, 0.19, 0.24, 0.24, 0.2, 0.2, 0.22, 0.16, 0.22, 0.2];
 // hats from the achievements added in round 4; returns a part to animate (the propeller) or null
-function avHat2(h, hat, top, TIE, head, extras) {
+function avHat2(h, hat, top, TIE, head, extras, hn) {
   const ey = AV_EYE[head] || 0.22, fz = -(AV_FRONT[head] || 0.2);
   if (hat === 14) {                  // flame crown (INFERNO RUNNER)
     avPart(h, new THREE.CylinderGeometry(0.16, 0.165, 0.08, 16, 1, true), 0xb83a10, 0, top + 0.03, 0);
@@ -6944,6 +7235,58 @@ function avHat2(h, hat, top, TIE, head, extras) {
   } else if (hat === 21) {           // sweatband (MARATHON)
     avPart(h, new THREE.TorusGeometry(-fz + 0.008, 0.032, 6, 22), TIE, 0, ey + 0.08, 0, Math.PI / 2);
     avPart(h, new THREE.TorusGeometry(-fz + 0.035, 0.008, 4, 22), 0xffffff, 0, ey + 0.08, 0, Math.PI / 2);
+  } else if (hat === 22) {           // wizard hat with twinkling stars (SHOP)
+    avPart(h, new THREE.CylinderGeometry(0.28, 0.28, 0.02, 20), 0x2a1470, 0, top - 0.01, 0);
+    avPart(h, new THREE.ConeGeometry(0.17, 0.46, 16), 0x3a1a8a, 0, top + 0.22, 0, -0.12, 0, 0);
+    avPart(h, new THREE.CylinderGeometry(0.172, 0.172, 0.05, 16), 0xe0b030, 0, top + 0.03, 0);
+    [[0.08, 0.12, -0.1], [-0.07, 0.24, -0.06], [0.04, 0.33, -0.03], [-0.1, 0.1, 0.08], [0.09, 0.22, 0.07]].forEach(([x, y, z]) => avPart(hn, new THREE.OctahedronGeometry(0.022), 0xffe060, x, top + y, z));
+  } else if (hat === 23) {           // viking helmet
+    avPart(h, new THREE.SphereGeometry(0.21, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), 0x8a8f99, 0, top - 0.07, 0);
+    avPart(h, new THREE.CylinderGeometry(0.215, 0.215, 0.05, 18), 0xc8963a, 0, top - 0.05, 0);
+    avPart(h, new THREE.BoxGeometry(0.03, 0.2, 0.03), 0xc8963a, 0, top + 0.05, -0.2, 0.25, 0, 0);
+    avPart(h, new THREE.BoxGeometry(0.035, 0.14, 0.03), 0x8a8f99, 0, top - 0.12, -0.215);           // nose guard
+    for (const sx of [-1, 1]) {
+      avPart(h, new THREE.ConeGeometry(0.05, 0.16, 10), 0xf0ead8, sx * 0.25, top + 0.02, 0, 0, 0, -sx * 1.15);
+      avPart(h, new THREE.ConeGeometry(0.032, 0.12, 10), 0xf0ead8, sx * 0.33, top + 0.13, 0, 0, 0, -sx * 0.25);
+    }
+  } else if (hat === 24) {           // pirate tricorne with a skull
+    avPart(h, new THREE.CylinderGeometry(0.17, 0.2, 0.12, 14), 0x16161a, 0, top + 0.04, 0);
+    for (let i = 0; i < 3; i++) { const an = i / 3 * Math.PI * 2 + Math.PI / 2; avPart(h, new THREE.BoxGeometry(0.3, 0.12, 0.03), 0x16161a, Math.cos(an) * 0.17, top + 0.04, Math.sin(an) * 0.17, 0, -an + Math.PI / 2, 0); avPart(h, new THREE.BoxGeometry(0.3, 0.014, 0.034), 0xe0b030, Math.cos(an) * 0.17, top + 0.095, Math.sin(an) * 0.17, 0, -an + Math.PI / 2, 0); }
+    avPart(h, new THREE.SphereGeometry(0.035, 8, 6), 0xf4f4f4, 0, top + 0.07, -0.205);
+    avPart(h, new THREE.BoxGeometry(0.03, 0.02, 0.01), 0xf4f4f4, 0, top + 0.035, -0.205);
+    for (const sx of [-1, 1]) avPart(h, new THREE.SphereGeometry(0.009, 4, 3), 0x111111, sx * 0.013, top + 0.075, -0.235);
+  } else if (hat === 25) {           // a little UFO hovering over you (SHOP): it bobs and spins
+    const u = [];
+    avPart(u, new THREE.CylinderGeometry(0.06, 0.24, 0.05, 20), 0xc8d0dc, 0, 0, 0);
+    avPart(u, new THREE.CylinderGeometry(0.24, 0.12, 0.04, 20), 0x7a8494, 0, -0.045, 0);
+    avPart(u, new THREE.SphereGeometry(0.09, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), 0x8fffe8, 0, 0.02, 0);
+    for (let i = 0; i < 8; i++) { const an = i / 8 * Math.PI * 2; avPart(u, new THREE.SphereGeometry(0.016, 6, 4), i % 2 ? 0xff4060 : 0x40ff90, Math.cos(an) * 0.2, -0.02, Math.sin(an) * 0.2); }
+    avPart(u, new THREE.ConeGeometry(0.11, 0.18, 14, 1, true), 0x60ffd0, 0, -0.16, 0);
+    const ufo = new THREE.Mesh(avMerge(u), AV_NEON); ufo.position.set(0, top + 0.32, 0); extras.push(ufo);
+    return ufo;
+  } else if (hat === 26) {           // headphones with glowing cups
+    avPart(h, new THREE.TorusGeometry(-fz + 0.03, 0.018, 6, 20, Math.PI), 0x1a1a20, 0, ey, 0, 0, Math.PI / 2, 0);
+    for (const sx of [-1, 1]) {
+      avPart(h, new THREE.CylinderGeometry(0.075, 0.075, 0.06, 16), 0x1a1a20, sx * (-fz + 0.03), ey - 0.02, 0, 0, 0, Math.PI / 2);
+      avPart(hn, new THREE.TorusGeometry(0.06, 0.012, 4, 16), TIE, sx * (-fz + 0.065), ey - 0.02, 0, 0, Math.PI / 2, 0);
+    }
+  } else if (hat === 27) {           // cyber visor: a glowing wrap-around band over the eyes
+    avPart(h, new THREE.TorusGeometry(-fz + 0.015, 0.03, 4, 24, Math.PI * 1.1), 0x1a1a24, 0, ey + 0.005, 0, Math.PI / 2, 0, Math.PI * 0.95);
+    avPart(hn, new THREE.TorusGeometry(-fz + 0.04, 0.016, 4, 24, Math.PI * 0.9), 0x30f0ff, 0, ey + 0.005, 0, Math.PI / 2, 0, Math.PI * 1.05);
+    for (const sx of [-1, 1]) avPart(hn, new THREE.BoxGeometry(0.012, 0.012, 0.012), 0xff3080, sx * 0.13, ey + 0.03, fz + 0.03);
+  } else if (hat === 28) {           // chef hat
+    avPart(h, new THREE.CylinderGeometry(0.17, 0.17, 0.14, 16), 0xf8f8f8, 0, top + 0.05, 0);
+    [[0, 0.2, 0, 0.13], [0.09, 0.17, 0.04, 0.09], [-0.09, 0.17, -0.03, 0.09], [0.02, 0.17, -0.1, 0.09], [-0.02, 0.17, 0.1, 0.09]].forEach(([x, y, z, r]) => avPart(h, new THREE.SphereGeometry(r, 10, 8), 0xffffff, x, top + y, z));
+  } else if (hat === 29) {           // ninja headband with its tails flying behind
+    avPart(h, new THREE.TorusGeometry(-fz + 0.01, 0.03, 6, 22), 0x1a2a6a, 0, ey + 0.08, 0, Math.PI / 2);
+    avPart(h, new THREE.BoxGeometry(0.16, 0.06, 0.012), 0xb8c0cc, 0, ey + 0.08, fz - 0.03);
+    avPart(h, new THREE.TorusGeometry(0.018, 0.005, 4, 10), 0x2a2a2a, 0, ey + 0.08, fz - 0.038);
+    for (const s of [-1, 1]) avPart(h, new THREE.BoxGeometry(0.04, 0.012, 0.26), 0x1a2a6a, s * 0.04, ey + 0.05, -fz + 0.12, 0.35, s * 0.25, 0);
+  } else if (hat === 30) {           // antennae with glowing bobbles
+    for (const sx of [-1, 1]) {
+      avPart(h, new THREE.CylinderGeometry(0.008, 0.01, 0.24, 6), 0x222228, sx * 0.08, top + 0.1, 0, 0, 0, -sx * 0.3);
+      avPart(hn, new THREE.SphereGeometry(0.035, 10, 8), TIE, sx * 0.115, top + 0.22, 0);
+    }
   }
   return null;
 }
@@ -6981,7 +7324,11 @@ class AvatarRig {
       if (a.style === 10) for (let k = 0; k < 3; k++) avPart(l, new THREE.ConeGeometry(0.035, 0.2, 4), [0xff5a10, 0xffb020, 0xe01010][k], (k - 1) * 0.05, -0.6, -0.097, 0, 0, 0, 1, 1, 0.25);   // flames
       if (a.style === 11) avPart(l, new THREE.BoxGeometry(0.17, 0.06, 0.1), 0xc8963a, 0, -0.74, -0.17);               // brass toe caps
       if (a.style === 12) { avPart(l, new THREE.BoxGeometry(0.175, 0.05, 0.195), sx > 0 ? 0x20ffff : 0xff20ff, 0, -0.25, 0); avPart(l, new THREE.BoxGeometry(0.06, 0.12, 0.012), sx > 0 ? 0xff20ff : 0x20ffff, -0.03, -0.5, -0.097); }
+      if (a.style === 14) { avPart(l, new THREE.BoxGeometry(0.19, 0.3, 0.06), 0x9a1414, 0, -0.5, -0.09); avPart(l, new THREE.BoxGeometry(0.19, 0.015, 0.065), 0xe0b030, 0, -0.36, -0.09); }   // shin guards
+      if (a.style === 16) for (let r = 0; r < 4; r++) avPart(l, new THREE.BoxGeometry(0.085, 0.085, 0.006), new THREE.Color(SUIT).lerp(new THREE.Color(0xffffff), 0.35).getHex(), (r % 2 ? 0.04 : -0.04), -0.12 - r * 0.15, -0.097);
       const nl = [];
+      if (a.style === 15) avScatter(4, sx > 0 ? 3 : 9).forEach(([u, v], i) => avPart(nl, new THREE.BoxGeometry(0.014, 0.014, 0.006), i % 2 ? 0xffffff : 0x9fe8ff, (u - 0.5) * 0.12, -0.1 - v * 0.6, -0.097));
+      if (a.style === 17) avScatter(3, sx > 0 ? 4 : 8).forEach(([u, v]) => avPart(nl, new THREE.BoxGeometry(0.08, 0.012, 0.006), 0xff5a10, (u - 0.5) * 0.08, -0.1 - v * 0.6, -0.097, 0, 0, (u - 0.5) * 2));
       if (a.style === 13) { avPart(nl, new THREE.BoxGeometry(0.008, 0.74, 0.02), O.accent, sx * 0.087, -0.38, 0); avPart(nl, new THREE.BoxGeometry(0.17, 0.015, 0.29), O.accent, 0, -0.71, -0.05); }
       const leg = new THREE.Group(); leg.position.set(sx * 0.1, 0.8, 0); leg.add(new THREE.Mesh(avMerge(l), AV_MAT)); addGlow(nl, leg); this.legs.push(leg);
       const r = [];
@@ -6993,7 +7340,11 @@ class AvatarRig {
       if (a.style === 3) avPart(r, new THREE.BoxGeometry(0.012, 0.54, 0.04), TIE, sx * 0.061, -0.28, 0);
       if (a.style === 5) avPart(r, new THREE.BoxGeometry(0.13, 0.05, 0.14), SUIT, 0, -0.55, 0);
       if (a.style === 12) avPart(r, new THREE.BoxGeometry(0.125, 0.04, 0.135), sx > 0 ? 0xff20ff : 0x20ffff, 0, -0.2, 0);
+      if (a.style === 14) { avPart(r, new THREE.BoxGeometry(0.2, 0.17, 0.17), 0xa81818, sx * 0.03, -0.06, 0, 0, 0, sx * 0.2); avPart(r, new THREE.BoxGeometry(0.2, 0.014, 0.175), 0xe0b030, sx * 0.03, -0.1, 0, 0, 0, sx * 0.2); }   // sode
+      if (a.style === 18) avPart(r, new THREE.BoxGeometry(0.15, 0.05, 0.16), 0xf6f6f0, 0, -0.56, 0);                     // fur cuffs
       const na = [];
+      if (a.style === 15) avScatter(3, sx > 0 ? 13 : 17).forEach(([u, v]) => avPart(na, new THREE.BoxGeometry(0.014, 0.014, 0.006), 0xffffff, (u - 0.5) * 0.08, -0.08 - v * 0.45, -0.066));
+      if (a.style === 17) avPart(na, new THREE.BoxGeometry(0.008, 0.3, 0.02), 0xff5a10, sx * 0.061, -0.3, 0, 0, 0, 0.15);
       if (a.style === 13) { avPart(na, new THREE.BoxGeometry(0.008, 0.54, 0.02), O.accent, sx * 0.061, -0.28, 0); avPart(na, new THREE.BoxGeometry(0.125, 0.015, 0.135), O.accent, 0, -0.56, 0); }
       if (a.style === 4) avPart(r, new THREE.SphereGeometry(0.11, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), 0xc4c9d2, 0, 0.01, 0, 0, 0, 0, 1.15, 0.8, 1.15);   // pauldron
       const arm = new THREE.Group(); arm.position.set(sx * 0.29, 1.3, 0); arm.add(new THREE.Mesh(avMerge(r), AV_MAT)); addGlow(na, arm); this.arms.push(arm);
@@ -7002,7 +7353,8 @@ class AvatarRig {
     this.head = new THREE.Group(); this.head.position.set(0, 1.36, 0);
     const h = [];
     let top = 0.4;
-    this.glass = null; this.fish = null; this.sparkles = null; this.prop = null;
+    this.glass = null; this.fish = null; this.sparkles = null; this.prop = null; this.ufo = null;
+    const hn = [];                   // glowing parts on the head
     if (a.head === 0) {            // fishbowl helmet with a little fish
       avPart(h, new THREE.TorusGeometry(0.13, 0.025, 6, 16), 0x777777, 0, 0.02, 0, Math.PI / 2);
       this.glass = new THREE.Mesh(new THREE.SphereGeometry(0.21, 18, 12), AV_GLASS); this.glass.position.y = 0.21; this.glass.renderOrder = 5;
@@ -7036,7 +7388,7 @@ class AvatarRig {
       for (const sx of [-1, 1]) avPart(h, new THREE.ConeGeometry(0.04, 0.06, 3), 0x1a0800, sx * 0.08, 0.25, -0.2, Math.PI / 2, 0, 0);
       avPart(h, new THREE.BoxGeometry(0.18, 0.04, 0.02), 0x1a0800, 0, 0.13, -0.205);
       top = 0.39;
-    } else top = avHead(h, a.head, TIE);
+    } else top = avHead(h, a.head, TIE, hn);
     // hats
     if (a.hat === 1) {             // purple Wega cap
       avPart(h, new THREE.SphereGeometry(0.2, 12, 5, 0, Math.PI * 2, 0, Math.PI / 2), 0x7a2bd6, 0, top - 0.06, 0, 0, 0, 0, 1, 0.75, 1);
@@ -7101,7 +7453,7 @@ class AvatarRig {
       avPart(h, new THREE.SphereGeometry(0.2, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), 0xffd21f, 0, top - 0.06, 0, 0, 0, 0, 1, 0.85, 1.05);
       avPart(h, new THREE.CylinderGeometry(0.24, 0.24, 0.02, 18), 0xf0c010, 0, top - 0.06, -0.03, 0, 0, 0, 1, 1, 1.15);
       avPart(h, new THREE.BoxGeometry(0.04, 0.05, 0.36), 0xf0c010, 0, top + 0.1, 0);
-    } else if (a.hat >= 14) this.prop = avHat2(h, a.hat, top, TIE, a.head, this.extras);
+    } else if (a.hat >= 14) { const p = avHat2(h, a.hat, top, TIE, a.head, this.extras, hn); if (a.hat === 25) this.ufo = p; else this.prop = p; }
     else if (a.hat === 13) {     // a sneaker on your head
       avPart(h, new THREE.BoxGeometry(0.15, 0.04, 0.34), 0xf4f4f4, 0, top + 0.02, 0);
       avPart(h, new THREE.BoxGeometry(0.14, 0.11, 0.22), TIE, 0, top + 0.09, 0.05);
@@ -7112,6 +7464,35 @@ class AvatarRig {
     this.headMesh = new THREE.Mesh(avMerge(h), AV_MAT);
     this.head.add(this.headMesh);
     if (a.head === 11) this.extras.push(kuriMesh(0.23, 0, 0.21, 0));          // kurimanju head
+    if (this.ufo) this.ufoY = this.ufo.position.y;
+    // shop effects: wings on your back, trails / auras around you
+    if (a.fx === 8 || a.fx === 9) {
+      this.wings = [];
+      for (const sx of [-1, 1]) {
+        const w = [], wn = [], angel = a.fx === 8;
+        const sh = new THREE.Shape();
+        if (angel) { sh.moveTo(0, 0); sh.bezierCurveTo(0.25, 0.35, 0.6, 0.35, 0.78, 0.18); sh.bezierCurveTo(0.6, 0.02, 0.5, -0.35, 0.3, -0.55); sh.bezierCurveTo(0.2, -0.3, 0.08, -0.15, 0, 0); }
+        else { sh.moveTo(0, 0); sh.lineTo(0.35, 0.3); sh.lineTo(0.8, 0.22); sh.lineTo(0.62, -0.05); sh.lineTo(0.68, -0.32); sh.lineTo(0.42, -0.2); sh.lineTo(0.3, -0.45); sh.lineTo(0.16, -0.18); sh.lineTo(0, 0); }
+        avPart(w, new THREE.ShapeGeometry(sh, 8), angel ? 0xf8f8ff : 0x5a0a14, 0, 0, 0, 0, 0, 0, sx, 1, 1);
+        if (angel) for (let i = 0; i < 5; i++) avPart(wn, new THREE.BoxGeometry(0.03, 0.26, 0.012), 0xe8f4ff, sx * (0.32 + i * 0.1), -0.12 - Math.sin(i * 0.7) * 0.12, 0.005, 0, 0, sx * (0.25 + i * 0.12));
+        else { for (const [x, y, rz] of [[0.18, 0.15, 0.7], [0.4, 0.26, 1.45], [0.6, 0.12, 1.85]]) avPart(w, new THREE.BoxGeometry(0.025, 0.42, 0.02), 0x1a0206, sx * x, y, 0.004, 0, 0, -sx * rz); avPart(wn, new THREE.ConeGeometry(0.02, 0.06, 4), 0xff3040, sx * 0.8, 0.24, 0, 0, 0, -sx * 1.6); }
+        const piv = new THREE.Group(); piv.position.set(sx * 0.12, 1.25, 0.14);
+        const mw = new THREE.Mesh(avMerge(w), AV_WING); piv.add(mw); glow.push(mw);
+        if (wn.length) { const mg = new THREE.Mesh(avMerge(wn), AV_NEON); piv.add(mg); glow.push(mg); }
+        root.add(piv); this.wings.push(piv);
+      }
+    }
+    if ([2, 3, 4, 5, 6, 7].includes(a.fx)) this.fx = new AvatarFX(a.fx, this.layer);
+    if (a.head === 14) {             // WEGA HEAD: his face on a big block
+      const m = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.38, 0.38), [AV_FACES.wegaSide, AV_FACES.wegaSide, AV_FACES.wegaSide, AV_FACES.wegaSide, AV_FACES.wegaSide, AV_FACES.wega]);
+      m.position.y = 0.23; this.extras.push(m);
+    }
+    if (a.head === 15) {             // RORY HEAD: a purple ball with Rory's face on the front
+      const m = new THREE.Mesh(new THREE.SphereGeometry(0.21, 16, 12), AV_FACES.roryBall);
+      m.position.y = 0.23; const f = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.46), AV_FACES.rory); f.position.set(0, 0.0, -0.215); f.rotation.y = Math.PI; m.add(f);
+      this.extras.push(m); glow.push(f);
+    }
+    addGlow(hn, this.head);
     for (const m of this.extras) (m === this.extras[0] && a.style === 8 ? root : this.head).add(m);
     if (this.glass) this.head.add(this.glass);
     if (this.fishPivot && a.head === 0) this.head.add(this.fishPivot);
@@ -7124,7 +7505,8 @@ class AvatarRig {
     for (const m of this.parts) m.geometry.dispose();
     if (this.glass) this.glass.geometry.dispose();
     while (this.root.children.length) this.root.remove(this.root.children[0]);
-    this.fishPivot = null; this.sparkles = null;
+    if (this.fx) { this.fx.dispose(); this.fx = null; }
+    this.fishPivot = null; this.sparkles = null; this.wings = null;
   }
   setConfig(cfg) { const c = AV.sanitize(cfg); if (AV.same(c, this.cfg)) return; this.cfg = c; this.build(); }
   dispose() { this.disposeParts(); if (this.root.parent) this.root.parent.remove(this.root); }
@@ -7132,7 +7514,7 @@ class AvatarRig {
   pose(o, dt) {
     this.t += dt;
     const r = this.root, A = this.cfg.anim | 0, sp = o.speed || 0, air = o.grounded === false, run = !air && sp > 0.3, k = Math.min(1, sp / 5), t = this.t;
-    let swing = 0, bob = 0, lean = 0, roll = 0, tilt = 0, legAmp = 1, hy = wrapAngle((o.headYaw != null ? o.headYaw : o.yaw) - o.yaw);
+    let swing = 0, bob = 0, lean = 0, roll = 0, tilt = 0, legAmp = 1, hy = wrapAngle((o.headYaw != null ? o.headYaw : o.yaw) - o.yaw), flip = false, legT = null;
     if (run) { this.phase += sp * dt * (A === 3 ? 2.5 : A === 4 ? 1.7 : 2.1); swing = Math.sin(this.phase) * 0.75 * k; }
     // arm targets [left, right] as (forward swing, outward) - positive x swings an arm forward
     const ax = [-swing * 0.8 + (air ? -0.6 : 0), swing * 0.8 + (air ? -0.6 : 0)], az = [0, 0];
@@ -7171,17 +7553,35 @@ class AvatarRig {
         if (run) { ax[0] = 2.75 + Math.sin(this.phase) * 0.12; ax[1] = 2.75 - Math.sin(this.phase) * 0.12; az[0] = -0.3; az[1] = 0.3; }
         else if (air) { ax[0] = ax[1] = 2.6; az[0] = -0.55; az[1] = 0.55; }
         else { const up = Math.floor(t * 3) % 2; ax[up] = 2.9; ax[1 - up] = 0.5; az[0] = -0.15; az[1] = 0.15; bob = Math.abs(Math.sin(t * Math.PI * 3)) * 0.05; } break;
+      case 11:  // FLOSS: stand still and both arms swing side to side, one in front, one behind, hips the other way
+        if (!run && !air) { const f = Math.sin(t * 7.5); az[0] = az[1] = f * 0.55; ax[0] = f * 0.45; ax[1] = -f * 0.45; roll = -f * 0.12; } break;
+      case 12:  // HEADSPIN: stand still and you flip onto your head and spin
+        if (!run && !air) { flip = true; legT = [0.35, -0.35]; az[0] = -1.3; az[1] = 1.3; ax[0] = ax[1] = 0; } break;
+      case 13:  // PENGUIN: little waddling steps, arms stiff and flapping
+        legAmp = 0.35; ax[0] = ax[1] = 0;
+        if (run) { roll = Math.sin(this.phase) * 0.2; const fl = 0.3 + Math.abs(Math.sin(this.phase * 2)) * 0.35; az[0] = -fl; az[1] = fl; }
+        else { const fl = 0.15 + Math.max(0, Math.sin(t * 5)) * 0.5; az[0] = -fl; az[1] = fl; roll = Math.sin(t * 2.5) * 0.04; } break;
+      case 14:  // SUPERHERO: one fist forward when you run, hands on hips when you stand
+        if (run && k > 0.4) { ax[1] = 2.95; ax[0] = -0.5; lean = 0.38 * k; legT = [-0.35, -0.2]; }
+        else if (air) { ax[0] = ax[1] = 2.9; az[0] = -0.12; az[1] = 0.12; }
+        else if (!run) { ax[0] = ax[1] = 0.35; az[0] = -0.75; az[1] = 0.75; lean = -0.05; } break;
+      case 15:  // T-POSE: arms straight out, always, gliding along
+        az[0] = -1.57; az[1] = 1.57; ax[0] = ax[1] = 0; legAmp = 0.12; break;
       default:
     }
     // SPIN keeps a twirl angle on top of where you face (eases back to facing forward when you run)
-    if (A === 9) { this.spinA = ((this.spinA || 0) + dt * (air ? 13 : run ? 0 : 5)) % (Math.PI * 2); if (run) this.spinA = damp(this.spinA, Math.round(this.spinA / (Math.PI * 2)) * Math.PI * 2, 8, dt); }
+    if (A === 9 || flip) { this.spinA = ((this.spinA || 0) + dt * (flip ? 9 : air ? 13 : run ? 0 : 5)) % (Math.PI * 2); if (run) this.spinA = damp(this.spinA, Math.round(this.spinA / (Math.PI * 2)) * Math.PI * 2, 8, dt); }
     else this.spinA = 0;
     if (this.spinA) hy = 0;
-    r.position.set(o.x, o.y + bob, o.z); r.rotation.set(-lean, o.yaw + this.spinA, roll, 'YXZ');
-    const hs = Mods.on('bighead') ? 2.2 : 1;         // BIG HEADS
+    // shop effects: TINY shrinks you, BIG HEAD grows your head
+    const fx = this.cfg.fx | 0, sc = fx === 10 ? 0.65 : 1, hs = fx === 1 ? 2.2 : 1;
+    if (r.scale.x !== sc) r.scale.setScalar(sc);
     if (this.head.scale.x !== hs) this.head.scale.setScalar(hs);
+    // HEADSPIN: upside down with your head on the floor
+    if (flip) { r.position.set(o.x, o.y + 1.86 * sc, o.z); r.rotation.set(Math.PI, o.yaw + this.spinA, 0, 'YXZ'); }
+    else { r.position.set(o.x, o.y + bob, o.z); r.rotation.set(-lean, o.yaw + this.spinA, roll, 'YXZ'); }
     this.head.rotation.set(clamp(o.pitch || 0, -1.1, 1.1) * 0.8, hy, tilt, 'YXZ');
-    const legT = air ? [0.55, -0.2] : A === 7 ? [swing * legAmp + 0.25, -swing * legAmp + 0.1] : [swing * legAmp, -swing * legAmp];
+    if (!legT) legT = air ? [0.55, -0.2] : A === 7 ? [swing * legAmp + 0.25, -swing * legAmp + 0.1] : [swing * legAmp, -swing * legAmp];
     this.legs[0].rotation.x = damp(this.legs[0].rotation.x, legT[0], 14, dt);
     this.legs[1].rotation.x = damp(this.legs[1].rotation.x, legT[1], 14, dt);
     if (!this.armX) { this.armX = [0, 0]; this.armZ = [0, 0]; this.tracked = [false, false]; }
@@ -7204,6 +7604,12 @@ class AvatarRig {
     }
     if (this.sparkles) { this.sparkles.rotation.y = t * 0.9; this.sparkles.position.y = Math.sin(t * 2) * 0.02; AV_SPARK.size = 0.07 + Math.sin(t * 9) * 0.025; }
     if (this.prop) this.prop.rotation.y += dt * (9 + sp * 3);
+    if (this.ufo) { this.ufo.rotation.y += dt * 2.5; this.ufo.position.y = this.ufoY + Math.sin(t * 2.2) * 0.04; }
+    if (this.wings) { const f = Math.sin(t * (run || air ? 10 : 2.6)) * (run || air ? 0.45 : 0.18); this.wings[0].rotation.y = 0.5 + f; this.wings[1].rotation.y = -0.5 - f; }
+    if (this.fx) {
+      if (this.fx.pts.parent !== r.parent && r.parent) r.parent.add(this.fx.pts);
+      this.fx.pts.visible = r.visible; this.fx.update(dt, r.position, sp, air, sc);
+    }
     if (this.fishPivot) { this.fishPivot.rotation.y = -this.t * 1.3; this.fish.position.y = Math.sin(this.t * 2.1) * 0.02; }
   }
 }
@@ -7314,7 +7720,7 @@ class Remote {
   }
   update(dt, myLevel, show) {
     const visible = show && this.hasState && myLevel > 0 && this.level === myLevel;
-    if (!visible) { if (this.rig) this.rig.root.visible = false; this.tag.visible = false; return; }
+    if (!visible) { if (this.rig) { this.rig.root.visible = false; if (this.rig.fx) this.rig.fx.pts.visible = false; } this.tag.visible = false; return; }
     if (!this.rig) { this.rig = new AvatarRig(this.av, 0); G.fx.add(this.rig.root); G.fx.add(this.tag); }
     this.rig.root.visible = true; this.tag.visible = true;
     const c = this.cur, t = this.tgt, k = 1 - Math.exp(-12 * dt);
@@ -7576,10 +7982,10 @@ const Session = {
     }
     return Save.s.mods | 0;
   },
-  toggleMod(i) {
-    if (!this.active()) { Save.s.mods = (Save.s.mods | 0) ^ (1 << i); Save.save(); return; }
+  toggleMod(bit) {
+    if (!this.active()) { Save.s.mods = (Save.s.mods | 0) ^ (1 << bit); Save.save(); return; }
     if (!this.isOwner()) { this.ownerOnly(); return; }
-    this.auth.lm = (this.auth.lm | 0) ^ (1 << i); this.request('cfg', { lm: this.auth.lm });
+    this.auth.lm = (this.auth.lm | 0) ^ (1 << bit); this.request('cfg', { lm: this.auth.lm });
   },
   ownerOnly() { UI.toast('ONLY THE LOBBY OWNER (' + this.ownerLabel() + ') CAN DO THAT'); Sfx.hover(); },
   stepDifficulty(d) {
@@ -7616,8 +8022,8 @@ const Session = {
     if (!this.isOwner()) { UI.toast('WAITING FOR THE LOBBY OWNER (' + this.ownerLabel() + ') TO START'); Sfx.hover(); return; }
     if (this.startWait) return;
     this.startWait = performance.now();
-    const D = CONFIG.DIFF[A.ld] || CONFIG.DIFF.normal, M = A.lm | 0, tk = M & MOD.time ? 1.5 : 1;
-    this.request('start', { tot: Math.round(D.lilGuys * (M & MOD.half ? 0.5 : 1)), t2: D.lap2Time * tk, t3: D.lap3Time * tk, t4: D.lap4Time * tk });
+    const D = CONFIG.DIFF[A.ld] || CONFIG.DIFF.normal, tk = (A.lm | 0) & MOD.clock ? 0.6 : 1;
+    this.request('start', { tot: D.lilGuys, t2: D.lap2Time * tk, t3: D.lap3Time * tk, t4: D.lap4Time * tk, t5: D.lap5Time * tk });
     UI.toast('STARTING THE RUN FOR EVERYONE…');
   },
   join(A) {
@@ -7862,7 +8268,7 @@ function hideWorld() {
 // ---------------- Lap 2-4 timer (0:00 => Shoebench comes for you) + "+3" popup ----------------
 const LapTimer = {
   timeLeft: 150, timeMax: 150, tension: false, expired: false,
-  reset(lap) { this.timeMax = (diff()['lap' + lap + 'Time'] || diff().lap2Time) * (Mods.on('time') ? 1.5 : 1); this.timeLeft = this.timeMax; this.tension = false; this.expired = false; },
+  reset(lap) { this.timeMax = (diff()['lap' + lap + 'Time'] || diff().lap2Time) * Mods.timeK(); this.timeLeft = this.timeMax; this.tension = false; this.expired = false; },
   update(dt) {
     if (this.expired) return;
     if (Session.inRun() && Session.auth.lap === Game.lap) {
@@ -7994,9 +8400,10 @@ const Stage = {
       ["LIL' GUYS", String(s.collected != null ? s.collected : 0) + '  (' + (s.laps || 1) + (s.laps === 1 ? ' LAP)' : ' LAPS)')],
       ['HITS TAKEN', String(s.hits || 0)],
       ['FALLS', String(s.falls || 0)],
+      ['SHOP MONEY', '+' + (s.earned || 0) + '  (' + (s.wallet || 0) + ')'],
     ];
     rows.forEach((r, i) => {
-      const y = 208 + i * 40;
+      const y = 204 + i * 36;
       drawText(ctx, r[0], 70, y, { size: 24, align: 'left', fill: '#cbb6e0', stroke: '#000', lw: 4 });
       drawText(ctx, r[1], 442, y, { size: 24, align: 'right', fill: r[1].includes('NEW') ? '#ffd21f' : '#ffffff', stroke: '#000', lw: 4 });
     });
@@ -8052,6 +8459,32 @@ const PauseMenu = {
   hide() { this.panel.mesh.visible = false; UI.setActive([]); },
 };
 
+// ---------------- the Lil' Guy wallet (spent in the shop) ----------------
+// Every Lil' Guy you collect is one to spend (more with challenges on), plus bonuses for clearing laps,
+// escaping, beating OMNIWEGA and clearing each challenge for the first time.
+const Wallet = {
+  run: 0,
+  get() { return Math.floor(Save.data.coins || 0); },
+  add(n, note) {
+    if (Game.debugRun || !(n > 0)) return 0;
+    Save.data.coins = (Save.data.coins || 0) + n; this.run += n; Achievements.dirty = true;
+    if (note) { UI.toast('+' + Math.round(n) + " LIL' GUYS · " + note); Sfx.collect(4); }
+    return n;
+  },
+  spend(n) {
+    if (this.get() < n) return false;
+    Save.data.coins -= n; Save.save(); return true;
+  },
+  onLapCleared(n) { this.add(Math.round(40 * n * Mods.payK()), 'LAP ' + n + ' CLEARED'); },
+  onWin() {
+    if (Game.debugRun) return;
+    this.add(Math.round((150 + 100 * Chamber.tier) * Mods.payK()), 'ESCAPED');
+    // a challenge's first clear pays a one-time bonus
+    for (const m of Mods.list()) if (m.kind === 'chal' && !Save.data.chal[m.id]) { Save.data.chal[m.id] = Date.now(); this.add(500, m.name + ' CLEARED!'); }
+    Save.save();
+  },
+};
+
 // ---------------- achievements (each one unlocks a cosmetic) ----------------
 const Achievements = {
   LIST: [
@@ -8075,7 +8508,7 @@ const Achievements = {
     { id: 'chase4', name: 'DEEP DIVER', desc: 'Escape the Deep Chase (after Lap 4)', reward: [['hat', 16], ['suit', 11]] },
     { id: 'flawless', name: 'FLAWLESS ESCAPE', desc: 'Escape without getting hit during the chase', reward: [['anim', 9]] },
     { id: 'speedrun', name: 'SPEEDRUNNER', desc: 'Escape in under 5:00 (no modifiers)', reward: [['suit', 9]] },
-    { id: 'modded', name: 'MOD SQUAD', desc: 'Escape with 3+ challenge modifiers on', reward: [['style', 12]] },
+    { id: 'modded', name: 'MOD SQUAD', desc: 'Escape with 3+ challenges on', reward: [['style', 12]] },
     { id: 'onehit', name: 'ONE AND DONE', desc: 'Escape with ONE HIT on', reward: [['hat', 19]] },
     { id: 'lightsout', name: 'NIGHT RUNNER', desc: 'Escape with LIGHTS OUT on', reward: [['style', 13]] },
     { id: 'moonwalker', name: 'MOONWALKER', desc: 'Clear a lap with LOW GRAVITY on', reward: [['anim', 8]] },
@@ -8165,8 +8598,8 @@ const Game = {
   },
   // the chase after the Idol Chamber depends on the lap you took the beacon on
   chaseTier() { return clamp(Session.inRun() && Session.auth.lap ? Session.auth.lap : this.lap || 1, 1, CONFIG.MAX_LAP); },
-  lapDone(n) { this.lapsCleared = Math.max(this.lapsCleared, n); Achievements.onLapCleared(n); },
-  beginRun() { this.runTime = 0; this.timerOn = true; this.debugRun = false; this.collectedTotal = 0; this.maxLap = 1; this.lapsCleared = 0; this.hadIdol = true; Player.resetStats(); },
+  lapDone(n) { this.lapsCleared = Math.max(this.lapsCleared, n); Achievements.onLapCleared(n); if (!this.debugRun) Wallet.onLapCleared(n); },
+  beginRun() { Wallet.run = 0; this.runTime = 0; this.timerOn = true; this.debugRun = false; this.collectedTotal = 0; this.maxLap = 1; this.lapsCleared = 0; this.hadIdol = true; Player.resetStats(); },
   relockPointer() {
     if (XR.inVR || IS_TOUCH) return;
     const el = renderer.domElement;
@@ -8247,7 +8680,7 @@ function setupLap(n) {
   G.maze.visible = true; G.mazeDeco.visible = true;
   Maze.build(n);
   // shared run: the run's count; otherwise your difficulty's (more Lil' Guys on HARD / WEGA MODE)
-  const total = Session.inRun() ? Session.auth.tot || CONFIG.COLLECT_TOTAL : Math.round(diff().lilGuys * (Mods.on('half') ? 0.5 : 1));
+  const total = Session.inRun() ? Session.auth.tot || CONFIG.COLLECT_TOTAL : diff().lilGuys;
   const positions = placeCollectibles(Maze.cur, CONFIG.LAP1_SEED + n - 1, Math.min(total, CONFIG.COLLECT_MAX));
   Collect.setup(positions); Maze.buildDecals(positions);
   Game.lap = n;
@@ -8320,7 +8753,11 @@ SM.states.LAP1 = {
     Player.locomotion = 'full'; Game.retryTarget = 'LAP1';
     if (arg.retry) Music.cueRetry('LAP1'); else Music.cueLap1Start();
     UI.announce('COLLECT THEM ALL');
-    if (!arg.retry && Mods.bits()) { UI.announce(Mods.names().length + (Mods.names().length > 1 ? ' MODIFIERS ON' : ' MODIFIER ON'), { color: '#40f0ff', short: true }); UI.toast('MODS: ' + Mods.names().join(' + ')); }
+    if (!arg.retry && Mods.bits()) {
+      const nc = Mods.challenges();
+      UI.announce(nc ? nc + (nc > 1 ? ' CHALLENGES ON' : ' CHALLENGE ON') : 'MODIFIERS ON', { color: nc ? '#ff7a50' : '#40f0ff', short: true });
+      UI.toast(Mods.names().join(' + ') + (nc ? " · LIL' GUYS x" + Mods.payK().toFixed(1) : ''));
+    }
   },
   update(dt) { gameplayTick(dt); if (Collect.left <= 0) { Game.lapDone(1); SM.go('BEACON1'); } },
 };
@@ -8455,12 +8892,12 @@ SM.states.WIN = {
   enter() {
     hideWorld(); HUD.setVisible(false); setLook('void'); G.stage.visible = true;
     Player.locomotion = 'turn';
-    // modded runs (anything but BIG HEADS) don't count for the best time
+    // runs with MODIFIERS (low gravity / speed rush) don't count for the best time; challenges do
     const t = Game.runTime, best = Save.data.best, newBest = !Game.debugRun && Mods.ranked() && (best == null || t < best);
     if (newBest) { Save.data.best = t; Save.save(); }
     if (!Game.debugRun) Net.event('win', { t: Math.round(t * 100) / 100 });
-    Achievements.onWin();
-    Stage.showWin({ time: t, best: Save.data.best, newBest, collected: Game.collectedTotal, hits: Player.hits, falls: Player.falls, laps: Game.maxLap });
+    Achievements.onWin(); Wallet.onWin();
+    Stage.showWin({ time: t, best: Save.data.best, newBest, collected: Game.collectedTotal, hits: Player.hits, falls: Player.falls, laps: Game.maxLap, earned: Math.floor(Wallet.run), wallet: Wallet.get() });
     UI.setActive([Stage.winPanel]);
     camera.getWorldPosition(_v1); Confetti.start(_v1);
   },
@@ -8542,7 +8979,7 @@ window.WEGA_DEBUG = {
   player: () => ({ pos: Player.pos.toArray().map((v) => +v.toFixed(2)), hp: Player.hp, speed: +(Player.hspeed * CONFIG.SPEED_MULT).toFixed(1), grounded: Player.grounded }),
 };
 // test/debug access to internals (only with ?debug in the URL)
-if (DEBUG_URL) window.WEGA_DEBUG.internals = { SM, Session, Mods, MOD, MODS, WegaShared, NameEdit, AvatarRig, WegaBoss, Diver, Jellies, DeepDeco, LobbyPlus, Achievements, Player, Collect, Beacon, Chamber, Hazards, Game, Rory, Screamer, LapTimer, Lap2: LapTimer, Flood, Shoebench, LapPortal, FPBody, Touch, Net, AV, Avatar, WegaHead, GlitchGuy, Idol, Music, HUD, Maze, Nav, World, Rig, Input, Fade, AudioSys, Save, Lobby, Stage, UI, get renderer() { return renderer; }, get scene() { return scene; }, get camera() { return camera; }, get perf() { return { upd: +Perf.upd.toFixed(2), ren: +Perf.ren.toFixed(2), calls: renderer.info.render.calls, tris: renderer.info.render.triangles }; } };
+if (DEBUG_URL) window.WEGA_DEBUG.internals = { SM, Session, Mods, MOD, MODS, Shop, SHOP, SHOP_CATS, Wallet, WegaShared, NameEdit, AvatarRig, WegaBoss, Diver, Jellies, DeepDeco, LobbyPlus, Achievements, Player, Collect, Beacon, Chamber, Hazards, Game, Rory, Screamer, LapTimer, Lap2: LapTimer, Flood, Shoebench, LapPortal, FPBody, Touch, Net, AV, Avatar, WegaHead, GlitchGuy, Idol, Music, HUD, Maze, Nav, World, Rig, Input, Fade, AudioSys, Save, Lobby, Stage, UI, get renderer() { return renderer; }, get scene() { return scene; }, get camera() { return camera; }, get perf() { return { upd: +Perf.upd.toFixed(2), ren: +Perf.ren.toFixed(2), calls: renderer.info.render.calls, tris: renderer.info.render.triangles }; } };
 
 // =====================================================================================
 // MAIN LOOP
