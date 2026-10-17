@@ -20,9 +20,9 @@ whichever level you are both in.
 
 Everyone on a server plays **one shared run**:
 - **The lobby owner:** the first player to join a server owns its lobby (shown on the main menu and the **LOBBY**
-  page, with a ★ in the player list). Only the owner can **START** and change the lobby settings (difficulty and
-  how many laps the portals go up to). Everyone else's START button says WAITING… If the owner leaves, the
-  player who joined next becomes the owner.
+  page, with a ★ in the player list). Only the owner can **START** and change the lobby settings (difficulty,
+  how many laps the portals go up to, and the **modifiers**). Everyone else's START button says WAITING… If the
+  owner leaves, the player who joined next becomes the owner.
 - **START** starts the run for everyone on the server who is in the lobby (or on the win / game-over screen).
   If a run is already going, the button says **JOIN RUN** (for anyone) and drops you in where it is.
 - **Lil' Guys are shared:** when anyone collects one, it's gone for everybody, and the counter is the same for all.
@@ -67,15 +67,19 @@ browser and shows on your name tag, in the server list and on the escape screen.
 
 Press **AVATAR** in the lobby:
 - **Outfit:** suit, tuxedo, hoodie, tracksuit, knight armour, spacesuit, lab coat, overalls or the
-  **I HATE RORY** shirt. Unlockable: inferno, diver suit and the golden suit.
-- **Colour** and **tie / trim colour**
+  **I HATE RORY** shirt. Unlockable: inferno, diver suit, golden suit, **glitch suit** and the **neon suit** (its
+  seams glow in your trim colour, even in the dark).
+- **Colour** and **tie / trim colour**. Unlockable: neon green, chrome, lava and ice.
 - **Head:** fishbowl, blocky, Lil' Guy, robot, pumpkin, TV, cat, alien, skull, ghost, frog or **kurimanju** (the
-  chestnut bun itself, with a `:3` face). Unlockable: diver helmet.
+  chestnut bun itself, with a `:3` face). Unlockable: diver helmet and the golden Lil' Guy.
 - **Hat:** Wega cap, top hat, crown, party hat, halo, **tin pot** (a saucepan with its handle sticking out) or
   **kurimanju** (the shiny golden-brown chestnut bun with its pale base, `:3` face and rosy cheeks). Unlockable:
-  Lil' Guy buddy, idol hat, devil horns, hard hat, shoe hat and the **golden hat** (it gives off sparkles).
+  Lil' Guy buddy, idol hat, devil horns, hard hat, shoe hat, the **golden hat** (it gives off sparkles), flame
+  crown, storm cloud (with its own lightning bolt), snorkel mask, propeller cap (the propeller spins), nerd
+  glasses, ice crown, sweatband and the rainbow halo.
 - **Moves** (animation packs): how your avatar runs, jumps and idles. Classic and Swagger to start with; Ninja Run,
-  Bouncy, Robot, Zombie, Disco and Float are unlocked with achievements.
+  Bouncy, Robot, Zombie, Disco, Float, Moonwalk, Spin (twirls when you stand still) and Hype (fist pumps) are
+  unlocked with achievements.
 - the fish in your fishbowl
 
 Locked items are skipped until you earn them (the page says how many are left; the trophy wall says what unlocks
@@ -104,6 +108,22 @@ banner and a toast tell you when you unlock one, and other players online see it
 | SHOEBENCH SURVIVOR | Clear a lap after Shoebench came for you | Shoe hat |
 | HARD MODE | Escape on HARD or WEGA MODE | Hard hat |
 | **WEGA MASTER** | Clear all 4 laps and escape on WEGA MODE | **Golden hat (with sparkles) + golden suit** |
+| INFERNO RUNNER | Escape the Inferno Chase (grab the idol after Lap 2) | Flame crown + lava colour |
+| STORM CHASER | Escape Wega's Revenge Chase (after Lap 3) | Storm cloud hat |
+| DEEP DIVER | Escape the Deep Chase (after Lap 4) | Snorkel mask + ice colour |
+| FLAWLESS ESCAPE | Escape without getting hit during the chase | Spin moves |
+| SPEEDRUNNER | Escape in under 5:00 with no modifiers | Chrome colour |
+| MOD SQUAD | Escape with 3 or more challenge modifiers on (not counting BIG HEADS, HALF LIL' GUYS or EXTRA TIME) | Glitch suit |
+| ONE AND DONE | Escape with ONE HIT on | Ice crown |
+| NIGHT RUNNER | Escape with LIGHTS OUT on | Neon suit |
+| MOONWALKER | Clear a lap with LOW GRAVITY on | Moonwalk moves |
+| RORY WRANGLER | Clear a lap with RORY RAMPAGE on | Neon green colour |
+| FREQUENT FLYER | Ride the lobby jump pad 25 times | Propeller cap |
+| BOOKWORM | Read every page of the character guide | Nerd glasses |
+| PARTY OF FOUR | Play a shared run with 3 or more other players | Hype moves |
+| HOARDER | Collect 5,000 Lil' Guys | Golden Lil' Guy head |
+| MARATHON | Run 42.2 km in total | Sweatband |
+| COMPLETIONIST | Unlock every other achievement | Rainbow halo |
 
 Achievements are saved in the browser. Runs that use the debug helpers don't count.
 
@@ -115,6 +135,28 @@ around the edge.
 - **Character guide** (left kiosk): every enemy and hazard with its sprite, where it shows up and how to beat it.
   Flip through the pages with the arrows.
 - **Trophy wall** (right kiosk): your achievements, their progress and what they unlock.
+- **No invisible walls:** the railing round the edge stops you, but it's only a metre high, so you can hop over it
+  (and fall off; you land back in the lobby, no damage).
+
+## Modifiers
+
+**LOBBY > MODIFIERS** switches on extra rules for the next run. Online, only the lobby owner can change them and
+they apply to everyone on the server; they lock in when the run starts. Offline they're your own.
+
+| Modifier | What it does |
+|---|---|
+| LOW GRAVITY | Floaty, much higher jumps (about 1.7 m instead of 1.1 m) |
+| SPEED RUSH | Your speed cap goes up 30%; Rory, Shoebench and the chase collapse speed up 20% |
+| ONE HIT | Any hit knocks you out (falling too) |
+| RORY RAMPAGE | Rory comes back almost as soon as he's gone, faster, and chases for longer |
+| LASER PARTY | Lasers from the start of Lap 1, three more at a time, back sooner; faster laser gates in the chase |
+| LIGHTS OUT | Thick darkness and dim lights everywhere but the lobby |
+| BIG HEADS | Everyone's head is 2.2 times bigger (just for fun) |
+| HALF LIL' GUYS | Half as many Lil' Guys a lap |
+| TURBO COLLAPSE | The chase starts closer behind you and falls away faster |
+| EXTRA TIME | Lap 2-4 timers are 50% longer |
+
+A run with any modifier except BIG HEADS doesn't set a best time. Several achievements need modifiers.
 
 ## Laps
 
@@ -168,16 +210,18 @@ In a shared run, the run's lap decides the chase for everyone.
 
 Online, the lobby owner picks the difficulty for everyone; offline it's your own setting.
 
-## Edge guard
+## No invisible walls
 
-Walking, sprinting, sliding or getting shoved can't take you off a ledge into the void: you stop at the edge
-(or slide along it). Jumping off is still up to you, and dropping down onto a lower platform still works.
-Turn it off in **SETTINGS > EDGE GUARD**.
+Nothing invisible stops you any more: you can walk, run or jump off any ledge (a fall costs some health, 20 on
+NORMAL, and puts you back on the last safe spot). Jumps are never blocked in mid-air, and the lobby's edge is its
+visible railing.
 
-Spamming jump can no longer throw you into the void either: a hop that would come down over nothing is caught at
-the edge, and landing on the top edge of a wall or a staircase puts you on top of it instead of bouncing you off.
-If you jump too early before a gap, the guard catches you at the lip, and your next jump from there keeps your
-run-up, so you can still make it across.
+Spamming jump still can't throw you sideways into the void: landing on the top edge of a wall or a staircase puts
+you on top of it instead of bouncing you off.
+
+**Edge guard** is now an opt-in assist (**SETTINGS > EDGE GUARD**, off by default): with it on, walking, sliding or
+getting shoved can't take you off a ledge (you slide along the edge instead); jumping is still up to you. If it
+stops you at a gap's lip, a jump from there keeps your run-up, so you can still make it across.
 
 ## Play
 

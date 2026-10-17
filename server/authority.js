@@ -5,7 +5,7 @@
 // which Lil' Guys have been collected (one collect counts for everyone), the lap 2-4 timer,
 // who grabbed the idol, who escaped. It also owns the lobby: the first player to join is the
 // owner (the next earliest takes over if they leave), and only the owner can START and change
-// the lobby settings (difficulty, how many laps). The real server (server/server.js) runs one
+// the lobby settings (difficulty, how many laps, run modifiers). The real server (server/server.js) runs one
 // per room; on a public relay the game itself runs one in the player with the lowest id (and
 // hands it over if they leave). Plain JS, no dependencies: the same file is inlined into index.html.
 //
@@ -15,6 +15,7 @@
 const WegaShared = (() => {
   const TOTAL = 207, MAX_TOTAL = 330;     // Lil' Guys per lap (the owner's difficulty can ask for more)
   const MAX_LAP = 4;
+  const MOD_MAX = 0xffff;                 // run modifier bits (the game decides what each one does)
   const DIFFS = ['chill', 'normal', 'hard', 'wega'];
   const BONUS = 3, BONUS_EVERY = 25;      // laps 2-4: +3 s on the shared timer every 25 collected
   const CUT_DELAY = 4.2;        // the lap cutscene plays before the lap timer matters
@@ -48,7 +49,7 @@ const WegaShared = (() => {
       this.publish = o.publish || (() => {}); this.now = o.now || (() => Date.now());
       // everyone on this server, in the order they joined: id -> { t: last heartbeat, n: name }
       this.present = new Map();
-      this.owner = ''; this.ld = 'normal'; this.ml = MAX_LAP;     // lobby: owner + settings
+      this.owner = ''; this.ld = 'normal'; this.ml = MAX_LAP; this.lm = 0;     // lobby: owner + settings (+ modifier bits)
       this.sq = 0; this.ev = [0, '', '', ''];
       this.dirty = false; this.lastPub = -1e9;
       this.reset(0);
@@ -56,7 +57,7 @@ const WegaShared = (() => {
     reset(run) {
       this.ph = 'idle'; this.run = run; this.st = ''; this.lap = 0;
       this.tot = TOTAL; this.bits = new Uint8Array(Math.ceil(MAX_TOTAL / 8)); this.left = TOTAL; this.lapCount = 0;
-      this.tEnd = 0; this.shoe = false; this.d = 'normal'; this.rml = MAX_LAP; this.times = [0, 0, 150, 120, 105];
+      this.tEnd = 0; this.shoe = false; this.d = 'normal'; this.rml = MAX_LAP; this.md = 0; this.times = [0, 0, 150, 120, 105];
       this.by = ''; this.gr = ''; this.runners = new Map(); this.startT = this.now(); this.escT = 0; this.winT = 0; this.doneT = 0; this.emptyT = 0;
     }
     event(kind, who, id, extra) { this.ev = [this.ev[0] + 1, kind, who, id || '']; if (extra != null) this.ev.push(extra); }
@@ -113,13 +114,14 @@ const WegaShared = (() => {
           if (!owner) return;
           if (DIFFS.includes(m.ld)) this.ld = m.ld;
           if (Number.isInteger(m.ml) && m.ml >= 1 && m.ml <= MAX_LAP) this.ml = m.ml;
+          if (Number.isInteger(m.lm) && m.lm >= 0 && m.lm <= MOD_MAX) this.lm = m.lm;
           this.changed();
           return;
         case 'start': {
           if (live && this.st !== 'done') { this.runner(m.i, who); this.changed(); return; }   // already going: you just join it
           if (!owner) return;                                                                   // only the owner starts runs
           this.reset(Math.floor(Math.random() * 2147483646) + 1);
-          this.ph = 'run'; this.by = who; this.d = this.ld; this.rml = this.ml;
+          this.ph = 'run'; this.by = who; this.d = this.ld; this.rml = this.ml; this.md = this.lm;
           this.tot = Math.round(clampNum(m.tot, 50, MAX_TOTAL, TOTAL));
           this.times = [0, 0, clampNum(m.t2, 60, 400, 150), clampNum(m.t3, 60, 400, 120), clampNum(m.t4, 60, 400, 105)];
           this.startLap(1, 0); this.startT = now;
@@ -222,8 +224,8 @@ const WegaShared = (() => {
       return {
         v: 1, a: this.src, sq: this.sq, ph: this.ph, run: this.run, st: this.st, lap: this.lap, c: hex, left: this.left, tot: this.tot,
         tl: this.tEnd ? Math.round(Math.max(0, this.tEnd - now) / 100) / 10 : 0, shoe: this.shoe ? 1 : 0,
-        d: this.d, rml: this.rml, t2: this.times[2], t3: this.times[3], t4: this.times[4], by: this.by, gr: this.gr, nr: this.runners.size, rn: names,
-        ow: this.owner, on: this.ownerName(), ld: this.ld, ml: this.ml, hp: here,
+        d: this.d, rml: this.rml, md: this.md, t2: this.times[2], t3: this.times[3], t4: this.times[4], by: this.by, gr: this.gr, nr: this.runners.size, rn: names,
+        ow: this.owner, on: this.ownerName(), ld: this.ld, ml: this.ml, lm: this.lm, hp: here,
         ag: Math.round((now - this.startT) / 100) / 10, e: this.ev,
       };
     }
@@ -234,6 +236,7 @@ const WegaShared = (() => {
       if (okId(s.ow)) { this.present.set(s.ow, { t: this.now(), n: String(s.on || 'PLAYER').slice(0, 24) }); this.owner = s.ow; }
       if (DIFFS.includes(s.ld)) this.ld = s.ld;
       if (Number.isInteger(s.ml) && s.ml >= 1 && s.ml <= MAX_LAP) this.ml = s.ml;
+      if (Number.isInteger(s.lm) && s.lm >= 0 && s.lm <= MOD_MAX) this.lm = s.lm;
       if (Array.isArray(s.e)) this.ev = s.e.slice(0, 5);
       this.sq = (s.sq | 0) + 1; this.dirty = true;
       if (s.ph !== 'run' || !Number.isInteger(s.run)) return;
@@ -244,6 +247,7 @@ const WegaShared = (() => {
       this.lapCount = this.tot - this.left; this.shoe = !!s.shoe;
       this.tEnd = s.tl > 0 ? this.now() + s.tl * 1000 : (this.lap >= 2 ? this.now() : 0);
       this.d = DIFFS.includes(s.d) ? s.d : 'normal'; this.rml = clampNum(s.rml | 0, 1, MAX_LAP, MAX_LAP);
+      this.md = Number.isInteger(s.md) && s.md >= 0 && s.md <= MOD_MAX ? s.md : 0;
       this.times = [0, 0, clampNum(s.t2, 60, 400, 150), clampNum(s.t3, 60, 400, 120), clampNum(s.t4, 60, 400, 105)];
       this.by = String(s.by || ''); this.gr = String(s.gr || ''); this.startT = this.now() - clampNum(s.ag, 0, 1e6, 0) * 1000;
       if (this.st === 'escape' || this.st === 'done') this.escT = this.now();
