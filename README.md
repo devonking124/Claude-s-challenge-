@@ -7,17 +7,29 @@ index.html          the whole game (Three.js r160 from jsDelivr, everything else
 wega-music.js       the music pack (Lap 1 + Lap 2 songs as base64 MP3 + the WegaMusic player)
 wega-music-lap3.js  Lap 3 song add-on ("Pillar John's Revenge"); optional, Lap 3 falls back to a sped-up Lap 2 song
 wega-relay.json     optional: which multiplayer server to use (empty = free public relays)
-server/             the multiplayer server (Node 20+): hosts the game and relays player data
+server/             the multiplayer server (Node 20+): hosts the game, relays player data and runs the shared runs
 render.yaml         one-click deploy of server/ on Render
 ```
 
 ## Multiplayer
 
 Press **ONLINE** in the lobby to see the server list (WEGA-1 to WEGA-6, up to 12 players each). The game
-joins the busiest server that isn't full. Everyone does their own run, together: you see other players'
-avatars and name tags (with their lap and how many Lil' Guys they have left) in the lobby and in whichever
-level you are both in, and you get a pop-up when someone joins, starts Lap 2/3 or escapes with the idol.
-Only your preset name, avatar and position are shared.
+joins the busiest server that isn't full. You see other players' avatars and name tags in the lobby and in
+whichever level you are both in.
+
+Everyone on a server plays **one shared run**:
+- **START** starts the run for everyone on the server who is in the lobby (or on the win / game-over screen).
+  If a run is already going, the button says **JOIN RUN** and drops you in where it is.
+- **Lil' Guys are shared:** when anyone collects one, it's gone for everybody, and the counter is the same for all.
+- When the last one is collected, everyone gets the same beacon. Whoever takes the **lap portal** takes the whole
+  run to the next lap (cutscene for everyone); whoever reaches the **beacon** brings everyone to the Idol Chamber.
+- The Lap 2 / Lap 3 **timer is shared** (with the +3 s bonuses), and so is Shoebench when it runs out.
+- Whoever **grabs the idol** starts the collapse for everyone; each player has to reach the exit.
+- If you die, **REJOIN RUN** puts you back where the run is now. **QUIT TO LOBBY** leaves the run.
+
+The server keeps track of the run (`server/authority.js`). On the free public relays there is no server, so the
+player with the lowest id hosts the run instead, and it is handed to the next player if they leave. If nobody
+answers at all, START just starts a normal solo run. Only your name, avatar, position and run progress are shared.
 
 Which server the game connects to, in order:
 1. `?relay=wss://...` in the page URL
@@ -38,6 +50,13 @@ the Render URL and it uses that server automatically. To keep playing from GitHu
 `wss://<your-service>.onrender.com/mqtt` in `wega-relay.json`. Free Render services sleep when idle, so the
 first connection after a while can take up to a minute (the game keeps retrying).
 
+## Your name
+
+Press **NAME** in the lobby and type your own name (up to 16 letters, numbers, spaces and `' ! . -`): use the
+on-screen keyboard (laser in VR, tap on a phone) or just type on a real keyboard, then **DONE** (Enter). **RANDOM**
+cycles the preset names and **NEW #** rolls a new player number. Rude names are refused. Your name is saved in the
+browser and shows on your name tag, in the server list and on the escape screen.
+
 ## Avatar
 
 Press **AVATAR** in the lobby: suit colour, tie / trim colour, head (fishbowl, blocky, Lil' Guy, robot,
@@ -52,6 +71,12 @@ see it online. Your choice is saved in the browser.
 - **Lap 2 (Inferno)** and **Lap 3 (Wega's Revenge)** are timed. If the timer hits 0:00, **Shoebench** comes
   flying after you; keep moving and finish the lap, because if it touches you it's game over.
   Lap 2 ends with a beacon plus a LAP 3 portal; Lap 3 ends with the beacon.
+
+## Edge guard
+
+Walking, sprinting, sliding or getting shoved can't take you off a ledge into the void: you stop at the edge
+(or slide along it). Jumping off is still up to you, and dropping down onto a lower platform still works.
+Turn it off in **SETTINGS > EDGE GUARD**.
 
 ## Play
 

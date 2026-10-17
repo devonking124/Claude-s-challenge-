@@ -2,7 +2,7 @@
   "name": "wegas-challenge-server",
   "version": "1.0.0",
   "private": true,
-  "description": "Multiplayer relay + static host for Wega's Challenge: The Idol (VR)",
+  "description": "Multiplayer relay, shared runs + static host for Wega's Challenge: The Idol (VR)",
   "main": "server.js",
   "scripts": { "start": "node server.js" },
   "engines": { "node": ">=20" },
