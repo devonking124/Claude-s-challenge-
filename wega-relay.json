@@ -1,0 +1,4 @@
+{
+  "_readme": "Optional. Put your own Wega server's relay URL here (e.g. wss://your-app.onrender.com/mqtt) to use it instead of the free public relays. Leave the list empty to use the public relays.",
+  "relays": []
+}

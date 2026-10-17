@@ -168,7 +168,7 @@ const CONFIG = {
   HUD_DIST: 1.4, HUD_DROP: 0.45, HUD_FOLLOW_DEG: 25, HUD_SMOOTH: 4,
   ANNOUNCE_DIST: 2.5, ANNOUNCE_IN: 0.25, ANNOUNCE_HOLD: 2.2, ANNOUNCE_OUT: 0.5,
   LIGHT_SCALE: Math.PI,       // r155+ physical lights: scale "legacy" intensities by PI
-  NAMES: ['GOLDEN SIGMA', 'SPEEDY SIGMA', 'THE CHOSEN ONE', "LIL' GUY", "WEGA'S NIGHTMARE", 'PLAYER'],
+  NAMES: ['GOLDEN SIGMA', 'SPEEDY SIGMA', 'THE CHOSEN ONE', "LIL' GUY", "WEGA'S NIGHTMARE", 'PLAYER', 'RORY HATER', 'SHOEBENCH FAN', 'IDOL HUNTER', 'PIZZA RUNNER'],
 
   COLORS: {
     void: 0x000000, fog1: 0x0a0610, fogLobby: 0x120818, fog2: 0x5a1000, fogChamber: 0x05051a, fogEscape: 0x020208,
@@ -314,6 +314,10 @@ const Save = {
       },
       nameIdx: 0,
       best: null,
+      avatar: { suit: 0, tie: 2, head: 0, hat: 0, fish: 0 },
+      online: true,
+      server: null,
+      num: 1 + Math.floor(Math.random() * 99),
     };
   },
   load() {
@@ -326,6 +330,10 @@ const Save = {
           Object.assign(this.data.settings, d.settings || {});
           if (typeof d.nameIdx === 'number') this.data.nameIdx = d.nameIdx % CONFIG.NAMES.length;
           if (typeof d.best === 'number') this.data.best = d.best;
+          if (d.avatar && typeof d.avatar === 'object') this.data.avatar = d.avatar;
+          if (typeof d.online === 'boolean') this.data.online = d.online;
+          if (typeof d.server === 'string') this.data.server = d.server;
+          if (Number.isInteger(d.num) && d.num > 0 && d.num < 100) this.data.num = d.num;
         }
       }
     } catch (e) { /* storage unavailable: defaults are fine */ }
@@ -2580,6 +2588,13 @@ const FPBody = {
     }
     g.traverse((o) => { o.frustumCulled = false; });
     scene.add(g);
+    this.suitMat = suit; this.tieMat = tie;
+    this.applyConfig(Save.data.avatar);
+  },
+  // your suit / tie colours from the avatar customizer
+  applyConfig(a) {
+    a = AV.sanitize(a);
+    this.suitMat.color.set(AV.COLORS[a.suit][1]); this.tieMat.color.set(AV.COLORS[a.tie][1]);
   },
   update(dt) {
     const show = G.lobby.visible || G.maze.visible || G.chamber.visible;
@@ -3298,6 +3313,11 @@ const Lobby = {
     this.menu = new Panel({ w: 1.5, h: 1.5, cw: 512, ch: 512, page: 'main', pages: LOBBY_PAGES });
     this.menu.mesh.position.set(0, 1.45, -2.4); this.menu.mesh.rotation.x = -0.1;
     g.add(this.menu.mesh); this.menu.redraw();
+    // avatar preview turntable next to the menu (shown on the AVATAR page)
+    this.preview = new AvatarRig(Save.data.avatar, 0); this.preview.root.visible = false; g.add(this.preview.root);
+    const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.5, 0.25, 20), new THREE.MeshLambertMaterial({ color: 0x2a1636, emissive: 0x120820 }));
+    ped.position.set(0, -0.12, 0); this.preview.pedestal = ped;
+    const pg = new THREE.Group(); pg.position.set(-1.35, 0.25, -2.5); pg.add(ped); pg.visible = false; g.add(pg); this.previewPed = pg;
     Mirror.init(g);
   },
   drawTitle() {
@@ -3314,7 +3334,16 @@ const Lobby = {
     drawText(ctx, st, 256, 290, { size: 22, fill: Music.ok() ? '#9dffb0' : '#ffd21f', stroke: '#000', lw: 4, spacing: 0.08 });
     this.titleTex.needsUpdate = true;
   },
+  showPreview(on) { if (this.preview) { this.preview.root.visible = on; this.previewPed.visible = on; } },
+  onAvatarChanged() {
+    const a = AV.sanitize(Save.data.avatar);
+    if (this.preview) this.preview.setConfig(a);
+    Avatar.setConfig(a); FPBody.applyConfig(a); Net.heartbeat();
+  },
   update(dt) {
+    if (this.netVer !== Net.version && (this.menu.page === 'online' || this.menu.page === 'main')) { this.netVer = Net.version; this.menu.redraw(); }
+    if (this.preview && this.preview.root.visible !== (this.menu.page === 'avatar')) this.showPreview(this.menu.page === 'avatar');
+    if (this.preview && this.preview.root.visible) this.preview.pose({ x: -1.35, y: 0.25, z: -2.5, yaw: Clock.real * 0.8, speed: 0, grounded: true }, dt);
     this.title.position.y = 5.0 + Math.sin(Clock.real * 0.9) * 0.15;
     this.title.rotation.z = Math.sin(Clock.real * 0.6) * 0.015;
     Mirror.update();
@@ -3326,12 +3355,15 @@ const LOBBY_PAGES = {
     p.bg();
     drawText(ctx, "— WEGA'S CHALLENGE —", 256, 38, { size: 22, style: 'italic 900', font: FONT_IMPACT, fill: '#e6c8ff', stroke: '#000', lw: 4, spacing: 0.12 });
     p.button('start', 96, 66, 320, 84, 'START', () => Game.startRun(), { size: 46, style: 'italic 900', font: FONT_IMPACT, fill: '#5a1a90', spacing: 0.15 });
-    p.button('howto', 96, 166, 320, 54, 'HOW TO PLAY', () => p.setPage('howto'), { size: 26 });
-    p.button('settings', 96, 232, 320, 54, 'SETTINGS', () => p.setPage('settings'), { size: 26 });
-    p.button('name', 46, 298, 420, 54, 'NAME: ' + playerName(), () => { Save.data.nameIdx = (Save.data.nameIdx + 1) % CONFIG.NAMES.length; Save.save(); }, { size: 24 });
-    drawText(ctx, 'BEST TIME: ' + (Save.data.best != null ? fmtTime(Save.data.best) : '--:--'), 256, 388, { size: 26, fill: '#ffd21f', stroke: '#000', lw: 5 });
-    drawText(ctx, 'DIFFICULTY: ' + diff().label, 256, 424, { size: 20, fill: '#e6d0ff', stroke: '#000', lw: 4 });
-    drawText(ctx, XR.inVR ? 'POINT + TRIGGER TO CLICK' : 'AIM CROSSHAIR + CLICK', 256, 470, { size: 17, fill: '#b9a0d0', stroke: '#000', lw: 3 });
+    p.button('howto', 46, 160, 205, 50, 'HOW TO PLAY', () => p.setPage('howto'), { size: 21 });
+    p.button('settings', 261, 160, 205, 50, 'SETTINGS', () => p.setPage('settings'), { size: 21 });
+    p.button('avatar', 46, 220, 205, 50, 'AVATAR', () => { p.setPage('avatar'); Lobby.showPreview(true); }, { size: 21 });
+    p.button('online', 261, 220, 205, 50, Net.status === 'online' && Net.server ? Net.server + ' (' + Net.count(Net.server) + ')' : 'ONLINE', () => p.setPage('online'), { size: 21 });
+    p.button('name', 46, 280, 420, 50, 'NAME: ' + playerName() + ' #' + Save.data.num, () => { Save.data.nameIdx = (Save.data.nameIdx + 1) % CONFIG.NAMES.length; Save.save(); Net.heartbeat(); }, { size: 22 });
+    drawText(ctx, 'BEST TIME: ' + (Save.data.best != null ? fmtTime(Save.data.best) : '--:--'), 256, 362, { size: 26, fill: '#ffd21f', stroke: '#000', lw: 5 });
+    drawText(ctx, 'DIFFICULTY: ' + diff().label, 256, 398, { size: 20, fill: '#e6d0ff', stroke: '#000', lw: 4 });
+    drawText(ctx, Net.statusText(), 256, 434, { size: 17, fill: Net.status === 'online' ? '#9dffb0' : '#ffb0b0', stroke: '#000', lw: 3, maxWidth: 470 });
+    drawText(ctx, XR.inVR ? 'POINT + TRIGGER TO CLICK' : IS_TOUCH ? 'TAP A BUTTON' : 'AIM CROSSHAIR + CLICK', 256, 474, { size: 17, fill: '#b9a0d0', stroke: '#000', lw: 3 });
   },
   howto(ctx, p) {
     p.bg();
@@ -3354,6 +3386,48 @@ const LOBBY_PAGES = {
     p.button('back', 176, 458, 160, 40, 'BACK', () => p.setPage('main'), { size: 22 });
   },
   settings(ctx, p) { drawSettingsPage(ctx, p, () => p.setPage('main')); },
+  // avatar customization (live preview on the turntable + in the mirror)
+  avatar(ctx, p) {
+    p.bg();
+    drawText(ctx, 'AVATAR', 256, 36, { size: 32, style: 'italic 900', font: FONT_IMPACT, fill: '#fff', stroke: '#000', lw: 5, spacing: 0.15 });
+    const a = AV.sanitize(Save.data.avatar), n = AV.sizes();
+    const rows = [['suit', 'SUIT'], ['tie', 'TIE + TRIM'], ['head', 'HEAD'], ['hat', 'HAT'], ['fish', 'BOWL FISH']];
+    rows.forEach(([k, label], i) => {
+      const y = 70 + i * 56;
+      if (i % 2 === 0) { ctx.fillStyle = 'rgba(255,255,255,0.04)'; ctx.fillRect(20, y - 4, 472, 52); }
+      drawText(ctx, label, 34, y + 22, { size: 20, align: 'left', fill: k === 'fish' && a.head !== 0 ? '#7a6a8a' : '#e6d0ff', stroke: '#000', lw: 3 });
+      if (k === 'suit' || k === 'tie') { roundedRect(ctx, 192, y + 8, 28, 28, 6); ctx.fillStyle = '#' + AV.COLORS[a[k]][1].toString(16).padStart(6, '0'); ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke(); }
+      const step = (d) => { a[k] = (a[k] + d + n[k]) % n[k]; Save.data.avatar = a; Save.save(); Lobby.onAvatarChanged(); };
+      p.button('aL' + i, 236, y + 4, 44, 40, '<', () => step(-1), { size: 22, r: 8 });
+      drawText(ctx, AV.label(k, a[k]), 362, y + 24, { size: 19, fill: '#fff', stroke: '#000', lw: 3, maxWidth: 150 });
+      p.button('aR' + i, 444, y + 4, 44, 40, '>', () => step(1), { size: 22, r: 8 });
+    });
+    p.button('rand', 46, 360, 205, 50, 'RANDOM', () => { Save.data.avatar = AV.random(); Save.save(); Lobby.onAvatarChanged(); }, { size: 22 });
+    p.button('back', 261, 360, 205, 50, 'BACK', () => { p.setPage('main'); Lobby.showPreview(false); }, { size: 22 });
+    drawText(ctx, 'CHECK YOURSELF OUT IN THE MIRROR', 256, 440, { size: 16, fill: '#cbb6e0', stroke: '#000', lw: 3 });
+    drawText(ctx, 'OTHER PLAYERS SEE THIS ONLINE', 256, 470, { size: 16, fill: '#cbb6e0', stroke: '#000', lw: 3 });
+  },
+  // server browser
+  online(ctx, p) {
+    p.bg();
+    drawText(ctx, 'SERVERS', 256, 34, { size: 32, style: 'italic 900', font: FONT_IMPACT, fill: '#fff', stroke: '#000', lw: 5, spacing: 0.15 });
+    drawText(ctx, Net.statusText(), 256, 66, { size: 16, fill: Net.status === 'online' ? '#9dffb0' : '#ffb0b0', stroke: '#000', lw: 3, maxWidth: 480 });
+    const on = Net.status === 'online';
+    Net.SERVERS.forEach((s, i) => {
+      const y = 86 + i * 40, here = s === Net.server, cnt = on ? Net.count(s) : 0;
+      if (here) { roundedRect(ctx, 22, y, 468, 36, 8); ctx.fillStyle = 'rgba(80,255,140,0.12)'; ctx.fill(); }
+      drawText(ctx, s, 40, y + 18, { size: 20, align: 'left', fill: '#fff', stroke: '#000', lw: 3 });
+      drawText(ctx, on ? cnt + '/' + Net.MAX_PER_SERVER : '--', 270, y + 18, { size: 20, fill: cnt >= Net.MAX_PER_SERVER ? '#ff6060' : '#ffd21f', stroke: '#000', lw: 3 });
+      if (here) drawText(ctx, 'YOU ARE HERE', 410, y + 18, { size: 15, fill: '#9dffb0', stroke: '#000', lw: 3 });
+      else if (on) p.button('srv' + i, 350, y + 2, 120, 32, 'JOIN', () => Net.join(s), { size: 16, r: 8 });
+    });
+    const names = Net.players().slice(0, 4).map((r) => r.label());
+    drawText(ctx, names.length ? 'HERE: ' + names.join(', ') : (Net.server ? 'NOBODY ELSE HERE YET' : ''), 256, 340, { size: 14, fill: '#e6d0ff', stroke: '#000', lw: 3, maxWidth: 480 });
+    p.button('net', 46, 362, 205, 48, on || Net.status === 'connecting' ? 'GO OFFLINE' : 'GO ONLINE', () => { if (on || Net.status === 'connecting') Net.goOffline(); else Net.start(); }, { size: 20 });
+    p.button('back', 261, 362, 205, 48, 'BACK', () => p.setPage('main'), { size: 22 });
+    drawText(ctx, 'ONLY YOUR NAME, AVATAR + POSITION ARE SHARED.', 256, 432, { size: 13, fill: '#b9a0d0', stroke: '#000', lw: 3 });
+    drawText(ctx, Net.relayName ? 'VIA ' + Net.relayName.toUpperCase() : 'EVERYONE RUNS THEIR OWN RUN, TOGETHER', 256, 456, { size: 13, fill: '#b9a0d0', stroke: '#000', lw: 3, maxWidth: 480 });
+  },
 };
 function drawHowtoIcon(ctx, kind, x, y, s) {
   ctx.save();
@@ -3375,57 +3449,13 @@ function drawHowtoIcon(ctx, kind, x, y, s) {
 
 // ---------------- lobby mirror + fishbowl avatar ----------------
 const Avatar = {
-  group: null, parts: {}, fish: null,
-  init() {
-    const g = this.group = new THREE.Group();
-    const black = new THREE.MeshLambertMaterial({ color: 0x141414 }), white = new THREE.MeshLambertMaterial({ color: 0xeeeeee });
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.58, 0.24), black); g.add(torso);
-    const shirt = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.3), white); shirt.position.set(0, 0.12, 0.121); torso.add(shirt);
-    const tie = new THREE.Mesh(new THREE.PlaneGeometry(0.05, 0.24), new THREE.MeshBasicMaterial({ color: 0x8a2be2 })); tie.position.set(0, 0.1, 0.123); torso.add(tie);
-    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.8, 0.2), black), legR = legL.clone(); g.add(legL, legR);
-    const armL = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.11, 1), black), armR = armL.clone(); g.add(armL, armR);
-    const handL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.05, 0.11), black), handR = handL.clone(); g.add(handL, handR);
-    const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.2, 20, 14), new THREE.MeshLambertMaterial({ color: 0xbfefff, transparent: true, opacity: 0.32, depthWrite: false }));
-    const water = new THREE.Mesh(new THREE.SphereGeometry(0.185, 18, 10, 0, Math.PI * 2, Math.PI * 0.45, Math.PI * 0.55), new THREE.MeshLambertMaterial({ color: 0x3aa0ff, transparent: true, opacity: 0.35, depthWrite: false }));
-    bowl.add(water);
-    const fish = new THREE.Group();
-    const fbody = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), new THREE.MeshLambertMaterial({ color: 0xff7a1a })); fbody.scale.set(1.4, 1, 0.8); fish.add(fbody);
-    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.06, 6), new THREE.MeshLambertMaterial({ color: 0xff9a3a })); tail.rotation.z = Math.PI / 2; tail.position.x = -0.08; fish.add(tail);
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.008, 6, 4), new THREE.MeshBasicMaterial({ color: 0x000000 })); eye.position.set(0.045, 0.012, 0.025); fish.add(eye);
-    bowl.add(fish); this.fish = fish;
-    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.025, 6, 16), new THREE.MeshLambertMaterial({ color: 0x777777 })); collar.rotation.x = Math.PI / 2; collar.position.y = -0.17; bowl.add(collar);
-    g.add(bowl);
-    Object.assign(this.parts, { torso, legL, legR, armL, armR, handL, handR, bowl });
-    g.traverse((o) => o.layers.set(LAYER_AVATAR));
-    G.lobby.add(g);
-  },
+  rig: null,
+  init() { this.rig = new AvatarRig(Save.data.avatar, LAYER_AVATAR); G.lobby.add(this.rig.root); },
+  setConfig(a) { if (this.rig) this.rig.setConfig(a); },
   update() {
-    const P = this.parts;
-    camera.getWorldPosition(_v1);
-    const yaw = Rig.headYaw();
-    _q1.setFromAxisAngle(UP, yaw);
-    const feetY = Player.pos.y;
-    P.bowl.position.copy(_v1); P.bowl.quaternion.copy(camera.getWorldQuaternion(_q2));
-    _v2.set(0, 0, 0.06).applyQuaternion(_q1);
-    const chestY = Math.max(feetY + 0.9, _v1.y - 0.5);
-    P.torso.position.set(_v1.x + _v2.x, chestY, _v1.z + _v2.z); P.torso.quaternion.copy(_q1);
-    _v3.set(0.11, 0, 0).applyQuaternion(_q1);
-    const legY = feetY + Math.max(0.2, (chestY - 0.29 - feetY) / 2), legS = Math.max(0.3, chestY - 0.29 - feetY) / 0.8;
-    P.legL.position.set(P.torso.position.x - _v3.x, legY, P.torso.position.z - _v3.z); P.legL.scale.y = legS; P.legL.quaternion.copy(_q1);
-    P.legR.position.set(P.torso.position.x + _v3.x, legY, P.torso.position.z + _v3.z); P.legR.scale.y = legS; P.legR.quaternion.copy(_q1);
-    for (const side of ['left', 'right']) {
-      const s = side === 'left' ? -1 : 1;
-      const hand = side === 'left' ? P.handL : P.handR, arm = side === 'left' ? P.armL : P.armR;
-      _v4.set(s * 0.27, 0.22, 0).applyQuaternion(_q1).add(P.torso.position);   // shoulder
-      const hp = Hands.pos(side);
-      if (hp) { hand.position.copy(hp); const h = Hands.get(side); h.grip.getWorldQuaternion(hand.quaternion); }
-      else { _v5.set(s * 0.3, -0.35, -0.12).applyQuaternion(_q1); hand.position.copy(P.torso.position).add(_v5); hand.quaternion.copy(_q1); }
-      const len = Math.max(0.05, _v4.distanceTo(hand.position));
-      arm.position.copy(_v4).lerp(hand.position, 0.5); arm.scale.set(1, 1, len); arm.lookAt(hand.position);
-    }
-    const t = Clock.real;
-    this.fish.position.set(Math.cos(t * 1.3) * 0.07, Math.sin(t * 2.1) * 0.02 - 0.03, Math.sin(t * 1.3) * 0.07);
-    this.fish.rotation.y = -t * 1.3 - Math.PI / 2;
+    camera.getWorldPosition(_v1); camera.getWorldDirection(_v2);
+    const hands = XR.inVR ? [Hands.pos('left') && Hands.pos('left').clone(), Hands.pos('right') && Hands.pos('right').clone()] : null;
+    this.rig.pose({ x: _v1.x, y: Player.viewY, z: _v1.z, yaw: FPBody.yaw, headYaw: Rig.headYaw(), pitch: Math.asin(clamp(_v2.y, -1, 1)), speed: Player.hspeed, grounded: Player.grounded, hands }, 1 / 36);
   },
 };
 const Mirror = {
@@ -5059,6 +5089,488 @@ const Hazards = {
 };
 
 // =====================================================================================
+// AVATARS — customizable blocky avatar (suit, tie, head, hat, fish) built from primitives
+// =====================================================================================
+const AV = {
+  COLORS: [['BLACK', 0x1c1c22], ['WHITE', 0xeeeeee], ['PURPLE', 0x7a2be2], ['RED', 0xd01e1e], ['BLUE', 0x1e5ad8], ['GREEN', 0x1f9a4a], ['GOLD', 0xe0a420], ['PINK', 0xff6fb5]],
+  HEADS: ['FISHBOWL', 'BLOCKY', "LIL' GUY", 'ROBOT', 'PUMPKIN'],
+  HATS: ['NONE', 'WEGA CAP', 'TOP HAT', 'CROWN', 'PARTY HAT', 'HALO'],
+  FISH: [['ORANGE', 0xff7a1a], ['GOLD', 0xffd21f], ['BLUE', 0x3aa0ff], ['PINK', 0xff6fb5], ['GREEN', 0x3fdc6a], ['PURPLE', 0xa060ff]],
+  KEYS: ['suit', 'tie', 'head', 'hat', 'fish'],
+  def() { return { suit: 0, tie: 2, head: 0, hat: 0, fish: 0 }; },
+  sizes() { return { suit: this.COLORS.length, tie: this.COLORS.length, head: this.HEADS.length, hat: this.HATS.length, fish: this.FISH.length }; },
+  // never trust avatar data from the network (or old saves)
+  sanitize(a) {
+    const out = this.def(), n = this.sizes();
+    if (a && typeof a === 'object') for (const k of this.KEYS) { const v = a[k]; if (Number.isInteger(v) && v >= 0 && v < n[k]) out[k] = v; }
+    return out;
+  },
+  toArr(a) { return this.KEYS.map((k) => a[k]); },
+  fromArr(arr) { const o = {}; if (Array.isArray(arr)) this.KEYS.forEach((k, i) => { o[k] = arr[i]; }); return this.sanitize(o); },
+  random() { const n = this.sizes(), o = {}; for (const k of this.KEYS) o[k] = Math.floor(Math.random() * n[k]); return o; },
+  same(a, b) { return this.KEYS.every((k) => a[k] === b[k]); },
+  label(k, v) { return k === 'head' ? this.HEADS[v] : k === 'hat' ? this.HATS[v] : k === 'fish' ? this.FISH[v][0] : this.COLORS[v][0]; },
+};
+let AV_MAT = null, AV_GLASS = null;
+function avMats() {
+  if (!AV_MAT) {
+    AV_MAT = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x141414 });
+    AV_GLASS = new THREE.MeshLambertMaterial({ color: 0xbfefff, transparent: true, opacity: 0.3, depthWrite: false, emissive: 0x101820 });
+  }
+}
+// geometry part with baked vertex colour, placed by position/rotation/scale
+function avPart(list, geo, color, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, sx = 1, sy = 1, sz = 1) {
+  const m = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), new THREE.Vector3(sx, sy, sz));
+  geo.applyMatrix4(m);
+  for (const k of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv'].includes(k)) geo.deleteAttribute(k);
+  const g = geo.index ? geo.toNonIndexed() : geo;
+  if (g !== geo) geo.dispose();
+  const c = new THREE.Color(color), n = g.attributes.position.count, col = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b; }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  list.push(g);
+}
+function avMerge(list) { const g = mergeGeometries(list); list.forEach((x) => x.dispose()); return g; }
+
+class AvatarRig {
+  constructor(cfg, layer = 0) {
+    avMats();
+    this.layer = layer; this.cfg = AV.sanitize(cfg);
+    this.root = new THREE.Group();
+    this.phase = Math.random() * 6; this.t = 0;
+    this.build();
+  }
+  build() {
+    if (this.parts) this.disposeParts();
+    const a = this.cfg, SUIT = AV.COLORS[a.suit][1], TIE = AV.COLORS[a.tie][1], DARK = 0x0b0b0e, root = this.root;
+    const glove = a.suit === 0 ? 0xf0f0f0 : DARK;
+    // body (torso, hips, shirt, tie)
+    const b = [];
+    avPart(b, new THREE.BoxGeometry(0.44, 0.58, 0.24), SUIT, 0, 1.06, 0);
+    avPart(b, new THREE.BoxGeometry(0.4, 0.2, 0.22), SUIT, 0, 0.73, 0);
+    avPart(b, new THREE.BoxGeometry(0.13, 0.36, 0.01), a.suit === 1 ? 0x222222 : 0xf4f4f4, 0, 1.12, -0.125);
+    avPart(b, new THREE.BoxGeometry(0.05, 0.3, 0.012), TIE, 0, 1.1, -0.133);
+    this.body = new THREE.Mesh(avMerge(b), AV_MAT);
+    // legs + arms (animated pivots)
+    this.legs = []; this.arms = [];
+    for (const sx of [-1, 1]) {
+      const l = []; avPart(l, new THREE.BoxGeometry(0.17, 0.78, 0.19), SUIT, 0, -0.39, 0); avPart(l, new THREE.BoxGeometry(0.16, 0.09, 0.28), DARK, 0, -0.76, -0.05);
+      const leg = new THREE.Group(); leg.position.set(sx * 0.1, 0.8, 0); leg.add(new THREE.Mesh(avMerge(l), AV_MAT)); this.legs.push(leg);
+      const r = []; avPart(r, new THREE.BoxGeometry(0.12, 0.58, 0.13), SUIT, 0, -0.29, 0); avPart(r, new THREE.BoxGeometry(0.11, 0.11, 0.12), glove, 0, -0.63, 0);
+      const arm = new THREE.Group(); arm.position.set(sx * 0.29, 1.3, 0); arm.add(new THREE.Mesh(avMerge(r), AV_MAT)); this.arms.push(arm);
+    }
+    // head + hat on a neck pivot
+    this.head = new THREE.Group(); this.head.position.set(0, 1.36, 0);
+    const h = [];
+    let top = 0.4;
+    this.glass = null; this.fish = null;
+    if (a.head === 0) {            // fishbowl helmet with a little fish
+      avPart(h, new THREE.TorusGeometry(0.13, 0.025, 6, 16), 0x777777, 0, 0.02, 0, Math.PI / 2);
+      this.glass = new THREE.Mesh(new THREE.SphereGeometry(0.21, 18, 12), AV_GLASS); this.glass.position.y = 0.21; this.glass.renderOrder = 5;
+      const f = [], FC = AV.FISH[a.fish][1];
+      avPart(f, new THREE.SphereGeometry(0.045, 8, 6), FC, 0, 0, 0, 0, 0, 0, 1.4, 1, 0.8);
+      avPart(f, new THREE.ConeGeometry(0.035, 0.06, 6), FC, -0.08, 0, 0, 0, 0, Math.PI / 2);
+      avPart(f, new THREE.SphereGeometry(0.008, 4, 3), 0x000000, 0.045, 0.012, 0.025);
+      this.fish = new THREE.Mesh(avMerge(f), AV_MAT); this.fishPivot = new THREE.Group(); this.fishPivot.position.y = 0.19; this.fishPivot.add(this.fish); this.fish.position.x = 0.07;
+      top = 0.41;
+    } else if (a.head === 1) {     // blocky head with a smiley face
+      avPart(h, new THREE.BoxGeometry(0.32, 0.32, 0.32), 0xffcf9e, 0, 0.2, 0);
+      avPart(h, new THREE.BoxGeometry(0.05, 0.07, 0.01), 0x111111, -0.07, 0.24, -0.161); avPart(h, new THREE.BoxGeometry(0.05, 0.07, 0.01), 0x111111, 0.07, 0.24, -0.161);
+      avPart(h, new THREE.BoxGeometry(0.16, 0.03, 0.01), 0x111111, 0, 0.13, -0.161);
+      top = 0.36;
+    } else if (a.head === 2) {     // Lil' Guy head: peach, orange cap, closed happy eyes
+      avPart(h, new THREE.SphereGeometry(0.2, 12, 9), 0xffcf9e, 0, 0.2, 0);
+      avPart(h, new THREE.SphereGeometry(0.21, 12, 5, 0, Math.PI * 2, 0, Math.PI / 2), 0xff8a1a, 0, 0.23, 0, 0, 0, 0, 1, 0.9, 1);
+      avPart(h, new THREE.CylinderGeometry(0.23, 0.23, 0.03, 12), 0xff7a00, 0, 0.23, -0.06, 0, 0, 0, 1, 1, 1.3);
+      for (const sx of [-1, 1]) { avPart(h, new THREE.BoxGeometry(0.05, 0.015, 0.02), 0x1a0a00, sx * 0.07 - 0.015, 0.2, -0.19, 0, 0, 0.6); avPart(h, new THREE.BoxGeometry(0.05, 0.015, 0.02), 0x1a0a00, sx * 0.07 + 0.015, 0.2, -0.19, 0, 0, -0.6); }
+      avPart(h, new THREE.TorusGeometry(0.04, 0.01, 3, 6, Math.PI), 0x1a0a00, 0, 0.13, -0.19, 0, 0, Math.PI);
+      top = 0.42;
+    } else if (a.head === 3) {     // robot with a glowing visor and antenna
+      avPart(h, new THREE.BoxGeometry(0.34, 0.3, 0.3), 0x8a8f99, 0, 0.18, 0);
+      avPart(h, new THREE.BoxGeometry(0.28, 0.08, 0.02), 0x2ef6ff, 0, 0.21, -0.152);
+      avPart(h, new THREE.CylinderGeometry(0.01, 0.01, 0.14, 5), 0x555555, 0, 0.4, 0);
+      avPart(h, new THREE.SphereGeometry(0.03, 6, 4), 0xff2020, 0, 0.48, 0);
+      top = 0.33;
+    } else {                       // pumpkin
+      avPart(h, new THREE.SphereGeometry(0.22, 12, 9), 0xff7a10, 0, 0.2, 0, 0, 0, 0, 1, 0.85, 1);
+      avPart(h, new THREE.CylinderGeometry(0.025, 0.035, 0.08, 6), 0x2f6a1f, 0, 0.42, 0);
+      for (const sx of [-1, 1]) avPart(h, new THREE.ConeGeometry(0.04, 0.06, 3), 0x1a0800, sx * 0.08, 0.25, -0.2, Math.PI / 2, 0, 0);
+      avPart(h, new THREE.BoxGeometry(0.18, 0.04, 0.02), 0x1a0800, 0, 0.13, -0.205);
+      top = 0.39;
+    }
+    // hats
+    if (a.hat === 1) {             // purple Wega cap
+      avPart(h, new THREE.SphereGeometry(0.2, 12, 5, 0, Math.PI * 2, 0, Math.PI / 2), 0x7a2bd6, 0, top - 0.06, 0, 0, 0, 0, 1, 0.75, 1);
+      avPart(h, new THREE.CylinderGeometry(0.22, 0.22, 0.025, 12), 0x5a1aa8, 0, top - 0.06, -0.08, 0, 0, 0, 1, 1, 1.35);
+      avPart(h, new THREE.CylinderGeometry(0.055, 0.055, 0.01, 10), 0xffffff, 0, top + 0.02, -0.15, Math.PI / 2 - 0.5);
+    } else if (a.hat === 2) {      // top hat
+      avPart(h, new THREE.CylinderGeometry(0.24, 0.24, 0.02, 14), 0x111111, 0, top, 0);
+      avPart(h, new THREE.CylinderGeometry(0.15, 0.15, 0.26, 14), 0x111111, 0, top + 0.13, 0);
+      avPart(h, new THREE.CylinderGeometry(0.152, 0.152, 0.05, 14), TIE, 0, top + 0.04, 0);
+    } else if (a.hat === 3) {      // crown
+      avPart(h, new THREE.CylinderGeometry(0.16, 0.16, 0.1, 14, 1, true), 0xffcc33, 0, top + 0.03, 0);
+      for (let i = 0; i < 5; i++) { const an = i / 5 * Math.PI * 2; avPart(h, new THREE.ConeGeometry(0.035, 0.09, 5), 0xffcc33, Math.cos(an) * 0.15, top + 0.12, Math.sin(an) * 0.15); }
+      avPart(h, new THREE.SphereGeometry(0.03, 6, 4), 0xe01616, 0, top + 0.04, -0.16);
+    } else if (a.hat === 4) {      // party hat
+      avPart(h, new THREE.ConeGeometry(0.13, 0.32, 12), TIE, 0, top + 0.15, 0);
+      avPart(h, new THREE.SphereGeometry(0.04, 8, 6), 0xffffff, 0, top + 0.32, 0);
+    } else if (a.hat === 5) {      // halo
+      avPart(h, new THREE.TorusGeometry(0.15, 0.022, 6, 20), 0xffe066, 0, top + 0.13, 0, Math.PI / 2);
+    }
+    this.headMesh = new THREE.Mesh(avMerge(h), AV_MAT);
+    this.head.add(this.headMesh);
+    if (this.glass) this.head.add(this.glass);
+    if (this.fishPivot && a.head === 0) this.head.add(this.fishPivot);
+    root.add(this.body, this.head, ...this.legs, ...this.arms);
+    this.parts = [this.body, this.headMesh, ...this.legs.map((l) => l.children[0]), ...this.arms.map((x) => x.children[0])];
+    if (this.fish) this.parts.push(this.fish);
+    root.traverse((o) => { o.layers.set(this.layer); o.frustumCulled = false; });
+  }
+  disposeParts() {
+    for (const m of this.parts) m.geometry.dispose();
+    if (this.glass) this.glass.geometry.dispose();
+    while (this.root.children.length) this.root.remove(this.root.children[0]);
+    this.fishPivot = null;
+  }
+  setConfig(cfg) { const c = AV.sanitize(cfg); if (AV.same(c, this.cfg)) return; this.cfg = c; this.build(); }
+  dispose() { this.disposeParts(); if (this.root.parent) this.root.parent.remove(this.root); }
+  // o: {x,y,z, yaw (body), headYaw, pitch, speed, grounded, hands: [leftPos|null, rightPos|null]}
+  pose(o, dt) {
+    this.t += dt;
+    const r = this.root;
+    r.position.set(o.x, o.y, o.z); r.rotation.set(0, o.yaw, 0);
+    this.head.rotation.set(clamp(o.pitch || 0, -1.1, 1.1) * 0.8, wrapAngle((o.headYaw != null ? o.headYaw : o.yaw) - o.yaw), 0, 'YXZ');
+    let swing = 0;
+    if (o.grounded !== false && o.speed > 0.3) { this.phase += o.speed * dt * 2.1; swing = Math.sin(this.phase) * 0.75 * Math.min(1, o.speed / 5); }
+    const air = o.grounded === false;
+    this.legs[0].rotation.x = damp(this.legs[0].rotation.x, air ? 0.55 : swing, 14, dt);
+    this.legs[1].rotation.x = damp(this.legs[1].rotation.x, air ? -0.2 : -swing, 14, dt);
+    for (let i = 0; i < 2; i++) {
+      const arm = this.arms[i], hand = o.hands && o.hands[i];
+      if (hand) {
+        // aim the arm (hangs along -Y) from the shoulder at the tracked hand
+        r.updateMatrixWorld(true);
+        arm.getWorldPosition(_v6);
+        _v7.copy(hand).sub(_v6);
+        _q2.copy(r.quaternion).invert(); _v7.applyQuaternion(_q2);
+        if (_v7.lengthSq() > 1e-4) { _v7.normalize(); _q1.setFromUnitVectors(_v8.set(0, -1, 0), _v7); arm.quaternion.slerp(_q1, 1 - Math.exp(-20 * dt)); }
+      } else {
+        const target = (i === 0 ? -swing : swing) * 0.8 + (air ? -0.6 : 0);
+        arm.quaternion.identity(); arm.rotation.x = damp(arm.rotation.x, target, 14, dt);
+      }
+    }
+    if (this.fishPivot) { this.fishPivot.rotation.y = -this.t * 1.3; this.fish.position.y = Math.sin(this.t * 2.1) * 0.02; }
+  }
+}
+
+// =====================================================================================
+// NETWORK — tiny MQTT 3.1.1 client over WebSocket (QoS 0) + multiplayer presence/state
+// =====================================================================================
+class MiniMQTT {
+  constructor(url, clientId) {
+    this.url = url; this.clientId = clientId; this.ws = null; this.buf = new Uint8Array(0); this.pid = 1;
+    this.onmessage = null; this.onclose = null; this.open = false; this.pingT = null;
+    this.enc = new TextEncoder(); this.dec = new TextDecoder();
+  }
+  static varint(n) { const out = []; do { let b = n % 128; n = Math.floor(n / 128); if (n > 0) b |= 128; out.push(b); } while (n > 0); return out; }
+  str(s) { const b = this.enc.encode(s); return [b.length >> 8, b.length & 255, ...b]; }
+  packet(type, body) { const head = [type, ...MiniMQTT.varint(body.length)]; const out = new Uint8Array(head.length + body.length); out.set(head, 0); out.set(body, head.length); return out; }
+  connect(timeoutMs = 6000) {
+    return new Promise((resolve, reject) => {
+      let done = false;
+      const fail = (e) => { if (!done) { done = true; reject(e); } try { this.ws && this.ws.close(); } catch (er) { /* ignore */ } };
+      try { this.ws = new WebSocket(this.url, ['mqtt']); } catch (e) { fail(e); return; }
+      this.ws.binaryType = 'arraybuffer';
+      const timer = setTimeout(() => fail(new Error('timeout')), timeoutMs);
+      this.ws.onopen = () => {
+        const body = [...this.str('MQTT'), 4, 0x02, 0, 60, ...this.str(this.clientId)];
+        this.ws.send(this.packet(0x10, body));
+      };
+      this.ws.onerror = () => fail(new Error('socket error'));
+      this.ws.onclose = () => { clearTimeout(timer); clearInterval(this.pingT); const was = this.open; this.open = false; if (!done) fail(new Error('closed')); else if (was && this.onclose) this.onclose(); };
+      this.ws.onmessage = (ev) => {
+        const chunk = new Uint8Array(ev.data), nb = new Uint8Array(this.buf.length + chunk.length);
+        nb.set(this.buf, 0); nb.set(chunk, this.buf.length); this.buf = nb;
+        this.parse((type, flags, body) => {
+          if (type === 2) { // CONNACK
+            clearTimeout(timer);
+            if (body[1] === 0 && !done) { done = true; this.open = true; this.pingT = setInterval(() => this.send(new Uint8Array([0xC0, 0])), 25000); resolve(this); }
+            else fail(new Error('refused ' + body[1]));
+          } else if (type === 3) { // PUBLISH
+            const tl = (body[0] << 8) | body[1], topic = this.dec.decode(body.subarray(2, 2 + tl));
+            const qos = (flags >> 1) & 3, start = 2 + tl + (qos ? 2 : 0);
+            if (this.onmessage) { try { this.onmessage(topic, body.subarray(start)); } catch (e) { console.warn('[Net] message handler', e); } }
+          }
+        });
+      };
+    });
+  }
+  parse(cb) {
+    let b = this.buf, o = 0;
+    while (b.length - o >= 2) {
+      let mult = 1, len = 0, i = o + 1, byte;
+      do { if (i >= b.length) { this.buf = b.slice(o); return; } byte = b[i++]; len += (byte & 127) * mult; mult *= 128; } while (byte & 128);
+      if (b.length - i < len) break;
+      cb(b[o] >> 4, b[o] & 15, b.subarray(i, i + len));
+      o = i + len;
+    }
+    this.buf = b.slice(o);
+  }
+  send(p) { if (this.ws && this.ws.readyState === 1) this.ws.send(p); }
+  subscribe(topic) { const id = this.pid++ & 0xffff || 1; this.send(this.packet(0x82, [id >> 8, id & 255, ...this.str(topic), 0])); }
+  unsubscribe(topic) { const id = this.pid++ & 0xffff || 1; this.send(this.packet(0xA2, [id >> 8, id & 255, ...this.str(topic)])); }
+  publish(topic, text) { const t = this.str(topic), p = this.enc.encode(text), body = new Uint8Array(t.length + p.length); body.set(t, 0); body.set(p, t.length); this.send(this.packet(0x30, body)); }
+  close() { try { this.send(new Uint8Array([0xE0, 0])); this.ws && this.ws.close(); } catch (e) { /* ignore */ } this.open = false; clearInterval(this.pingT); }
+}
+
+// a remote player: validated profile + interpolated state + avatar + name tag
+class Remote {
+  constructor(id) {
+    this.id = id; this.name = 'PLAYER'; this.num = 0; this.av = AV.def(); this.level = 0; this.lap = 1; this.left = 0; this.st = '';
+    this.lastSeen = performance.now(); this.hasState = false; this.rig = null;
+    this.tgt = { x: 0, y: 0, z: 0, yaw: 0, hy: 0, pitch: 0, speed: 0, grounded: true, vr: false, hands: [new THREE.Vector3(), new THREE.Vector3()] };
+    this.cur = { x: 0, y: 0, z: 0, yaw: 0, hy: 0, pitch: 0 };
+    this.tagCanvas = makeCanvas(256, 80); this.tagTex = canvasTex(this.tagCanvas); this.tagKey = '';
+    this.tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.tagTex, transparent: true, depthWrite: false, fog: false }));
+    this.tag.scale.set(1.2, 0.375, 1); this.tag.renderOrder = 6;
+  }
+  label() { return this.name + ' #' + this.num; }
+  status() { return this.level === 1 ? 'IN THE LOBBY' : this.level >= 2 && this.level <= 4 ? `LAP ${this.level - 1} · ${this.left} LEFT` : this.level === 5 ? (this.st === 'ESCAPE' ? 'ESCAPING!' : 'IDOL CHAMBER') : this.st === 'WIN' ? 'ESCAPED!' : 'BETWEEN LIVES'; }
+  drawTag() {
+    const key = this.label() + '|' + this.status(); if (key === this.tagKey) return; this.tagKey = key;
+    const ctx = this.tagCanvas.getContext('2d'); ctx.clearRect(0, 0, 256, 80);
+    roundedRect(ctx, 4, 6, 248, 68, 16); ctx.fillStyle = 'rgba(12,4,22,0.72)'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = AV.COLORS[this.av.tie][1] === 0x1c1c22 ? '#8a2be2' : '#' + AV.COLORS[this.av.tie][1].toString(16).padStart(6, '0'); ctx.stroke();
+    drawText(ctx, this.label(), 128, 30, { size: 24, fill: '#fff', stroke: '#000', lw: 4, maxWidth: 236 });
+    drawText(ctx, this.status(), 128, 58, { size: 16, fill: '#ffd21f', stroke: '#000', lw: 3, maxWidth: 236 });
+    this.tagTex.needsUpdate = true;
+  }
+  setProfile(p) {
+    this.lastSeen = performance.now();
+    if (typeof p.n === 'string') this.name = p.n.toUpperCase().replace(/[^A-Z0-9 '!.\-]/g, '').slice(0, 18) || 'PLAYER';
+    if (Number.isInteger(p.k) && p.k >= 0 && p.k < 100) this.num = p.k;
+    const av = AV.fromArr(p.a);
+    if (!AV.same(av, this.av)) { this.av = av; if (this.rig) this.rig.setConfig(av); }
+    if (Number.isInteger(p.l) && p.l >= 0 && p.l <= 5) this.level = p.l;
+    if (Number.isInteger(p.left) && p.left >= 0 && p.left <= 999) this.left = p.left;
+    this.st = typeof p.s === 'string' ? p.s.slice(0, 16) : '';
+  }
+  setState(a) {
+    if (!Array.isArray(a) || a.length < 9) return;
+    for (let i = 0; i < a.length && i < 15; i++) if (typeof a[i] !== 'number' || !isFinite(a[i]) || Math.abs(a[i]) > 5000) return;
+    this.lastSeen = performance.now();
+    const t = this.tgt;
+    t.x = a[0]; t.y = a[1]; t.z = a[2]; t.yaw = a[3]; t.hy = a[4]; t.pitch = a[5]; t.speed = clamp(a[6], 0, 30);
+    const flags = a[7] | 0; t.grounded = !!(flags & 1); t.vr = !!(flags & 2);
+    if (Number.isInteger(a[8]) && a[8] >= 0 && a[8] <= 5) this.level = a[8];
+    if (t.vr && a.length >= 15) { t.hands[0].set(a[9], a[10], a[11]); t.hands[1].set(a[12], a[13], a[14]); }
+    const c = this.cur;
+    if (!this.hasState || Math.hypot(c.x - t.x, c.y - t.y, c.z - t.z) > 8) { c.x = t.x; c.y = t.y; c.z = t.z; c.yaw = t.yaw; c.hy = t.hy; c.pitch = t.pitch; }
+    this.hasState = true;
+  }
+  update(dt, myLevel, show) {
+    const visible = show && this.hasState && myLevel > 0 && this.level === myLevel;
+    if (!visible) { if (this.rig) this.rig.root.visible = false; this.tag.visible = false; return; }
+    if (!this.rig) { this.rig = new AvatarRig(this.av, 0); G.fx.add(this.rig.root); G.fx.add(this.tag); }
+    this.rig.root.visible = true; this.tag.visible = true;
+    const c = this.cur, t = this.tgt, k = 1 - Math.exp(-12 * dt);
+    c.x += (t.x - c.x) * k; c.y += (t.y - c.y) * k; c.z += (t.z - c.z) * k;
+    c.yaw += wrapAngle(t.yaw - c.yaw) * k; c.hy += wrapAngle(t.hy - c.hy) * k; c.pitch += (t.pitch - c.pitch) * k;
+    this.rig.pose({ x: c.x, y: c.y, z: c.z, yaw: c.yaw, headYaw: c.hy, pitch: c.pitch, speed: t.speed, grounded: t.grounded, hands: t.vr ? t.hands : null }, dt);
+    this.tag.position.set(c.x, c.y + 2.25, c.z);
+    this.drawTag();
+  }
+  dispose() {
+    if (this.rig) this.rig.dispose();
+    if (this.tag.parent) this.tag.parent.remove(this.tag);
+    this.tagTex.dispose(); this.tag.material.dispose();
+  }
+}
+
+const Net = {
+  NS: 'wega-idol-vr/v1', SERVERS: ['WEGA-1', 'WEGA-2', 'WEGA-3', 'WEGA-4', 'WEGA-5', 'WEGA-6'], MAX_PER_SERVER: 12, MAX_SHOWN: 8,
+  PUBLIC_RELAYS: [
+    { url: 'wss://broker.emqx.io:8084/mqtt', name: 'EMQX public relay' },
+    { url: 'wss://broker.hivemq.com:8884/mqtt', name: 'HiveMQ public relay' },
+    { url: 'wss://test.mosquitto.org:8081/mqtt', name: 'Mosquitto public relay' },
+  ],
+  relays: [], client: null, status: 'offline', relayName: '', id: '', server: null, started: false, connecting: false,
+  heard: new Map(),      // server -> Map(id -> {t, name, num, level, left, st})
+  remotes: new Map(), sendT: 0, hbT: 0, pruneT: 0, version: 0, lastSent: null,
+  init() {
+    this.id = Array.from(crypto.getRandomValues(new Uint8Array(5)), (b) => b.toString(36).padStart(2, '0')).join('').slice(0, 10);
+    for (const s of this.SERVERS) this.heard.set(s, new Map());
+    window.addEventListener('pagehide', () => this.shutdown());
+  },
+  myName() { return playerName() + ' #' + Save.data.num; },
+  // relay list: ?relay=..., then wega-relay.json next to index.html (your own server), then the public relays
+  async loadRelays() {
+    const list = [];
+    const q = new URLSearchParams(window.location.search).get('relay');
+    if (q && /^wss?:\/\//.test(q)) list.push({ url: q, name: 'custom relay' });
+    try {
+      const r = await fetch('wega-relay.json', { cache: 'no-store' });
+      if (r.ok) { const j = await r.json(); if (j && Array.isArray(j.relays)) for (const u of j.relays) if (typeof u === 'string' && /^wss?:\/\//.test(u)) list.push({ url: u, name: j.name || 'own server' }); }
+    } catch (e) { /* no config file: fine */ }
+    if (!(window.location.protocol === 'http:' && list.length)) list.push(...this.PUBLIC_RELAYS);
+    this.relays = list;
+  },
+  async start() {
+    if (/[?&]offline\b/.test(window.location.search)) { this.status = 'offline'; return; }
+    if (this.connecting || this.status === 'online') return;
+    Save.data.online = true; Save.save();
+    this.connecting = true; this.status = 'connecting'; this.version++;
+    if (!this.relays.length) await this.loadRelays();
+    for (const r of this.relays) {
+      try {
+        const c = new MiniMQTT(r.url, 'wv' + this.id);
+        await c.connect();
+        this.client = c; this.relayName = r.name; this.status = 'online'; this.retries = 0;
+        c.onmessage = (t, p) => this.onMessage(t, p);
+        c.onclose = () => this.onLost();
+        c.subscribe(this.NS + '/s/+/hi');
+        this.connecting = false; this.version++;
+        // listen briefly, then join the busiest server that isn't full (or your last one)
+        setTimeout(() => { if (this.status === 'online' && !this.server) this.join(this.pickServer()); }, 2200);
+        return;
+      } catch (e) { console.warn('[Net] relay failed:', r.url, e.message); }
+    }
+    this.connecting = false; this.status = 'failed'; this.version++;
+    // keep trying quietly in the background (a sleeping free-tier server can take a while to wake up)
+    this.retries = (this.retries || 0) + 1;
+    if (this.retries <= 4) setTimeout(() => { if (Save.data.online && this.status === 'failed') this.start(); }, 15000 * this.retries);
+  },
+  onLost() {
+    const was = this.server;
+    this.client = null; this.status = 'failed'; this.server = null; this.clearRemotes(); this.version++;
+    UI.toast('MULTIPLAYER DISCONNECTED');
+    // try again shortly, then rejoin
+    setTimeout(() => { if (Save.data.online && this.status !== 'online') this.start().then(() => { if (was && this.status === 'online') this.join(was); }); }, 4000);
+  },
+  goOffline() {
+    this.leave(); if (this.client) { this.client.onclose = null; this.client.close(); }
+    this.client = null; this.status = 'offline'; Save.data.online = false; Save.save(); this.version++;
+  },
+  shutdown() { if (this.client && this.server) this.event('bye'); if (this.client) { this.client.onclose = null; this.client.close(); } },
+  count(server) {
+    const m = this.heard.get(server), now = performance.now(); let n = 0;
+    if (m) for (const v of m.values()) if (now - v.t < 9000) n++;
+    if (server === this.server) n++;
+    return n;
+  },
+  pickServer() {
+    const last = Save.data.server;
+    if (last && this.SERVERS.includes(last) && this.count(last) < this.MAX_PER_SERVER) return last;
+    let best = this.SERVERS[0], bn = -1;
+    for (const s of this.SERVERS) { const n = this.count(s); if (n < this.MAX_PER_SERVER && n > bn) { bn = n; best = s; } }
+    return best;
+  },
+  join(server) {
+    if (!this.client || !this.SERVERS.includes(server) || server === this.server) return;
+    if (this.count(server) >= this.MAX_PER_SERVER) { UI.toast(server + ' IS FULL'); return; }
+    this.leave();
+    this.server = server; Save.data.server = server; Save.save();
+    this.client.subscribe(`${this.NS}/s/${server}/p/+`);
+    this.client.subscribe(`${this.NS}/s/${server}/ev`);
+    this.heartbeat(); this.event('join');
+    UI.toast('ONLINE: ' + server); this.version++;
+  },
+  leave() {
+    if (!this.client || !this.server) { this.server = null; return; }
+    this.event('bye');
+    this.client.unsubscribe(`${this.NS}/s/${this.server}/p/+`);
+    this.client.unsubscribe(`${this.NS}/s/${this.server}/ev`);
+    this.server = null; this.clearRemotes(); this.version++;
+  },
+  clearRemotes() { for (const r of this.remotes.values()) r.dispose(); this.remotes.clear(); },
+  levelCode() {
+    if (G.lobby.visible) return 1;
+    if (G.maze.visible) return 1 + (Maze.lap || 1);
+    if (G.chamber.visible) return 5;
+    return 0;
+  },
+  heartbeat() {
+    if (!this.client || !this.server) return;
+    const p = { n: playerName(), k: Save.data.num, a: AV.toArr(Save.data.avatar), l: this.levelCode(), left: Collect.left | 0, s: SM.curName.slice(0, 16), v: 1 };
+    this.client.publish(`${this.NS}/s/${this.server}/hi`, JSON.stringify(Object.assign(p, { i: this.id })));
+  },
+  event(kind, extra) {
+    if (!this.client || !this.server) return;
+    this.client.publish(`${this.NS}/s/${this.server}/ev`, JSON.stringify(Object.assign({ i: this.id, k: kind, n: playerName(), g: Save.data.num }, extra || {})));
+  },
+  sendState() {
+    if (!this.client || !this.server) return;
+    camera.getWorldPosition(_v1);
+    const r2 = (v) => Math.round(v * 100) / 100;
+    const yaw = FPBody.yaw, hy = Rig.headYaw();
+    camera.getWorldDirection(_v2);
+    const pitch = Math.asin(clamp(_v2.y, -1, 1));
+    const st = [r2(Player.pos.x), r2(Player.viewY), r2(Player.pos.z), r2(yaw), r2(hy), r2(pitch), r2(Player.hspeed), (Player.grounded ? 1 : 0) | (XR.inVR ? 2 : 0), this.levelCode()];
+    if (XR.inVR) {
+      const l = Hands.pos('left'), rp = Hands.pos('right');
+      const L = l ? [r2(l.x), r2(l.y), r2(l.z)] : [r2(_v1.x - 0.25), r2(_v1.y - 0.6), r2(_v1.z)];
+      const R = rp ? [r2(rp.x), r2(rp.y), r2(rp.z)] : [r2(_v1.x + 0.25), r2(_v1.y - 0.6), r2(_v1.z)];
+      st.push(...L, ...R);
+    }
+    const msg = JSON.stringify(st);
+    // standing still in the lobby: only resend about once a second
+    if (msg === this.lastSent && this.sendT > -0.9) return;
+    this.lastSent = msg; this.sendT = 0;
+    this.client.publish(`${this.NS}/s/${this.server}/p/${this.id}`, msg);
+  },
+  onMessage(topic, bytes) {
+    if (bytes.length > 2048) return;
+    const parts = topic.split('/');               // wega-idol-vr / v1 / s / <server> / (hi | ev | p / <id>)
+    if (parts.length < 5 || parts[2] !== 's') return;
+    const server = parts[3]; if (!this.SERVERS.includes(server)) return;
+    let data; try { data = JSON.parse(new TextDecoder().decode(bytes)); } catch (e) { return; }
+    if (parts[4] === 'hi') {
+      if (!data || typeof data.i !== 'string' || data.i === this.id || data.i.length > 16) return;
+      const m = this.heard.get(server);
+      if (!m.has(data.i) && m.size > 64) return;
+      m.set(data.i, { t: performance.now() });
+      if (server === this.server) this.remote(data.i).setProfile(data);
+      this.version++;
+    } else if (parts[4] === 'p' && server === this.server) {
+      const id = parts[5]; if (!id || id === this.id || id.length > 16) return;
+      if (!this.remotes.has(id) && this.remotes.size >= 32) return;
+      this.remote(id).setState(data);
+    } else if (parts[4] === 'ev' && server === this.server) {
+      if (!data || typeof data.i !== 'string' || data.i === this.id) return;
+      const who = (typeof data.n === 'string' ? data.n.toUpperCase().replace(/[^A-Z0-9 '!.\-]/g, '').slice(0, 18) : 'PLAYER') + (Number.isInteger(data.g) ? ' #' + data.g : '');
+      if (data.k === 'join') UI.toast(who + ' JOINED');
+      else if (data.k === 'bye') { UI.toast(who + ' LEFT'); const r = this.remotes.get(data.i); if (r) { r.dispose(); this.remotes.delete(data.i); } this.heard.get(server).delete(data.i); this.version++; }
+      else if (data.k === 'win' && typeof data.t === 'number') UI.toast(who + ' ESCAPED IN ' + fmtTime(data.t) + '!');
+      else if (data.k === 'lap' && (data.lap === 2 || data.lap === 3)) UI.toast(who + ' ENTERED LAP ' + data.lap + '!');
+    }
+  },
+  remote(id) { let r = this.remotes.get(id); if (!r) { r = new Remote(id); this.remotes.set(id, r); } return r; },
+  players() { return [...this.remotes.values()].filter((r) => performance.now() - r.lastSeen < 9000); },
+  update(dt) {
+    if (!this.client || !this.server) return;
+    this.sendT -= dt; this.hbT -= dt; this.pruneT -= dt;
+    if (this.sendT <= -0.125) this.sendState();          // ~8 updates per second
+    if (this.hbT <= 0) { this.hbT = 3; this.heartbeat(); }
+    if (this.pruneT <= 0) {
+      this.pruneT = 1;
+      const now = performance.now();
+      for (const [id, r] of this.remotes) if (now - r.lastSeen > 9000) { r.dispose(); this.remotes.delete(id); this.version++; }
+    }
+    // only draw the nearest few players in your level (Quest draw-call budget)
+    const lvl = this.levelCode(), list = [];
+    for (const r of this.remotes.values()) { r.dist = Math.hypot(r.cur.x - Player.pos.x, r.cur.z - Player.pos.z); list.push(r); }
+    list.sort((a, b) => a.dist - b.dist);
+    let shown = 0;
+    for (const r of list) { const ok = r.hasState && r.level === lvl && shown < this.MAX_SHOWN; if (ok) shown++; r.update(dt, lvl, ok); }
+  },
+  statusText() {
+    if (this.status === 'online') return this.server ? `ONLINE · ${this.server} · ${this.count(this.server)} PLAYER${this.count(this.server) === 1 ? '' : 'S'}` : 'ONLINE · PICKING A SERVER…';
+    if (this.status === 'connecting') return 'CONNECTING TO SERVERS…';
+    if (this.status === 'failed') return 'SERVERS UNREACHABLE (OFFLINE)';
+    return 'OFFLINE';
+  },
+};
+
+// =====================================================================================
 // STATES — state machine + every state's enter/update/exit, cutscene, screens, glue
 // =====================================================================================
 const GAMEPLAY = new Set(['LAP1', 'BEACON1', 'LAP2', 'BEACON2', 'LAP3', 'BEACON3', 'IDOL_CHAMBER', 'ESCAPE']);
@@ -5279,8 +5791,12 @@ const PauseMenu = {
           p.button('resume', 106, 130, 300, 70, 'RESUME', () => { SM.resume(); Game.relockPointer(); }, { size: 32 });
           p.button('settings', 106, 218, 300, 64, 'SETTINGS', () => p.setPage('settings'), { size: 28 });
           p.button('lobby', 106, 300, 300, 64, 'QUIT TO LOBBY', () => { SM.resume(); Game.transition('LOBBY'); }, { size: 26 });
-          drawText(ctx, XR.inVR ? 'B: RESUME  ·  HOLD B: RECENTER' : 'P / CLICK RESUME', 256, 410, { size: 18, fill: '#cbb6e0', stroke: '#000', lw: 3 });
-          drawText(ctx, 'TIME ' + fmtTime(Game.runTime), 256, 450, { size: 20, fill: '#ffd21f', stroke: '#000', lw: 3 });
+          drawText(ctx, XR.inVR ? 'B: RESUME  ·  HOLD B: RECENTER' : 'P / CLICK RESUME', 256, 384, { size: 18, fill: '#cbb6e0', stroke: '#000', lw: 3 });
+          drawText(ctx, 'TIME ' + fmtTime(Game.runTime), 256, 414, { size: 20, fill: '#ffd21f', stroke: '#000', lw: 3 });
+          // who else is on your server
+          const ps = Net.players().slice(0, 3);
+          drawText(ctx, Net.statusText(), 256, 444, { size: 14, fill: Net.status === 'online' ? '#9dffb0' : '#b9a0d0', stroke: '#000', lw: 3, maxWidth: 480 });
+          if (ps.length) drawText(ctx, ps.map((r) => r.label() + ' (' + r.status() + ')').join('  ·  '), 256, 472, { size: 12, fill: '#e6d0ff', stroke: '#000', lw: 3, maxWidth: 490 });
         },
         settings: (ctx, p) => drawSettingsPage(ctx, p, () => p.setPage('main')),
       },
@@ -5447,7 +5963,7 @@ function lapState(n) {
   return {
     enter(arg) {
       Player.locomotion = 'full'; Game.retryTarget = 'LAP' + n;
-      if (arg.retry) Music.cueRetry('LAP' + n);
+      if (arg.retry) Music.cueRetry('LAP' + n); else Net.event('lap', { lap: n });
       UI.announce(n === 2 ? 'LAP 2: INFERNO' : "LAP 3: WEGA'S REVENGE", { color: n === 2 ? '#ffb050' : '#ff4050' });
       UI.announce('COLLECT THEM ALL', { color: '#ffffff' });
     },
@@ -5570,6 +6086,7 @@ SM.states.WIN = {
     Player.locomotion = 'turn';
     const t = Game.runTime, best = Save.data.best, newBest = !Game.debugRun && (best == null || t < best);
     if (newBest) { Save.data.best = t; Save.save(); }
+    if (!Game.debugRun) Net.event('win', { t: Math.round(t * 100) / 100 });
     Stage.showWin({ time: t, best: Save.data.best, newBest, collected: Game.collectedTotal, hits: Player.hits, falls: Player.falls, laps: Game.maxLap });
     UI.setActive([Stage.winPanel]);
     camera.getWorldPosition(_v1); Confetti.start(_v1);
@@ -5649,7 +6166,7 @@ window.WEGA_DEBUG = {
   player: () => ({ pos: Player.pos.toArray().map((v) => +v.toFixed(2)), hp: Player.hp, speed: +(Player.hspeed * CONFIG.SPEED_MULT).toFixed(1), grounded: Player.grounded }),
 };
 // test/debug access to internals (only with ?debug in the URL)
-if (DEBUG_URL) window.WEGA_DEBUG.internals = { SM, Player, Collect, Beacon, Chamber, Hazards, Game, Rory, Screamer, LapTimer, Lap2: LapTimer, Flood, Shoebench, LapPortal, FPBody, Touch, WegaHead, GlitchGuy, Idol, Music, HUD, Maze, Nav, World, Rig, Input, Fade, AudioSys, Save, Lobby, Stage, UI, get renderer() { return renderer; }, get scene() { return scene; }, get camera() { return camera; }, get perf() { return { upd: +Perf.upd.toFixed(2), ren: +Perf.ren.toFixed(2), calls: renderer.info.render.calls, tris: renderer.info.render.triangles }; } };
+if (DEBUG_URL) window.WEGA_DEBUG.internals = { SM, Player, Collect, Beacon, Chamber, Hazards, Game, Rory, Screamer, LapTimer, Lap2: LapTimer, Flood, Shoebench, LapPortal, FPBody, Touch, Net, AV, Avatar, WegaHead, GlitchGuy, Idol, Music, HUD, Maze, Nav, World, Rig, Input, Fade, AudioSys, Save, Lobby, Stage, UI, get renderer() { return renderer; }, get scene() { return scene; }, get camera() { return camera; }, get perf() { return { upd: +Perf.upd.toFixed(2), ren: +Perf.ren.toFixed(2), calls: renderer.info.render.calls, tris: renderer.info.render.triangles }; } };
 
 // =====================================================================================
 // MAIN LOOP
@@ -5682,6 +6199,7 @@ function loop() {
     BonusPop.update(dt);
   }
   FPBody.update(dt);
+  Net.update(dt);
   Sky.update(dt, lvl);
   Fade.update(dt);
   Effects.update(dt);
@@ -5735,7 +6253,7 @@ function init() {
   Sky.init(); Beacon.init(); LapPortal.init(); Maze.init(); Lobby.init(); FPBody.init();
   buildEnvMap(); Idol.init();
   Collect.init(); Confetti.init(); Hazards.init();
-  Stage.init(); SkyFace.init(); PauseMenu.init(); BonusPop.init();
+  Stage.init(); SkyFace.init(); PauseMenu.init(); BonusPop.init(); Net.init();
   warmup();
 
   renderer.xr.addEventListener('sessionstart', () => XR.onStart());
@@ -5754,6 +6272,7 @@ function init() {
     AudioSys.ensure();
     DOM.overlay.classList.add('hidden');
     document.body.classList.add('playing');
+    if (Save.data.online) Net.start();
     if (IS_TOUCH) { Touch.show(true); DOM.hint.textContent = ''; if (fullscreenSupported() && !document.fullscreenElement) toggleFullscreen(); }
     else DOM.hint.textContent = 'WASD move · mouse look · Space jump · E grab · Shift sprint lock · Esc pause · M mute · F full screen';
     Game.relockPointer();
@@ -5762,7 +6281,7 @@ function init() {
     DOM.btnFS.style.display = 'block';
     DOM.btnFS.addEventListener('click', (e) => { e.stopPropagation(); toggleFullscreen(); });
   }
-  DOM.btnVR.addEventListener('click', () => XR.enter());
+  DOM.btnVR.addEventListener('click', () => { if (Save.data.online) Net.start(); XR.enter(); });
   XR.check().then((ok) => {
     DOM.btnVR.disabled = !ok;
     DOM.btnVR.textContent = ok ? 'ENTER VR' : (window.isSecureContext ? 'VR NOT AVAILABLE' : 'VR NEEDS HTTPS');

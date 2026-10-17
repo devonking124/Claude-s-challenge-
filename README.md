@@ -6,7 +6,44 @@
 index.html          the whole game (Three.js r160 from jsDelivr, everything else inline)
 wega-music.js       the music pack (Lap 1 + Lap 2 songs as base64 MP3 + the WegaMusic player)
 wega-music-lap3.js  Lap 3 song add-on ("Pillar John's Revenge"); optional, Lap 3 falls back to a sped-up Lap 2 song
+wega-relay.json     optional: which multiplayer server to use (empty = free public relays)
+server/             the multiplayer server (Node 20+): hosts the game and relays player data
+render.yaml         one-click deploy of server/ on Render
 ```
+
+## Multiplayer
+
+Press **ONLINE** in the lobby to see the server list (WEGA-1 to WEGA-6, up to 12 players each). The game
+joins the busiest server that isn't full. Everyone does their own run, together: you see other players'
+avatars and name tags (with their lap and how many Lil' Guys they have left) in the lobby and in whichever
+level you are both in, and you get a pop-up when someone joins, starts Lap 2/3 or escapes with the idol.
+Only your preset name, avatar and position are shared.
+
+Which server the game connects to, in order:
+1. `?relay=wss://...` in the page URL
+2. the `relays` listed in `wega-relay.json`
+3. free public relays (EMQX, HiveMQ, Mosquitto test brokers). These need no setup, but they are shared
+   public services with no uptime guarantee, and anyone can read what's sent through them.
+
+### Running your own server (more reliable)
+
+```
+cd server
+npm install
+npm start          # http://localhost:8080 serves the game and the relay
+```
+
+To host it for free on Render: New > Blueprint > select this repo (it uses `render.yaml`). Open the game at
+the Render URL and it uses that server automatically. To keep playing from GitHub Pages instead, put
+`wss://<your-service>.onrender.com/mqtt` in `wega-relay.json`. Free Render services sleep when idle, so the
+first connection after a while can take up to a minute (the game keeps retrying).
+
+## Avatar
+
+Press **AVATAR** in the lobby: suit colour, tie / trim colour, head (fishbowl, blocky, Lil' Guy, robot,
+pumpkin), hat (Wega cap, top hat, crown, party hat, halo) and the fish in your fishbowl. A turntable shows the
+result, the lobby mirror shows you wearing it, your first-person body uses your colours, and other players
+see it online. Your choice is saved in the browser.
 
 ## Laps
 
@@ -46,4 +83,4 @@ The full-screen button is in the top-right corner.
 Open `index.html?debug`: keys `1`–`6` jump to Lap 1 / Lap 2 / Idol Chamber / Escape / Win / Lap 3.
 `window.WEGA_DEBUG` has `skipToLap2()`, `skipToLap3()`, `skipToIdol()`, `skipToEscape()`, `win()`, `godMode(bool)`,
 `setLeft(n)` and `spawnShoebench()`.
-Runs that use debug helpers don't save a best time.
+Runs that use debug helpers don't save a best time. Add `?offline` to play without connecting to any server.

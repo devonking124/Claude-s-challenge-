@@ -1,0 +1,11 @@
+# One-click deploy of the multiplayer server (and the game) on Render: https://render.com
+# New > Blueprint > pick this repo. The game is then playable at https://<service>.onrender.com
+services:
+  - type: web
+    name: wegas-challenge
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
