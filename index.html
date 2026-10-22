@@ -2962,7 +2962,7 @@ const HUD = {
       const T = Chamber.theme || CHASE[1], s0 = Chamber.daisS || 0, span = Math.max(1, (Chamber.totalS || 1) - s0);
       const prog = (s) => clamp((s - s0) / span, 0, 1);
       const o = { kind: 'chase', name: T.name, rgb: !!T.rgb, you: prog(Chamber.playerS), front: Chamber.front > -1e8 ? prog(Chamber.front) : 0, urio: Urio.shown ? prog(Urio.s) : -1, exitM: Math.max(0, (Chamber.totalS || 0) - Chamber.playerS), behind: Chamber.front > -1e8 ? Chamber.playerS - Chamber.front : -1 };
-      if (T.rgb && Chamber.arena) o.secs = Math.max(0, WegaShared.CHASE5_LEN - Chamber.chaseAge());
+      if (T.rgb && Chamber.arena && !FaceBoss.started()) o.secs = Math.max(0, WegaShared.CHASE5_LEN - Chamber.chaseAge());
       return o;
     }
     if (this.showBoss) return { kind: 'timer', secs: Math.max(0, LapTimer.timeLeft), frac: clamp(LapTimer.timeLeft / LapTimer.timeMax, 0, 1), expired: LapTimer.expired, lap: Game.lap };
@@ -3348,6 +3348,8 @@ const Player = {
   lapK: 1,
   resetStats() { this.hits = 0; this.falls = 0; },
   heal() { this.hp = CONFIG.MAX_HP; this.invuln = 0; this.sinceDamage = 99; HUD.hpDisp = HUD.hpGhost = this.hp; },
+  // a pickup / reward: some health back (works on WEGA MODE too, where nothing regenerates)
+  healBy(n) { if (this.hp <= 0) return; this.hp = Math.min(CONFIG.MAX_HP, this.hp + n); HUD.goldFlash(); },
   // teleport feet to (x,y,z), facing yaw; physics state cleared (always call behind a fade)
   spawn(x, y, z, yaw) {
     this.pos.set(x, y, z); this.prevPos.copy(this.pos); this.vel.set(0, 0, 0);
@@ -8403,15 +8405,54 @@ const Enraged = {
 };
 
 // ---------------- the threat director ----------------
+// ---------------- HEARTS: health along the Lap 5 chase ----------------
+// FORGET ME NOT is a long song full of attacks, and WEGA MODE has no regen: glowing hearts float over the walkway
+// every so often (+30 health each), so every difficulty can make it to the arena. Each player has their own.
+const Hearts = {
+  list: [], mat: null, glowMat: null, t: 0,
+  init() {
+    const c = makeCanvas(128, 128), ctx = c.getContext('2d');
+    heartPath(ctx, 64, 66, 40); const g = ctx.createRadialGradient(50, 45, 4, 64, 66, 60); g.addColorStop(0, '#ffd0e0'); g.addColorStop(0.35, '#ff3060'); g.addColorStop(1, '#a00020');
+    ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 6; ctx.strokeStyle = '#ffffff'; ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.beginPath(); ctx.ellipse(46, 48, 10, 6, -0.6, 0, Math.PI * 2); ctx.fill();
+    TEX.heart = canvasTex(c);
+    this.mat = new THREE.SpriteMaterial({ map: TEX.heart, transparent: true, alphaTest: 0.1 });
+    this.glowMat = new THREE.SpriteMaterial({ map: TEX.glow, color: 0xff3060, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false });
+  },
+  start() {
+    this.stop();
+    if (!Chamber.route || !Chamber.arena) return;
+    for (let s = Chamber.daisS + 80; s < Chamber.arenaS - 30; s += 120) {
+      if (!Chamber.pointAt(s, _v1)) continue;
+      const h = new THREE.Sprite(this.mat); h.scale.set(0.7, 0.7, 1); h.position.set(_v1.x, _v1.y + 1.1, _v1.z);
+      const gl = new THREE.Sprite(this.glowMat); gl.scale.set(2.2, 2.2, 1); gl.position.copy(h.position);
+      G.fx.add(h, gl); this.list.push({ h, gl, base: _v1.y + 1.1, on: true });
+    }
+  },
+  stop() { for (const o of this.list) { G.fx.remove(o.h); G.fx.remove(o.gl); } this.list.length = 0; },
+  update(dt) {
+    if (!this.list.length) return;
+    this.t += dt; const p = Player.pos;
+    for (const o of this.list) {
+      if (!o.on) continue;
+      o.h.position.y = o.base + Math.sin(this.t * 2.4) * 0.15; o.gl.position.y = o.h.position.y;
+      o.h.scale.x = 0.7 * Math.cos(this.t * 2.2); o.gl.material.opacity = 0.6 + Math.sin(this.t * 5) * 0.2;
+      if (Player.hp > 0 && Math.hypot(p.x - o.h.position.x, p.z - o.h.position.z) < 1.25 && Math.abs(p.y + 1 - o.h.position.y) < 1.6) {
+        o.on = false; o.h.visible = o.gl.visible = false;
+        Player.healBy(30); Sfx.bonus(); FX.pickup(o.h.position.x, o.h.position.y, o.h.position.z); Captions.show('[ HEART ]', 1.2);
+      }
+    }
+  },
+};
 const Hazards = {
   mode: 'off', lasers: [], fireballs: [], roryT: 0, scrT: 0, laserT: [], fireT: 0, headTimes: [], floodsDone: null, esc: null,
   init() {
-    Rory.init(); Screamer.init(); GlitchGuy.init(); WegaHead.init(); Flood.init(); Shoebench.init(); WegaBoss.init(); Diver.init(); Jellies.init(); Shadow.init(); Urio.init(); Destroyer.init();
+    Rory.init(); Screamer.init(); GlitchGuy.init(); WegaHead.init(); Flood.init(); Shoebench.init(); WegaBoss.init(); Diver.init(); Jellies.init(); Shadow.init(); Urio.init(); Destroyer.init(); Hearts.init();
     for (let i = 0; i < 10; i++) this.lasers.push(new Laser());
     for (let i = 0; i < 8; i++) this.fireballs.push(new Fireball());
   },
   clear() {
-    Rory.despawn(false); Screamer.clear(); GlitchGuy.stop(); WegaHead.stop(); Flood.stop(); Shoebench.despawn(); WegaBoss.stop(); Diver.stop(); Jellies.stop(); Shadow.stop(); Urio.stop(); Destroyer.stop();
+    Rory.despawn(false); Screamer.clear(); GlitchGuy.stop(); WegaHead.stop(); Flood.stop(); Shoebench.despawn(); WegaBoss.stop(); Diver.stop(); Jellies.stop(); Shadow.stop(); Urio.stop(); Destroyer.stop(); Hearts.stop();
     for (const l of this.lasers) l.stop();
     for (const f of this.fireballs) f.stop();
     Decals.clear(); FX.clear(); Lights.releaseAll();
@@ -8493,7 +8534,7 @@ const Hazards = {
     // Wega follows you down the lap 3 chase, the Diver the lap 4 one; on the lap 5 chase it's WEGA, DESTROYER OF WORLDS
     if (tier === 3) WegaBoss.start(true);
     if (tier === 4) Diver.start(true);
-    if (tier >= 5) Destroyer.start();
+    if (tier >= 5) { Destroyer.start(); Hearts.start(); }
     // and in every chase, Urio
     Urio.start();
   },
@@ -8555,7 +8596,7 @@ const Hazards = {
     } else if (m === 'escape') this.updateEscape(dt);
     if (m === 'off') return;
     Rory.update(dt); Screamer.update(dt); GlitchGuy.update(dt); WegaHead.update(dt); Flood.update(dt); Shoebench.update(dt);
-    WegaBoss.update(dt); Diver.update(dt); Jellies.update(dt); Shadow.update(dt); Urio.update(dt); Destroyer.update(dt);
+    WegaBoss.update(dt); Diver.update(dt); Jellies.update(dt); Shadow.update(dt); Urio.update(dt); Destroyer.update(dt); Hearts.update(dt);
     for (const l of this.lasers) l.update(dt);
     for (const f of this.fireballs) f.update(dt);
   },
@@ -8861,6 +8902,7 @@ const FaceBoss = {
     this.pending = key; this.pendingT = this.t;
     if (Session.inRun()) Session.request('core', { p: S.p, c: S.done }, 0);
     else this.local.hit(S.p, S.done, 'me', this.nowMs(), ['me']);
+    Player.healBy(25);          // every hit you land patches you up (WEGA MODE has no regen: this keeps the fight winnable)
     return true;
   },
   // a retry offline: the current phase starts over (the gauntlet: a new opponent)
@@ -12377,7 +12419,7 @@ window.WEGA_DEBUG = {
   },
   // fast-forward the boss's clock (seconds) so its hits can land
   bossAge: (sec) => { const L = FaceBoss.local; if (L) { L.t0 -= sec * 1000; L.dt0 -= sec * 1000; } return FaceBoss.state() && FaceBoss.state().allowed; },
-  bossHit: () => FaceBoss.hit(),
+  bossHit: () => { FaceBoss.frame = -1; FaceBoss.pending = null; return FaceBoss.hit(); },
   // go down to `src` (plays its death scene)
   die: (src = 'hp') => { Player.godMode = false; Game.debugRun = true; Game.playerDied(src); return SM.curName; },
   skipToEscape: () => Debug.jump('ESCAPE'),

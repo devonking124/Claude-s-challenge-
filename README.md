@@ -285,7 +285,8 @@ attack is telegraphed:
 - **Hyper Goner** (near the end of the song): his face swells into a gaping maw behind you and drags you back
   towards it, spitting stars. Run against the pull.
 
-When the song ends he dissolves into light... and WEGA FACE takes the exit.
+**Hearts** float over the walkway every 120 m or so (+30 health each), so even WEGA MODE (no regen) can make it
+through the whole song. When the song ends he dissolves into light... and WEGA FACE takes the exit.
 
 ### WEGA FACE
 
@@ -303,7 +304,8 @@ FACE** (Wega's giant flying head) rises over the arena in front of the exit and 
    everyone else **watches from the balconies** until it's their turn. Grab the cores to beat your opponent. Win at
    least one duel and WEGA FACE is down (lose them all and the gauntlet starts over).
 
-Beating it pays **+500 Lil' Guys** and unlocks **WEGA FACE SLAYER**. The HUD's top bar shows its health (one
+Every hit you land (a rocket, a bonk, a duel core) also gives you **+25 health**, so the fight can be won on every
+difficulty. Beating it pays **+500 Lil' Guys** and unlocks **WEGA FACE SLAYER**. The HUD's top bar shows its health (one
 segment per hit), the phase, and when it's shielded.
 
 ## Going down
