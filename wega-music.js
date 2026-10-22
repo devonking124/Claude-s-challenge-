@@ -81,7 +81,7 @@ function makeVoice(name, offset) {
   g.gain.value = 0;
   src.connect(g); g.connect(filter);
   src.start(0, offset != null ? offset : t.loopStart);
-  return { name: name, src: src, gain: g, trackGain: t.gain, startedAt: ctx.currentTime };
+  return { name: name, src: src, gain: g, trackGain: t.gain, startedAt: ctx.currentTime, offset: offset != null ? offset : t.loopStart };
 }
 
 function fadeVoice(v, to, secs) {
@@ -121,12 +121,13 @@ var WegaMusic = {
   getMasterNode: function () { return master; },
   getAnalyser: function () { return analyser; },
 
-  /** Hard-start a track (short 0.05 s de-click fade). */
-  play: function (name, fadeIn) {
+  /** Hard-start a track (short 0.05 s de-click fade), optionally `offset` seconds in. */
+  play: function (name, fadeIn, offset) {
     if (!buffers[name]) { console.warn("[WegaMusic] not ready or unknown track:", name); return; }
     if (ctx.state === "suspended") ctx.resume();
     if (current) killVoice(current, 0.05);
-    current = makeVoice(name);
+    var t = WEGA_MUSIC_DATA[name];
+    current = makeVoice(name, offset != null && offset > 0 ? Math.min(offset, Math.max(t.loopStart, buffers[name].duration - 0.05)) : null);
     fadeVoice(current, current.trackGain, fadeIn != null ? fadeIn : 0.05);
     emit("trackchange", name);
   },
@@ -154,6 +155,9 @@ var WegaMusic = {
   restart: function () { if (current) WegaMusic.play(current.name); },
 
   currentTrack: function () { return current ? current.name : null; },
+
+  /** Seconds since the current track started (playback-rate scaled, ignores loops). */
+  elapsed: function () { return current ? (ctx.currentTime - current.startedAt) * rate + (current.offset || 0) : 0; },
 
   /** Master volume 0..1 */
   setVolume: function (v, secs) {

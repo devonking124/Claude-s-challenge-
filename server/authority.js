@@ -3,12 +3,14 @@
 // SHARED RUNS — the authority for one server room (WEGA-1 ... WEGA-6).
 // It owns the run everyone on that server plays together: which stage the run is at,
 // which Lil' Guys have been collected (one collect counts for everyone), the lap 2-5 timer,
-// who grabbed the idol, the chase clock (everyone's collapse follows it), OMNIWEGA's health at the
-// end of the Lap 5 chase (and the seed its attacks are drawn from), who escaped. It also owns the lobby: the first player to join is the
-// owner (the next earliest takes over if they leave), and only the owner can START and change
-// the lobby settings (difficulty, how many laps, run modifiers). The real server (server/server.js) runs one
-// per room; on a public relay the game itself runs one in the player with the lowest id (and
-// hands it over if they leave). Plain JS, no dependencies: the same file is inlined into index.html.
+// who grabbed the idol, the chase clock (everyone's collapse follows it; the Lap 5 chase lasts exactly
+// as long as its song), the WEGA FACE boss at the end of the Lap 5 chase (its phases, health, the seed its
+// attacks are drawn from and the 1v1 duel queue), who is dead (spectating until the next lap / chase /
+// boss phase; if everyone is down the stage restarts), and who escaped. It also owns the lobby: the first
+// player to join is the owner (the next earliest takes over if they leave), and only the owner can START
+// and change the lobby settings (difficulty, how many laps, run modifiers). The real server
+// (server/server.js) runs one per room; on a public relay the game itself runs one in the player with the
+// lowest id (and hands it over if they leave). Plain JS, no dependencies: the same file is inlined into index.html.
 //
 // Clients publish requests on  wega-idol-vr/v1/s/<ROOM>/req  and heartbeats on .../hi,
 // the authority publishes the room snapshot on  .../auth  (on every change + once a second).
@@ -22,8 +24,16 @@ const WegaShared = (() => {
   const CUT_DELAY = 4.2;        // the lap cutscene plays before the lap timer matters
   const RUNNER_TIMEOUT = 12000; // ms without a heartbeat -> no longer in the run / on the server
   const EMPTY_RESET = 15000;    // ms with nobody left in the run -> back to idle
-  const FINISH_AFTER_WIN = 90000, ESCAPE_MAX = 240000, ESCAPE_MAX_BOSS = 600000, DONE_HOLD = 4000;
-  const BOSS_HP = 6, BOSS_HP_PER = 2, BOSS_HP_MAX = 14;  // OMNIWEGA: cores to break (more with more players)
+  const FINISH_AFTER_WIN = 90000, ESCAPE_MAX = 240000, ESCAPE_MAX_BOSS = 3600000, DONE_HOLD = 4000;
+  // the Lap 5 chase lasts exactly as long as FORGET ME NOT (wega-music-chase5.js): then WEGA FACE takes the exit
+  const CHASE5_LEN = 194.3;
+  // WEGA FACE: phase 1 (the flying face) and phase 2 (WEGA MAN) can't go down before their minimum time, however
+  // many players hit them; phase 3 is a 1v1 duel for every player in turn. Together: at least 10 minutes.
+  const BOSS_MIN = [0, 245, 215];         // seconds (after the phase intro)
+  const BOSS_INTRO = [0, 8, 10, 0];       // the phase's entrance (no hits yet)
+  const BOSS_HITS = [0, 12, 10, 6];       // hits to win a phase (phase 3: hits to win one duel)
+  const DUEL_MIN = 40, DUEL_POOL = 150, DUEL_GAP = 6, DUEL_INTRO = 4;
+  const DUEL_CHARS = 8;                   // rory, shoebench, screamer, diver, glitch, urio, shadow, wegahead
   const NAME_MAX = 16;
   // a tiny filter so names shown to other players stay friendly
   const BLOCK = ['FUCK', 'SHIT', 'CUNT', 'NIGG', 'FAGG', 'BITCH', 'WHORE', 'SLUT', 'RAPE', 'NAZI', 'HITLER', 'PENIS', 'VAGINA', 'PUSSY', 'COCK', 'DICK', 'PORN', 'RETARD', 'TWAT', 'WANK', 'ASSHOLE', 'KYS'];
@@ -43,6 +53,70 @@ const WegaShared = (() => {
   }
   const okId = (i) => typeof i === 'string' && i.length > 0 && i.length <= 16;
   function clampNum(v, lo, hi, def) { return typeof v === 'number' && isFinite(v) ? Math.min(hi, Math.max(lo, v)) : def; }
+  // a stable hash in [0, 1) so every client (and the authority) draws the same thing from the same seed
+  function hash01(a, b, c = 0) {
+    let h = (Math.imul(a | 0, 0x9e3779b1) ^ Math.imul((b | 0) + 0x7f4a7c15, 0x85ebca6b) ^ Math.imul((c | 0) + 0x27d4eb2f, 0xc2b2ae35)) >>> 0;
+    h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d) >>> 0; h ^= h >>> 12; h = Math.imul(h, 0x297a2d39) >>> 0; h ^= h >>> 15;
+    return (h >>> 0) / 4294967296;
+  }
+
+  // ---------------- WEGA FACE: the boss at the end of the Lap 5 chase (pure logic, times in ms) ----------------
+  // p 1: WEGA FACE flies round the arena; p 2: WEGA MAN bursts out of it; p 3: every player 1v1s a random
+  // character in turn while the others watch; p 4: down (the exit is free). A hit is one core / bonk / duel core.
+  // The boss can only take hits as fast as its minimum time allows (allowed()), so more players never make it
+  // shorter. Offline the game runs the same class for its solo fight.
+  class Boss {
+    constructor(seed, now, ids) { this.seed = seed | 0; this.round = 0; this.q = []; this.di = 0; this.dw = 0; this.dt0 = 0; this.setPhase(1, now, ids); }
+    setPhase(p, now, ids) {
+      this.p = p; this.t0 = now; this.bm = BOSS_HITS[Math.min(3, p)] || 0; this.bh = this.bm;
+      if (p === 3) { this.round++; this.q = (ids || []).slice(0, 16); this.di = 0; this.dw = 0; this.dt0 = now + DUEL_GAP * 1000; }
+    }
+    // a duel's minimum: phase 3 as a whole always takes at least DUEL_POOL seconds, however many duels it has
+    // (or however fast the earlier ones ended), and every duel at least DUEL_MIN
+    duelMin() { const spent = (this.dt0 - this.t0) / 1000 + DUEL_INTRO; return Math.max(DUEL_MIN, (DUEL_POOL - spent) / Math.max(1, this.q.length - this.di)); }
+    duelist() { return this.p === 3 && this.di < this.q.length ? this.q[this.di] : ''; }
+    dc() { return Math.floor(hash01(this.seed, 700 + this.round * 31 + this.di, 5) * DUEL_CHARS); }
+    // seconds into the phase's hits (after its intro); phase 3: into the current duel (negative during the break)
+    age(now) { return this.p === 3 ? (now - this.dt0) / 1000 - DUEL_INTRO : (now - this.t0) / 1000 - BOSS_INTRO[this.p]; }
+    allowed(now) {
+      const a = this.age(now); if (a < 0) return 0;
+      const min = this.p === 3 ? this.duelMin() : BOSS_MIN[this.p];
+      return Math.min(this.bm, 1 + Math.floor((this.bm - 1) * a / min));
+    }
+    // a hit: returns '' (refused), 'hit', 'phase' (the next phase starts), 'duel' (a duel was won), 'down'
+    hit(p, c, who, now, ids) {
+      if (this.p !== p || p > 3 || c !== this.bm - this.bh || this.bm - this.bh >= this.allowed(now)) return '';
+      if (p === 3 && who !== this.duelist()) return '';
+      this.bh--;
+      if (this.bh > 0) return 'hit';
+      if (p < 3) { this.setPhase(p + 1, now, ids); return 'phase'; }
+      this.dw++;
+      return this.nextDuel(now, ids) || 'duel';
+    }
+    // the current duel is over (won, lost or the duelist left): next one, or the end of the queue
+    nextDuel(now, ids) {
+      this.di++; this.bh = this.bm; this.dt0 = now + DUEL_GAP * 1000;
+      if (this.di < this.q.length) return '';
+      if (this.dw > 0) { this.p = 4; return 'down'; }
+      this.setPhase(3, now, ids); return 'again';      // nobody won a duel: every player gets another go
+    }
+    restartPhase(now, ids) { if (this.p <= 2) { this.t0 = now; this.bh = this.bm; } else if (this.p === 3) this.setPhase(3, now, ids); }
+    snap(now) {
+      const s = { bp: this.p, bh: this.bh, bm: this.bm, bs: this.seed, ba: Math.round((now - this.t0) / 100) / 10 };
+      if (this.p === 3) { s.dq = this.q.slice(); s.di = this.di; s.dw = this.dw; s.dr = this.round; s.dc = this.dc(); s.da = Math.round((now - this.dt0) / 100) / 10; }
+      return s;
+    }
+    static from(s, now) {
+      const b = new Boss(s.bs | 0, now, []);
+      b.p = clampNum(s.bp | 0, 1, 4, 1); b.bm = BOSS_HITS[Math.min(3, b.p)] || 0; b.bh = clampNum(s.bh | 0, 0, b.bm, b.bm);
+      b.t0 = now - clampNum(s.ba, 0, 1e6, 0) * 1000;
+      if (b.p === 3 && Array.isArray(s.dq)) {
+        b.q = s.dq.filter(okId).slice(0, 16); b.di = clampNum(s.di | 0, 0, 16, 0); b.dw = clampNum(s.dw | 0, 0, 16, 0); b.round = clampNum(s.dr | 0, 0, 1e6, 1);
+        b.dt0 = now - clampNum(s.da, -60, 1e6, 0) * 1000;
+      }
+      return b;
+    }
+  }
 
   class Room {
     // publish(text): send a snapshot on the room's /auth topic. now(): milliseconds.
@@ -61,16 +135,19 @@ const WegaShared = (() => {
       this.tot = TOTAL; this.bits = new Uint8Array(Math.ceil(MAX_TOTAL / 8)); this.left = TOTAL; this.lapCount = 0;
       this.tEnd = 0; this.shoe = false; this.d = 'normal'; this.rml = MAX_LAP; this.md = 0; this.times = [0, 0, 150, 120, 105, 120];
       this.by = ''; this.gr = ''; this.runners = new Map(); this.startT = this.now(); this.escT = 0; this.winT = 0; this.doneT = 0; this.emptyT = 0;
-      this.bm = 0; this.bh = 0; this.bs = 0; this.bossT = 0;
+      this.boss = null; this.bs = 0; this.lv = 0;
     }
     event(kind, who, id, extra) { this.ev = [this.ev[0] + 1, kind, who, id || '']; if (extra != null) this.ev.push(extra); }
     changed() { this.sq++; this.dirty = true; }
     runner(id, who) {
       let r = this.runners.get(id);
-      if (!r) { r = { n: who, t: 0, won: false }; this.runners.set(id, r); }
+      if (!r) { r = { n: who, t: 0, won: false, dead: false }; this.runners.set(id, r); }
       r.t = this.now(); if (who) r.n = who;
       return r;
     }
+    // everyone who is down comes back (a new lap, the chase, a boss phase, a duel, or a wipe)
+    revive() { for (const r of this.runners.values()) r.dead = false; this.lv++; }
+    ids() { return [...this.runners.keys()]; }
     // someone is on the server (keeps their place in the join order)
     touch(id, who) {
       const p = this.present.get(id);
@@ -90,13 +167,42 @@ const WegaShared = (() => {
       }
     }
     ownerName() { const p = this.present.get(this.owner); return p ? p.n : ''; }
-    // a lap: fresh Lil' Guys, and (laps 2-4) a fresh shared timer
+    // a lap: fresh Lil' Guys, and (laps 2-5) a fresh shared timer
     startLap(n, delay) {
       this.lap = n; this.st = 'lap' + n;
       this.bits.fill(0); this.left = this.tot; this.lapCount = 0; this.shoe = false;
       this.tEnd = n >= 2 ? this.now() + ((this.times[n] || 120) + delay) * 1000 : 0;
+      this.revive();
     }
     has(i) { return (this.bits[i >> 3] >> (i & 7)) & 1; }
+    // WEGA FACE takes the exit: the Lap 5 chase's song is over
+    startBoss(who, id) {
+      const now = this.now();
+      this.st = 'boss'; this.bs = Math.floor(Math.random() * 2147483646) + 1;
+      this.boss = new Boss(this.bs, now, this.ids());
+      this.revive();
+      this.event('boss', who || '', id || '');
+    }
+    bossResult(res, who, id) {
+      if (!res) return;
+      if (res === 'hit') this.event('core', who, id, this.boss.bh);
+      else if (res === 'phase') { this.revive(); this.event('phase', who, id, this.boss.p); }
+      else if (res === 'duel') { this.revive(); this.event('duelwon', who, id, this.boss.di); }
+      else if (res === 'again') { this.revive(); this.event('duelsagain', who, id); }
+      else if (res === 'down') { this.revive(); this.st = 'freed'; this.event('bossdown', who, id); }
+    }
+    // everyone in the run is down: the stage starts over (Lil' Guys you already got stay got)
+    checkWipe() {
+      if (this.ph !== 'run' || !this.runners.size) return;
+      for (const r of this.runners.values()) if (!r.dead) return;
+      const now = this.now();
+      if (/^(lap|beacon)[1-5]$/.test(this.st)) { if (this.lap >= 2) { this.tEnd = now + ((this.times[this.lap] || 120) + CUT_DELAY) * 1000; this.shoe = false; } }
+      else if (this.st === 'escape') this.escT = now;
+      else if (this.st === 'boss' && this.boss) this.boss.restartPhase(now, this.ids());
+      else if (this.st !== 'chamber' && this.st !== 'freed') return;
+      this.revive(); this.event('wipe', '', '', this.st);
+      this.changed();
+    }
 
     // heartbeat from any player on this server: { i, n, k, r }
     hello(m) {
@@ -162,26 +268,28 @@ const WegaShared = (() => {
         case 'grab':
           if (!mine || this.st !== 'chamber') return;
           this.runner(m.i, who);
-          this.st = 'escape'; this.gr = who; this.escT = now;
+          this.st = 'escape'; this.gr = who; this.escT = now; this.revive();
           this.event('grab', who, m.i); this.changed();
           return;
-        case 'hand':                // Lap 5 chase: someone reached the arena and OMNIWEGA grabs the exit
-          if (!mine || this.st !== 'escape' || this.lap < MAX_LAP) return;
-          this.runner(m.i, who);
-          this.st = 'boss'; this.bossT = now; this.bs = Math.floor(Math.random() * 2147483646) + 1;
-          this.bm = Math.min(BOSS_HP_MAX, BOSS_HP + BOSS_HP_PER * Math.max(0, this.runners.size - 1)); this.bh = this.bm;
-          this.event('hand', who, m.i); this.changed();
-          return;
-        case 'core':                // a core grabbed in the arena: OMNIWEGA takes a hit (each core counts once)
-          if (!mine || this.st !== 'boss' || m.c !== this.bm - this.bh) return;
-          this.runner(m.i, who);
-          this.bh--; this.event('core', who, m.i, this.bh);
-          if (this.bh <= 0) { this.bh = 0; this.st = 'freed'; this.event('bossdown', who, m.i); }
+        case 'core': {              // a hit on WEGA FACE / WEGA MAN / your duel opponent (each counts once)
+          if (!mine || this.st !== 'boss' || !this.boss || !Number.isInteger(m.c) || !Number.isInteger(m.p)) return;
+          const r = this.runner(m.i, who); if (r.dead) return;
+          this.bossResult(this.boss.hit(m.p, m.c, m.i, now, this.ids()), who, m.i);
           this.changed();
           return;
+        }
+        case 'dead': {              // you're down: you watch until the next lap / the chase / the next boss phase
+          if (!mine || !/^(lap|beacon)[1-5]$|^chamber$|^escape$|^boss$/.test(this.st)) return;
+          const r = this.runner(m.i, who); if (r.dead) return;
+          r.dead = true; this.event('dead', who, m.i, typeof m.by === 'string' ? m.by.slice(0, 12) : '');
+          // a duelist who goes down loses the duel: the next player is up
+          if (this.st === 'boss' && this.boss && this.boss.duelist() === m.i) { const res = this.boss.nextDuel(now, this.ids()); this.revive(); if (res) this.bossResult(res, who, m.i); else this.event('duellost', who, m.i, this.boss.di); }
+          this.checkWipe(); this.changed();
+          return;
+        }
         case 'win': {
           if (!mine || (this.st !== 'escape' && this.st !== 'freed' && this.st !== 'done')) return;
-          if (this.lap >= MAX_LAP && this.st === 'escape') return;          // Lap 5: OMNIWEGA has the exit until it's beaten
+          if (this.lap >= MAX_LAP && this.st === 'escape') return;          // Lap 5: WEGA FACE has the exit until it's beaten
           const r = this.runner(m.i, who);
           if (r.won) return;
           r.won = true; if (!this.winT) this.winT = now;
@@ -190,10 +298,16 @@ const WegaShared = (() => {
           return;
         }
         case 'leave':
-          if (mine && this.runners.delete(m.i)) { this.checkDone(); this.changed(); }
+          if (mine && this.runners.delete(m.i)) { this.dropDuelist(m.i); this.checkWipe(); this.checkDone(); this.changed(); }
           return;
         default:
       }
+    }
+    // the current duelist left the run: their duel is over
+    dropDuelist(id) {
+      if (this.st !== 'boss' || !this.boss || this.boss.duelist() !== id) return;
+      const res = this.boss.nextDuel(this.now(), this.ids()); this.revive();
+      if (res) this.bossResult(res, '', id); else this.event('duellost', '', id, this.boss.di);
     }
     checkDone() {
       if (this.st !== 'escape' && this.st !== 'boss' && this.st !== 'freed') return;
@@ -216,12 +330,16 @@ const WegaShared = (() => {
       for (const [id, p] of this.present) if (now - p.t > RUNNER_TIMEOUT) { this.present.delete(id); gone = true; }
       if (gone) this.pickOwner();
       if (this.ph === 'run') {
-        for (const [id, r] of this.runners) if (now - r.t > RUNNER_TIMEOUT) { this.runners.delete(id); this.changed(); }
+        for (const [id, r] of this.runners) if (now - r.t > RUNNER_TIMEOUT) { this.runners.delete(id); this.dropDuelist(id); this.checkWipe(); this.changed(); }
         if (!this.runners.size) {
           if (!this.emptyT) this.emptyT = now;
           else if (now - this.emptyT > EMPTY_RESET) { this.ph = 'idle'; this.st = ''; this.changed(); }
         } else this.emptyT = 0;
         if (/^(lap|beacon)[2-5]$/.test(this.st) && !this.shoe && now >= this.tEnd) { this.shoe = true; this.event('shoe', '', ''); this.changed(); }
+        // the Lap 5 chase's song is over: WEGA FACE
+        if (this.st === 'escape' && this.lap >= MAX_LAP && now - this.escT >= CHASE5_LEN * 1000) { this.startBoss(); this.changed(); }
+        // the duelist whose turn it is has left the run: skip them
+        if (this.st === 'boss' && this.boss && this.boss.p === 3 && this.boss.duelist() && !this.runners.has(this.boss.duelist())) { this.dropDuelist(this.boss.duelist()); this.changed(); }
         const was = this.st;
         this.checkDone(); if (this.st !== was) this.changed();
         if (this.st === 'done' && now - this.doneT > DONE_HOLD) { this.ph = 'idle'; this.changed(); }
@@ -233,22 +351,24 @@ const WegaShared = (() => {
       }
     }
     snapshot() {
-      const now = this.now(), names = [];
-      for (const r of this.runners.values()) if (names.length < 6) names.push(r.n);
+      const now = this.now(), names = [], dl = [];
+      for (const [id, r] of this.runners) { if (names.length < 6) names.push(r.n); if (dl.length < 16) dl.push([id, r.n, r.dead ? 1 : 0]); }
       const here = [];
       for (const p of this.present.values()) if (here.length < 8) here.push(p.n);
       let hex = '';
       const nb = Math.ceil(this.tot / 8);
       for (let i = 0; i < nb; i++) hex += this.bits[i].toString(16).padStart(2, '0');
-      return {
+      const s = {
         v: 1, a: this.src, sq: this.sq, ph: this.ph, run: this.run, st: this.st, lap: this.lap, c: hex, left: this.left, tot: this.tot,
         tl: this.tEnd ? Math.round(Math.max(0, this.tEnd - now) / 100) / 10 : 0, shoe: this.shoe ? 1 : 0,
         d: this.d, rml: this.rml, md: this.md, t2: this.times[2], t3: this.times[3], t4: this.times[4], t5: this.times[5], by: this.by, gr: this.gr, nr: this.runners.size, rn: names,
         ow: this.owner, on: this.ownerName(), ld: this.ld, ml: this.ml, lm: this.lm, hp: here,
         ag: Math.round((now - this.startT) / 100) / 10, e: this.ev,
         ea: this.escT ? Math.round((now - this.escT) / 100) / 10 : 0,             // the chase clock
-        bm: this.bm, bh: this.bh, bs: this.bs, ba: this.bossT ? Math.round((now - this.bossT) / 100) / 10 : 0,
+        lv: this.lv, dl,
       };
+      if (this.boss) Object.assign(s, this.boss.snap(now));
+      return s;
     }
     // take over from a snapshot (a new host after the old one left): the lobby owner and settings,
     // and the run if one is going
@@ -272,11 +392,13 @@ const WegaShared = (() => {
       this.times = [0, 0, clampNum(s.t2, 50, 400, 150), clampNum(s.t3, 50, 400, 120), clampNum(s.t4, 50, 400, 105), clampNum(s.t5, 50, 400, 120)];
       this.by = String(s.by || ''); this.gr = String(s.gr || ''); this.startT = this.now() - clampNum(s.ag, 0, 1e6, 0) * 1000;
       if (this.st === 'escape' || this.st === 'boss' || this.st === 'freed' || this.st === 'done') this.escT = this.now() - clampNum(s.ea, 0, 1e6, 0) * 1000;
-      if (Number.isInteger(s.bm) && s.bm > 0) { this.bm = clampNum(s.bm, 1, BOSS_HP_MAX, BOSS_HP); this.bh = clampNum(s.bh | 0, 0, this.bm, this.bm); this.bs = s.bs | 0; this.bossT = this.now() - clampNum(s.ba, 0, 1e6, 0) * 1000; }
+      this.lv = clampNum(s.lv | 0, 0, 1e9, 0);
+      if (Array.isArray(s.dl)) for (const d of s.dl) if (Array.isArray(d) && okId(d[0])) this.runners.set(d[0], { n: String(d[1] || 'PLAYER').slice(0, 24), t: this.now(), won: false, dead: !!d[2] });
+      if (Number.isInteger(s.bp) && s.bp > 0 && Number.isInteger(s.bs)) { this.boss = Boss.from(s, this.now()); this.bs = s.bs; }
       if (this.st === 'done') this.doneT = this.now();
     }
   }
 
-  return { Room, cleanName, nameAllowed, label, TOTAL, MAX_TOTAL, MAX_LAP, NAME_MAX };
+  return { Room, Boss, hash01, cleanName, nameAllowed, label, TOTAL, MAX_TOTAL, MAX_LAP, NAME_MAX, CHASE5_LEN, BOSS_MIN, BOSS_INTRO, BOSS_HITS, DUEL_GAP, DUEL_INTRO, DUEL_CHARS };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = WegaShared;
