@@ -1040,7 +1040,7 @@ const Music = {
     this.setRate(t === 'lap5' ? 1 : 1.15, 0.05); this.play(t, 0.05); this.toast(t);
     this.lapRate = this.desired.rate;
   },
-  // OMNIWEGA: the boss theme (wega-music-boss.js), else the Lap 5 song pushed faster
+  // WEGA FACE: the boss theme (wega-music-boss.js), else the Lap 5 song pushed faster
   cueBoss() {
     this.setMuffled(false, 0.2); this.setLevel(0.95, 0.3);
     const t = this.hasTrack('boss') ? 'boss' : this.hasTrack('lap5') ? 'lap5' : 'lap2';
@@ -4972,10 +4972,14 @@ const GUIDE = [
   { name: 'WEGA', where: 'LAP 2 (HEAD) + LAP 3 (THE HUNT)', icon: 'wega', lines: ['LAP 2: HIS GLITCH HEAD POPS UP NEXT TO YOU', 'LAP 3: HE FLOATS IN FRONT OF YOU ALL LAP', 'GLARE: STAY OFF THE STRIPE OR JUMP THE FIRE', 'CAGE: STOP BETWEEN THE TWO STRIPES', 'ALSO SPITS FIREBALLS, SENDS RORY, ROARS'] },
   { name: 'SHOEBENCH', where: 'LAPS 2-4 WHEN THE TIMER HITS 0:00', icon: 'shoebench', lines: ['FLIES STRAIGHT THROUGH EVERYTHING AT YOU', 'ALMOST AS FAST AS YOU ARE', 'IF IT TOUCHES YOU IT IS GAME OVER', 'KEEP MOVING AND FINISH THE LAP'] },
   { name: 'THE SHADOW', where: 'LAP 5', icon: 'shadow', lines: ['A PITCH-BLACK COPY OF YOU WALKS', 'YOUR EXACT FOOTSTEPS A FEW SECONDS BEHIND', 'STOP OR DOUBLE BACK AND IT CATCHES YOU', 'A HIT = 20 DAMAGE, THEN IT DROPS BACK'] },
-  { name: 'OMNIWEGA', where: 'THE END OF THE LAP 5 CHASE', icon: 'omni', lines: ['EVERY CHARACTER FUSED INTO ONE BOSS', 'ITS GIANT HAND GRABS THE EXIT DOOR', 'DODGE ITS ATTACKS, GRAB THE GLOWING CORES', 'EVERY CORE HURTS IT: FREE THE EXIT!'] },
+  { name: 'URIO', where: 'EVERY CHASE', icon: 'urio', lines: ['HE RUNS DOWN THE ROUTE AFTER YOU', 'HE LEAPS THE GAPS AND NEVER GETS TIRED', 'A HIT = 30 DAMAGE AND A SHOVE, THEN HE DROPS BACK', 'KEEP YOUR SPEED UP AND HE CAN\'T CATCH YOU'] },
+  { name: 'WEGA, DESTROYER OF WORLDS', where: 'THE LAP 5 CHASE (FORGET ME NOT)', icon: 'destroyer', lines: ['WEGA IN EVERY COLOUR THERE IS, WITH FLOATING HANDS', 'STAR RAIN, RAINBOW BLADES, HAND SLAMS, LASERS', 'EVERY ATTACK IS TELEGRAPHED: WATCH THE GLOW', 'SURVIVE THE WHOLE SONG TO REACH THE ARENA'] },
+  { name: 'WEGA FACE', where: 'THE END OF THE LAP 5 CHASE', icon: 'wegaface', lines: ['PHASE 1: HIS GIANT FLYING HEAD SWOOPS AND CHOMPS', 'GRAB THE GOLDEN LIL\' GUYS: THEY ROCKET INTO HIM', 'PHASE 2: WEGA MAN BURSTS OUT - BONK HIS HEAD', 'A SHIELD MEANS WAIT: THE FIGHT LASTS 10+ MINUTES'] },
+  { name: 'THE GAUNTLET', where: 'WEGA FACE PHASE 3', icon: 'duel', lines: ['ONE AT A TIME, EVERYONE 1V1S A RANDOM CHARACTER', 'THE OTHERS WATCH FROM THE BALCONIES', 'GRAB THE GLOWING CORES TO HURT YOUR OPPONENT', 'LOSE AND YOU GO TO THE BACK OF THE LINE'] },
+  { name: 'GOING DOWN', where: 'ONLINE RUNS', icon: 'skull', lines: ['WHOEVER GOT YOU PLAYS THEIR OWN DEATH SCENE', 'THEN YOU SPECTATE: < > TO SWITCH PLAYERS', 'YOU\'RE BACK AT THE NEXT LAP, CHASE OR BOSS PHASE', 'IF EVERYONE GOES DOWN, THE STAGE STARTS OVER'] },
   { name: 'THE DIVER', where: 'LAP 4 + LAP 5', icon: 'diver', lines: ['LEAPS INTO THE SKY: A RED RING MARKS', 'WHERE HE LANDS (WHERE YOU ARE HEADING)', 'GET OUT OF THE RING (40 DAMAGE)', 'THEN JUMP HIS SHOCKWAVE (15 DAMAGE)', "DON'T BUMP INTO HIM AFTERWARDS"] },
   { name: 'JELLYFISH', where: 'LAP 4', icon: 'jelly', lines: ['GLOWING JELLIES DRIFT OVER THE WALKWAYS', 'TOUCH ONE AND IT ZAPS YOU (12 DAMAGE)', 'GO AROUND, WAIT, OR DUCK UNDER... JUMP!'] },
-  { name: 'THE CHASE', where: 'AFTER YOU GRAB THE IDOL', icon: 'collapse', lines: ['THE PATH FALLS AWAY BEHIND YOU: RUN!', 'THE LAP YOU CAME FROM DECIDES THE CHASE:', 'LATER LAPS = LONGER, THEMED, WAY HARDER', 'AFTER LAP 5... SOMETHING GRABS THE DOOR'] },
+  { name: 'THE CHASE', where: 'AFTER YOU GRAB THE IDOL', icon: 'collapse', lines: ['THE PATH FALLS AWAY BEHIND YOU: RUN!', 'THE LAP YOU CAME FROM DECIDES THE CHASE:', 'LATER LAPS = LONGER, THEMED, WAY HARDER', 'AFTER LAP 5: FORGET ME NOT, THEN WEGA FACE'] },
 ];
 function drawGuideIcon(ctx, kind, x, y, s) {
   ctx.save();
@@ -4989,10 +4993,24 @@ function drawGuideIcon(ctx, kind, x, y, s) {
     ctx.fillRect(x + s * 0.32, y + s * 0.05, s * 0.36, s * 0.3); ctx.fillRect(x + s * 0.28, y + s * 0.37, s * 0.44, s * 0.36); ctx.fillRect(x + s * 0.3, y + s * 0.73, s * 0.16, s * 0.26); ctx.fillRect(x + s * 0.54, y + s * 0.73, s * 0.16, s * 0.26);
     ctx.fillStyle = '#ff2030'; ctx.shadowColor = '#ff2030'; ctx.shadowBlur = 10;
     for (const sx of [0.41, 0.55]) ctx.fillRect(x + s * sx, y + s * 0.16, s * 0.05, s * 0.05);
-  } else if (kind === 'omni') {
-    ctx.drawImage(CANVAS.wega, x + s * 0.15, y + s * 0.05, s * 0.7, s * 0.7);
-    ctx.drawImage(CANVAS.rory, x - s * 0.05, y + s * 0.35, s * 0.3, s * 0.6); ctx.drawImage(CANVAS.screamer, x + s * 0.72, y + s * 0.5, s * 0.3, s * 0.3);
-    ctx.fillStyle = '#ffcc33'; ctx.beginPath(); ctx.moveTo(x + s * 0.25, y + s * 0.12); for (let i = 0; i <= 4; i++) { ctx.lineTo(x + s * (0.25 + i * 0.125), y + (i % 2 ? s * 0.12 : -s * 0.02)); } ctx.lineTo(x + s * 0.75, y + s * 0.12); ctx.fill();
+  } else if (kind === 'urio') {
+    if (URIO.ready) { ctx.shadowColor = '#3a80ff'; ctx.shadowBlur = 20; ctx.drawImage(CANVAS.urio, x + s * 0.2, y, s * 0.6, s); }
+  } else if (kind === 'destroyer') {
+    const cx = x + s / 2, cy = y + s * 0.45, g = ctx.createConicGradient ? ctx.createConicGradient(0, cx, cy) : null;
+    if (g) { for (let i = 0; i <= 6; i++) g.addColorStop(i / 6, 'hsl(' + (i * 60) + ',100%,60%)'); ctx.strokeStyle = g; } else ctx.strokeStyle = '#ff60ff';
+    ctx.lineWidth = s * 0.05; ctx.shadowColor = '#ffffff'; ctx.shadowBlur = 16; ctx.beginPath(); ctx.arc(cx, cy, s * 0.42, 0, 6.283); ctx.stroke();
+    ctx.shadowBlur = 0; ctx.drawImage(CANVAS.wega, cx - s * 0.3, cy - s * 0.3, s * 0.6, s * 0.6);
+    ctx.fillStyle = '#ffffff'; for (const sx of [-1, 1]) { ctx.beginPath(); ctx.ellipse(cx + sx * s * 0.4, y + s * 0.85, s * 0.12, s * 0.09, sx * 0.4, 0, 6.283); ctx.fill(); }
+  } else if (kind === 'wegaface') {
+    ctx.shadowColor = '#c070ff'; ctx.shadowBlur = 24; ctx.drawImage(CANVAS.wegaIcon, x, y, s, s);
+  } else if (kind === 'duel') {
+    ctx.drawImage(CANVAS.rory, x, y + s * 0.15, s * 0.36, s * 0.75); ctx.drawImage(CANVAS.shoebench, x + s * 0.6, y + s * 0.3, s * 0.4, s * 0.4);
+    drawText(ctx, 'VS', x + s * 0.48, y + s * 0.5, { size: s * 0.28, style: 'italic 900', font: FONT_IMPACT, fill: '#ffd040', stroke: '#000', lw: 6, glow: '#ff8000', glowBlur: 16 });
+  } else if (kind === 'skull') {
+    const cx = x + s / 2, cy = y + s * 0.42;
+    ctx.fillStyle = '#f0e8ff'; ctx.shadowColor = '#a050ff'; ctx.shadowBlur = 22; ctx.beginPath(); ctx.arc(cx, cy, s * 0.3, 0, 6.283); ctx.fill(); ctx.fillRect(cx - s * 0.17, cy + s * 0.18, s * 0.34, s * 0.2);
+    ctx.shadowBlur = 0; ctx.fillStyle = '#1a0828'; for (const sx of [-1, 1]) { ctx.beginPath(); ctx.arc(cx + sx * s * 0.11, cy, s * 0.08, 0, 6.283); ctx.fill(); }
+    for (let i = 0; i < 3; i++) ctx.fillRect(cx - s * 0.12 + i * s * 0.09, cy + s * 0.27, s * 0.04, s * 0.1);
   }
   else if (kind === 'shoebench') ctx.drawImage(CANVAS.shoebench, x, y, s, s);
   else if (kind === 'fireball') ctx.drawImage(CANVAS.flame, x, y, s, s);
@@ -6141,7 +6159,7 @@ const Chamber = {
     glow.scale.set(70, 30, 1); glow.position.set(A.x, A.y - 9, A.z); this.add(glow);
   },
   // the collapse front at chase time 'age' (seconds since the grab): the authority's clock in a shared run,
-  // so it's in the same place for everyone; it stops at the edge of OMNIWEGA's arena
+  // so it's in the same place for everyone; it stops at the edge of WEGA FACE's arena
   frontAt(age) {
     const turbo = Mods.on('turbo'), delay = this.theme.delay * (turbo ? 0.5 : 1);
     const v = (this.v5 || CONFIG.COLLAPSE_SPEED * diff().collapse * this.theme.collapse) * (turbo ? 1.12 : 1) * Mods.foeK();
@@ -9656,8 +9674,8 @@ for (const it of SHOP) { (AV.LOCKS[it.k] || (AV.LOCKS[it.k] = {}))[it.v] = 'shop
 let AV_MAT = null, AV_GLASS = null, AV_KURI = null, AV_PRINT = null, AV_SPARK = null, AV_NEON = null, AV_FACES = null, AV_WING = null;
 function avMats() {
   if (!AV_MAT) {
-    AV_MAT = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x141414 });
-    AV_WING = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x202020, side: THREE.DoubleSide });
+    AV_MAT = avGloss(new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x141414 }));
+    AV_WING = avGloss(new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x202020, side: THREE.DoubleSide }));
     AV_GLASS = new THREE.MeshLambertMaterial({ color: 0xbfefff, transparent: true, opacity: 0.3, depthWrite: false, emissive: 0x101820 });
     AV_KURI = new THREE.MeshLambertMaterial({ map: TEX.kuri, emissiveMap: TEX.kuri, emissive: 0x6a6a6a });   // keeps its cream colour under coloured lights
     AV_PRINT = new THREE.MeshLambertMaterial({ map: TEX.roryShirt, transparent: true, alphaTest: 0.05, emissive: 0x101010 });
@@ -9672,6 +9690,33 @@ function avMats() {
     };
     AV_SPARK = new THREE.PointsMaterial({ map: TEX.glow, color: 0xffd84a, size: 0.09, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
   }
+}
+// avatar parts look like glossy toy plastic: a soft rim of light round the edges and a highlight from a light above
+// your shoulder (both worked out in view space, so they read the same in any lap's lighting)
+function avGloss(m) {
+  m.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace('#include <opaque_fragment>', `{
+      vec3 vdir = normalize(vViewPosition), nn = normalize(normal);
+      float fr = pow(1.0 - clamp(abs(dot(vdir, nn)), 0.0, 1.0), 3.0);
+      float spc = pow(max(dot(nn, normalize(normalize(vec3(-0.35, 0.85, 0.4)) + vdir)), 0.0), 36.0);
+      outgoingLight += (diffuseColor.rgb * 0.7 + 0.18) * fr * 0.6 + vec3(spc * 0.3);
+    }
+    #include <opaque_fragment>`);
+  };
+  m.customProgramCacheKey = () => 'avGloss';
+  return m;
+}
+// glowing hats get a soft light round them (colour, strength; -1 = every colour)
+const AV_HAT_AURA = { 3: [0xffcc33, 0.5], 5: [0xffe066, 0.65], 8: [0xffcc33, 0.55], 10: [0xffcc33, 0.45], 14: [0xff6a10, 0.75], 15: [0x9ab0ff, 0.3], 19: [0x9fe8ff, 0.6], 20: [-1, 0.7], 22: [0xb070ff, 0.4], 25: [0x60ff90, 0.45], 27: [0x30f0ff, 0.5], 30: [0, 0.4], 31: [0xff2050, 0.75], 32: [-1, 0.8] };
+// ...and crowns sparkle (colour of the sparkles)
+const AV_HAT_SPARKS = { 3: 0xffe080, 19: 0xc8f4ff, 20: 0xffffff, 31: 0xff6080, 32: 0xffffff };
+const AV_SPARK_MATS = {};
+function avSparkMat(col) { return AV_SPARK_MATS[col] || (AV_SPARK_MATS[col] = new THREE.PointsMaterial({ map: TEX.glow, color: col, size: 0.08, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); }
+function avSparkles(top, n, col) {
+  const pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { const an = i / n * Math.PI * 2, rr2 = 0.2 + (i % 3) * 0.05; pos[i * 3] = Math.cos(an) * rr2; pos[i * 3 + 1] = top + 0.05 + ((i * 7) % 5) * 0.07; pos[i * 3 + 2] = Math.sin(an) * rr2; }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  return new THREE.Points(g, avSparkMat(col));
 }
 // the kurimanju bun (textured face + roasted top), shared by the hat and the head
 function kuriMesh(r, x, y, z) {
@@ -9921,60 +9966,89 @@ function avHead(h, head, TIE, hn) {
 
 // ---------------- shop effects: glowing trails / auras around an avatar ----------------
 // A ring buffer of points in world space (so trails stay where you were). One draw call per avatar.
+// shop effects drawn as soft glowing points that each have their own size (fire swells, bubbles wobble, pixels are square)
+const AVFX_VS = `attribute float aSize; varying vec3 vC;
+  void main() { vC = color; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = aSize * 420.0 / max(0.2, -mv.z); gl_Position = projectionMatrix * mv; }`;
+const AVFX_FS = `uniform float uShape; varying vec3 vC;
+  void main() {
+    vec2 q = gl_PointCoord - 0.5; float d = length(q), a;
+    if (uShape > 1.5) a = smoothstep(0.5, 0.42, d) * (0.25 + smoothstep(0.3, 0.45, d) * 0.9) + smoothstep(0.2, 0.0, length(q + vec2(0.14, 0.14))) * 0.8;   // bubble: a ring + a shine
+    else if (uShape > 0.5) a = step(max(abs(q.x), abs(q.y)), 0.42);                                                                  // pixel
+    else a = smoothstep(0.5, 0.0, d) * (0.6 + smoothstep(0.18, 0.0, d) * 1.4);                                                     // glow with a hot core
+    if (a < 0.01) discard;
+    gl_FragColor = vec4(vC * a, 1.0);
+  }`;
 class AvatarFX {
   constructor(kind, layer) {
-    this.kind = kind; this.n = kind === 5 ? 40 : 56; this.next = 0; this.t = 0; this.emitT = 0;
+    this.kind = kind; this.n = kind === 5 ? 48 : kind === 4 ? 60 : 90; this.next = 0; this.t = 0; this.emitT = 0;
     const n = this.n;
     this.p = new Float32Array(n * 3); this.c = new Float32Array(n * 3); this.v = new Float32Array(n * 3); this.age = new Float32Array(n).fill(99); this.life = new Float32Array(n).fill(1);
+    this.s = new Float32Array(n); this.s0 = new Float32Array(n);
     const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(this.p, 3)); g.setAttribute('color', new THREE.BufferAttribute(this.c, 3));
-    const pixel = kind === 6;
-    this.pts = new THREE.Points(g, new THREE.PointsMaterial({ size: [0, 0, 0.16, 0.13, 0.09, 0.1, 0.07, 0.1][kind], map: pixel ? null : TEX.glow, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    g.setAttribute('position', new THREE.BufferAttribute(this.p, 3)); g.setAttribute('color', new THREE.BufferAttribute(this.c, 3)); g.setAttribute('aSize', new THREE.BufferAttribute(this.s, 1));
+    this.pts = new THREE.Points(g, new THREE.ShaderMaterial({ uniforms: { uShape: { value: kind === 6 ? 1 : kind === 7 ? 2 : 0 } }, vertexShader: AVFX_VS, fragmentShader: AVFX_FS, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
     this.pts.frustumCulled = false; this.pts.layers.set(layer); this.pts.renderOrder = 4;
   }
   dispose() { if (this.pts.parent) this.pts.parent.remove(this.pts); this.pts.geometry.dispose(); this.pts.material.dispose(); }
-  emit(x, y, z, vx, vy, vz, life) {
+  emit(x, y, z, vx, vy, vz, life, size) {
     const i = this.next; this.next = (i + 1) % this.n;
     this.p[i * 3] = x; this.p[i * 3 + 1] = y; this.p[i * 3 + 2] = z; this.v[i * 3] = vx; this.v[i * 3 + 1] = vy; this.v[i * 3 + 2] = vz;
-    this.age[i] = 0; this.life[i] = life;
+    this.age[i] = 0; this.life[i] = life; this.s0[i] = size;
   }
   update(dt, at, speed, air, sc) {
     this.t += dt; const K = this.kind, t = this.t, n = this.n, moving = speed > 0.5 || air;
     if (K === 4 || K === 5) {
-      // auras: sparkles orbiting you / electric crackle that jumps around you
+      // auras: sparkles spiralling round you, twinkling / electric crackle jumping about you in bolts
       for (let i = 0; i < n; i++) {
-        let a, r, y, b;
-        if (K === 4) { a = t * 1.6 + i * 2.39996; r = 0.42 + Math.sin(t * 2 + i) * 0.05; y = 0.15 + (i / n) * 1.75 + Math.sin(t * 3 + i * 1.7) * 0.06; b = 0.55 + 0.45 * Math.sin(t * 9 + i * 3.1); }
-        else { if (Math.random() < 0.35) { this.v[i * 3] = Math.random() * 6.283; this.v[i * 3 + 1] = 0.12 + Math.random() * 1.75; this.v[i * 3 + 2] = 0.3 + Math.random() * 0.28; } a = this.v[i * 3]; y = this.v[i * 3 + 1]; r = this.v[i * 3 + 2]; b = Math.random() < 0.5 ? 1 : 0.15; }
-        this.p[i * 3] = at.x + Math.cos(a) * r * sc; this.p[i * 3 + 1] = at.y + y * sc; this.p[i * 3 + 2] = at.z + Math.sin(a) * r * sc;
-        if (K === 4) { this.c[i * 3] = b; this.c[i * 3 + 1] = b * 0.82; this.c[i * 3 + 2] = b * 0.3; } else { this.c[i * 3] = b * 0.55; this.c[i * 3 + 1] = b * 0.95; this.c[i * 3 + 2] = b; }
+        let a, r, y, b, sz;
+        if (K === 4) {
+          a = t * (1.2 + (i % 3) * 0.5) + i * 2.39996; r = 0.38 + (i % 4) * 0.05 + Math.sin(t * 2 + i) * 0.04; y = 0.1 + ((i / n + t * 0.08) % 1) * 1.85 + Math.sin(t * 3 + i * 1.7) * 0.05;
+          const tw = Math.max(0, Math.sin(t * (5 + (i % 5)) + i * 3.1)); b = 0.25 + tw * 0.75; sz = 0.025 + tw * tw * 0.06;
+          this.c[i * 3] = b; this.c[i * 3 + 1] = b * 0.85; this.c[i * 3 + 2] = b * (0.3 + (i % 3) * 0.25);
+        } else {
+          // a few bolts: points strung between two spots on a cylinder round you, re-struck every so often
+          const bolt = (i / 8) | 0, j = i % 8, seed = Math.floor(t * 9 + bolt * 0.37);
+          const h1 = WegaShared.hash01(seed, bolt, 1), h2 = WegaShared.hash01(seed, bolt, 2), h3 = WegaShared.hash01(seed, bolt, 3), f = j / 7;
+          a = h1 * 6.283 + (h2 - 0.5) * 1.2 * f; y = 0.15 + h3 * 1.6 + (WegaShared.hash01(seed, bolt, 4) - 0.5) * 0.6 * f + (WegaShared.hash01(seed, i, 5) - 0.5) * 0.08; r = 0.34 + WegaShared.hash01(seed, i, 6) * 0.12;
+          const on = WegaShared.hash01(seed, bolt, 7) < 0.7; b = on ? 0.7 + WegaShared.hash01(seed, i, 8) * 0.3 : 0; sz = on ? 0.03 + (j === 0 || j === 7 ? 0.04 : 0) : 0;
+          this.c[i * 3] = b * 0.6; this.c[i * 3 + 1] = b * 0.9; this.c[i * 3 + 2] = b;
+        }
+        this.p[i * 3] = at.x + Math.cos(a) * r * sc; this.p[i * 3 + 1] = at.y + y * sc; this.p[i * 3 + 2] = at.z + Math.sin(a) * r * sc; this.s[i] = sz * sc;
       }
     } else {
       // trails: drop glowing bits where you go (a slow trickle while standing still)
       this.emitT -= dt;
-      const rate = moving ? 0.018 : 0.12;
+      const rate = moving ? 0.012 : 0.09;
       while (this.emitT <= 0) {
         this.emitT += rate;
         const j = () => (Math.random() - 0.5);
-        if (K === 2) this.emit(at.x + j() * 0.3 * sc, at.y + 0.08, at.z + j() * 0.3 * sc, j() * 0.3, 0.7 + Math.random() * 0.8, j() * 0.3, 0.6 + Math.random() * 0.3);
-        else if (K === 3) this.emit(at.x + j() * 0.12, at.y + (0.75 + j() * 0.3) * sc, at.z + j() * 0.12, 0, 0, 0, 1.1);
-        else if (K === 6) this.emit(at.x + j() * 0.5 * sc, at.y + Math.random() * 1.7 * sc, at.z + j() * 0.5 * sc, j() * 0.2, 0, j() * 0.2, 0.45);
-        else this.emit(at.x + j() * 0.4 * sc, at.y + (0.3 + Math.random() * 1.2) * sc, at.z + j() * 0.4 * sc, j() * 0.15, 0.5 + Math.random() * 0.4, j() * 0.15, 1.4);
+        if (K === 2) this.emit(at.x + j() * 0.32 * sc, at.y + 0.06 + Math.random() * 0.2 * sc, at.z + j() * 0.32 * sc, j() * 0.25, 0.9 + Math.random() * 1.0, j() * 0.25, 0.5 + Math.random() * 0.35, 0.07 + Math.random() * 0.06);
+        else if (K === 3) this.emit(at.x + j() * 0.1, at.y + (0.55 + Math.random() * 0.6) * sc, at.z + j() * 0.1, 0, 0.05, 0, 1.2, 0.09);
+        else if (K === 6) this.emit(at.x + j() * 0.55 * sc, at.y + Math.random() * 1.8 * sc, at.z + j() * 0.55 * sc, j() * 0.3, 0, j() * 0.3, 0.35 + Math.random() * 0.3, 0.03 + Math.random() * 0.06);
+        else this.emit(at.x + j() * 0.4 * sc, at.y + (0.2 + Math.random() * 1.3) * sc, at.z + j() * 0.4 * sc, j() * 0.12, 0.45 + Math.random() * 0.4, j() * 0.12, 1.6, 0.04 + Math.random() * 0.06);
       }
       for (let i = 0; i < n; i++) {
-        const age = this.age[i] += dt, k = 1 - age / this.life[i];
-        if (k <= 0) { this.c[i * 3] = this.c[i * 3 + 1] = this.c[i * 3 + 2] = 0; continue; }
+        const age = this.age[i] += dt, L = this.life[i], k = 1 - age / L;
+        if (k <= 0) { this.s[i] = 0; continue; }
         this.p[i * 3] += this.v[i * 3] * dt; this.p[i * 3 + 1] += this.v[i * 3 + 1] * dt; this.p[i * 3 + 2] += this.v[i * 3 + 2] * dt;
-        if (K === 7) this.p[i * 3] += Math.sin(t * 5 + i) * 0.004;
-        let r, g, b;
-        if (K === 2) { r = 1; g = 0.25 + 0.6 * k; b = 0.08 * k; }
-        else if (K === 3) { _c1.setHSL(((t * 0.35 + i / n) % 1), 1, 0.55); r = _c1.r; g = _c1.g; b = _c1.b; }
-        else if (K === 6) { const m = (i + Math.floor(t * 12)) % 2; r = m ? 1 : 0.1; g = m ? 0.15 : 1; b = 1; }
-        else { r = 0.55; g = 0.85; b = 1; }
-        this.c[i * 3] = r * k; this.c[i * 3 + 1] = g * k; this.c[i * 3 + 2] = b * k;
+        let r, g, b, sz = this.s0[i];
+        if (K === 2) {          // fire: white-hot, then yellow, orange, red, and out; swelling as it rises
+          const u = 1 - k; r = 1; g = u < 0.15 ? 1 : Math.max(0.1, 0.95 - u * 1.1); b = u < 0.15 ? 0.8 : Math.max(0, 0.25 - u * 0.5); sz *= 0.6 + Math.sin(Math.min(1, u * 1.4) * Math.PI) * 0.9; r *= k * 1.2; g *= k; b *= k;
+          this.v[i * 3] += Math.sin(t * 7 + i) * 0.4 * dt;
+        } else if (K === 3) {   // rainbow: a ribbon that shrinks as it fades
+          _c1.setHSL(((t * 0.4 + i / n * 1.5) % 1), 1, 0.55); r = _c1.r * k; g = _c1.g * k; b = _c1.b * k; sz *= 0.3 + k * 0.7;
+        } else if (K === 6) {   // glitch: magenta / cyan / white pixels that flicker
+          const m = (i + Math.floor(t * 14)) % 3; r = m === 1 ? 0.1 : 1; g = m === 0 ? 0.15 : 1; b = 1; if (Math.random() < 0.1) sz = 0;
+          r *= k; g *= k; b *= k;
+        } else {                // bubbles: wobble up and pop
+          this.p[i * 3] += Math.sin(t * 5 + i) * 0.004; this.p[i * 3 + 2] += Math.cos(t * 4 + i) * 0.003;
+          r = 0.55 * k + 0.2; g = 0.85 * k + 0.1; b = 1; sz *= k < 0.08 ? 1.6 : 1; if (k < 0.04) sz = 0;
+        }
+        this.c[i * 3] = r; this.c[i * 3 + 1] = g; this.c[i * 3 + 2] = b; this.s[i] = sz * sc;
       }
     }
-    this.pts.geometry.attributes.position.needsUpdate = true; this.pts.geometry.attributes.color.needsUpdate = true;
+    const at2 = this.pts.geometry.attributes;
+    at2.position.needsUpdate = true; at2.color.needsUpdate = true; at2.aSize.needsUpdate = true;
   }
 }
 
@@ -10024,7 +10098,7 @@ function avHat2(h, hat, top, TIE, head, extras, hn) {
     for (let i = 0; i < 6; i++) { const an = i / 6 * Math.PI * 2; avPart(h, new THREE.OctahedronGeometry(0.045), i % 2 ? 0x8fd8ff : 0xe8fbff, Math.cos(an) * 0.15, top + 0.13, Math.sin(an) * 0.15, 0, 0, 0, 0.7, 1.9, 0.7); }
     avPart(h, new THREE.OctahedronGeometry(0.035), 0x2080ff, 0, top + 0.04, -0.165);
   } else if (hat === 20) {           // rainbow halo (COMPLETIONIST)
-    [0xff2020, 0xff8a10, 0xffe020, 0x30d040, 0x2080ff, 0x5030c0, 0xb040e0].forEach((c, k) => avPart(h, new THREE.TorusGeometry(0.17, 0.024, 6, 5, Math.PI * 2 / 7 + 0.01), c, 0, top + 0.14, 0, Math.PI / 2, 0, k * Math.PI * 2 / 7));
+    [0xff2020, 0xff8a10, 0xffe020, 0x30d040, 0x2080ff, 0x5030c0, 0xb040e0].forEach((c, k) => avPart(hn, new THREE.TorusGeometry(0.17, 0.024, 6, 5, Math.PI * 2 / 7 + 0.01), c, 0, top + 0.14, 0, Math.PI / 2, 0, k * Math.PI * 2 / 7));
   } else if (hat === 21) {           // sweatband (MARATHON)
     avPart(h, new THREE.TorusGeometry(-fz + 0.008, 0.032, 6, 22), TIE, 0, ey + 0.08, 0, Math.PI / 2);
     avPart(h, new THREE.TorusGeometry(-fz + 0.035, 0.008, 4, 22), 0xffffff, 0, ey + 0.08, 0, Math.PI / 2);
@@ -10079,7 +10153,7 @@ function avHat2(h, hat, top, TIE, head, extras, hn) {
     avPart(h, new THREE.CylinderGeometry(0.165, 0.17, 0.07, 16, 1, true), 0x1a0a14, 0, top + 0.03, 0);
     [0xff6a10, 0xff1830, 0x30e8ff, 0xa040ff, 0xffd040, 0xff3070, 0x5aff9a].forEach((c, i) => { const an = i / 7 * Math.PI * 2, tall = 0.12 + (i % 3) * 0.05; avPart(hn, new THREE.ConeGeometry(0.035, tall, 4), c, Math.cos(an) * 0.16, top + 0.07 + tall / 2, Math.sin(an) * 0.16, 0, an, (i % 2 ? 0.25 : -0.25)); });
     avPart(hn, new THREE.TorusGeometry(0.168, 0.01, 4, 20), 0xffffff, 0, top + 0.065, 0, Math.PI / 2);
-  } else if (hat === 32) {           // omni crown (OMNIWEGA SLAYER): a gold crown set with a piece of every character
+  } else if (hat === 32) {           // omni crown (WEGA FACE SLAYER): a gold crown set with a piece of every character
     avPart(h, new THREE.CylinderGeometry(0.17, 0.17, 0.11, 18, 1, true), 0xffcc33, 0, top + 0.04, 0);
     for (let i = 0; i < 8; i++) { const an = i / 8 * Math.PI * 2; avPart(h, new THREE.ConeGeometry(0.03, 0.12, 5), 0xffcc33, Math.cos(an) * 0.17, top + 0.15, Math.sin(an) * 0.17); }
     [[0xa020ff, 0], [0xff2020, 1.57], [0x40ffff, 3.14], [0xffe020, 4.71]].forEach(([c, an]) => avPart(hn, new THREE.OctahedronGeometry(0.032), c, Math.cos(an - Math.PI / 2) * 0.175, top + 0.05, Math.sin(an - Math.PI / 2) * 0.175));
@@ -10208,7 +10282,7 @@ class AvatarRig {
       avPart(h, new THREE.ConeGeometry(0.13, 0.32, 12), TIE, 0, top + 0.15, 0);
       avPart(h, new THREE.SphereGeometry(0.04, 8, 6), 0xffffff, 0, top + 0.32, 0);
     } else if (a.hat === 5) {      // halo
-      avPart(h, new THREE.TorusGeometry(0.15, 0.022, 6, 20), 0xffe066, 0, top + 0.13, 0, Math.PI / 2);
+      avPart(hn, new THREE.TorusGeometry(0.15, 0.022, 6, 20), 0xfff0a0, 0, top + 0.13, 0, Math.PI / 2);
     } else if (a.hat === 6) {      // tin pot: an upside-down saucepan, handle sticking out
       avPart(h, new THREE.CylinderGeometry(0.2, 0.21, 0.2, 18), 0xb9bec7, 0, top + 0.04, 0);
       avPart(h, new THREE.CylinderGeometry(0.19, 0.19, 0.012, 18), 0xdde1e8, 0, top + 0.145, 0);
@@ -10230,10 +10304,7 @@ class AvatarRig {
       avPart(h, new THREE.CylinderGeometry(0.15, 0.15, 0.012, 18), 0xffe38a, 0, top + 0.315, 0);
       avPart(h, new THREE.CylinderGeometry(0.172, 0.172, 0.06, 18), 0x8a1010, 0, top + 0.05, 0);
       avPart(h, new THREE.OctahedronGeometry(0.04), 0x60f0ff, 0, top + 0.06, -0.175);
-      const n = 18, pos = new Float32Array(n * 3);
-      for (let i = 0; i < n; i++) { const an = i / n * Math.PI * 2, rr2 = 0.22 + (i % 3) * 0.05; pos[i * 3] = Math.cos(an) * rr2; pos[i * 3 + 1] = top + 0.05 + ((i * 7) % 5) * 0.08; pos[i * 3 + 2] = Math.sin(an) * rr2; }
-      const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      this.sparkles = new THREE.Points(sg, AV_SPARK); this.extras.push(this.sparkles);
+      this.sparkles = avSparkles(top, 18, 0xffd84a); this.extras.push(this.sparkles);
     } else if (a.hat === 9) {      // a Lil' Guy riding on your head
       const lg = buildLilGuyGeometry().toNonIndexed();
       lg.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(0, top + 0.19, 0), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI, 0)), new THREE.Vector3(0.42, 0.42, 0.42)));
@@ -10265,6 +10336,14 @@ class AvatarRig {
     }
     this.headMesh = new THREE.Mesh(avMerge(h), AV_MAT);
     this.head.add(this.headMesh);
+    this.hatAura = null; this.hatTop = top;
+    const au = AV_HAT_AURA[a.hat];
+    if (au) {
+      this.hatAura = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: au[0] > 0 ? au[0] : au[0] === 0 ? TIE : 0xffffff, transparent: true, opacity: au[1], blending: THREE.AdditiveBlending, depthWrite: false }));
+      this.hatAura.scale.set(0.75, 0.6, 1); this.hatAura.position.set(0, top + 0.12, 0); this.hatAura.renderOrder = 6; this.hatAura.userData.base = au[1]; this.hatAura.userData.rgb = au[0] < 0;
+      this.head.add(this.hatAura);
+    }
+    if (AV_HAT_SPARKS[a.hat] != null && !this.sparkles) { this.sparkles = avSparkles(top, 14, AV_HAT_SPARKS[a.hat]); this.extras.push(this.sparkles); }
     if (a.head === 11) this.extras.push(kuriMesh(0.23, 0, 0.21, 0));          // kurimanju head
     if (this.ufo) this.ufoY = this.ufo.position.y;
     // shop effects: wings on your back, trails / auras around you
@@ -10308,6 +10387,7 @@ class AvatarRig {
     if (this.glass) this.glass.geometry.dispose();
     while (this.root.children.length) this.root.remove(this.root.children[0]);
     if (this.fx) { this.fx.dispose(); this.fx = null; }
+    if (this.hatAura) { this.hatAura.material.dispose(); this.hatAura = null; }
     this.fishPivot = null; this.sparkles = null; this.wings = null;
   }
   setConfig(cfg) { const c = AV.sanitize(cfg); if (AV.same(c, this.cfg)) return; this.cfg = c; this.build(); }
@@ -10411,6 +10491,7 @@ class AvatarRig {
     // a twirl angle on top of where you face (it eases back to facing forward when it stops)
     if (spin) this.spinA = ((this.spinA || 0) + dt * spin) % TAU;
     else if (this.spinA) { this.spinA = damp(this.spinA, this.spinA > Math.PI ? TAU : 0, 8, dt); if (Math.abs(this.spinA) < 0.01 || Math.abs(this.spinA - TAU) < 0.01) this.spinA = 0; }
+    else this.spinA = 0;
     if (this.spinA) hy = 0;
     // shop effects: TINY shrinks you, BIG HEAD grows your head; the landing squash
     const fx = this.cfg.fx | 0, sc = fx === 10 ? 0.65 : 1, hs = fx === 1 ? 2.2 : 1;
@@ -10446,7 +10527,12 @@ class AvatarRig {
         arm.rotation.set(this.armX[i], 0, this.armZ[i]);
       }
     }
-    if (this.sparkles) { this.sparkles.rotation.y = t * 0.9; this.sparkles.position.y = Math.sin(t * 2) * 0.02; AV_SPARK.size = 0.07 + Math.sin(t * 9) * 0.025; }
+    if (this.sparkles) { this.sparkles.rotation.y = t * 0.9; this.sparkles.position.y = Math.sin(t * 2) * 0.02; this.sparkles.material.size = 0.07 + Math.sin(t * 9) * 0.025; }
+    if (this.hatAura) {
+      const m = this.hatAura.material, h = this.cfg.hat, b = this.hatAura.userData.base;
+      if (this.hatAura.userData.rgb) m.color.setHSL((t * 0.25) % 1, 1, 0.6);
+      m.opacity = h === 14 ? b * (0.75 + Math.random() * 0.25) : h === 15 ? (Math.random() < 0.015 ? 1 : Math.max(b * 0.4, m.opacity - dt * 3)) : b * (0.8 + Math.sin(t * 2.4) * 0.2);
+    }
     if (this.prop) this.prop.rotation.y += dt * (9 + sp * 3);
     if (this.ufo) { this.ufo.rotation.y += dt * 2.5; this.ufo.position.y = this.ufoY + Math.sin(t * 2.2) * 0.04; }
     if (this.wings) { const f = Math.sin(t * (run || air ? 10 : 2.6)) * (run || air ? 0.45 : 0.18); this.wings[0].rotation.y = 0.5 + f; this.wings[1].rotation.y = -0.5 - f; }
@@ -11720,7 +11806,7 @@ const PauseMenu = {
 
 // ---------------- the Lil' Guy wallet (spent in the shop) ----------------
 // Every Lil' Guy you collect is one to spend (more with challenges on), plus bonuses for clearing laps,
-// escaping, beating OMNIWEGA and clearing each challenge for the first time.
+// escaping, beating WEGA FACE and clearing each challenge for the first time.
 const Wallet = {
   run: 0,
   get() { return Math.floor(Save.data.coins || 0); },
@@ -11779,7 +11865,7 @@ const Achievements = {
     { id: 'marathon', name: 'MARATHON', desc: 'Run 42.2 km in total', reward: [['hat', 21]], stat: 'meters', goal: 42195, km: true },
     // round 5
     { id: 'lap5', name: 'THE FINAL LAP', desc: 'Clear Lap 5', reward: [['hat', 31]] },
-    { id: 'omniwega', name: 'OMNIWEGA SLAYER', desc: 'Beat OMNIWEGA and escape', reward: [['hat', 32]] },
+    { id: 'omniwega', name: 'WEGA FACE SLAYER', desc: 'Beat WEGA FACE and escape', reward: [['hat', 32]] },
     { id: 'completionist', name: 'COMPLETIONIST', desc: 'Unlock every other achievement', reward: [['hat', 20]] },
   ],
   saveT: 0, dirty: false, version: 0,

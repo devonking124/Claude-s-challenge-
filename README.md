@@ -8,7 +8,8 @@ wega-music.js       the music pack (Lap 1 + Lap 2 songs as base64 MP3 + the Wega
 wega-music-lap3.js  Lap 3 song add-on ("Pillar John's Revenge"); optional, Lap 3 falls back to a sped-up Lap 2 song
 wega-music-lap4.js  Lap 4 song add-on ("DIVE"); optional, Lap 4 falls back to a sped-up Lap 3 song
 wega-music-lap5.js  Lap 5 song add-on ("I made it better"); optional, Lap 5 falls back to a sped-up Lap 4 song
-wega-music-boss.js  OMNIWEGA's boss theme (the Mario & Luigi boss battle); optional, the fight keeps the Lap 5 song
+wega-music-boss.js  WEGA FACE's boss theme (the Mario & Luigi boss battle); optional, the fight keeps the Lap 5 song
+wega-music-chase5.js  the Lap 5 chase song ("Forget Me Not"); optional, the chase falls back to a sped-up Lap 5 song
 wega-relay.json     optional: which multiplayer server to use (empty = free public relays)
 server/             the multiplayer server (Node 20+): hosts the game, relays player data and runs the shared runs
 render.yaml         one-click deploy of server/ on Render
@@ -36,11 +37,13 @@ Everyone on a server plays **one shared run**:
 - **The chase is server-side:** the collapse runs on the server's clock, so the path falls away at the same spot
   for everyone. Anyone still back at the start when it's grabbed is pulled up to the idol's dais, and a player who
   rejoins mid-chase lands just ahead of the collapse.
-- **OMNIWEGA is server-side too:** the first player to get to the middle of its arena sets it off for everyone. The server holds its
-  health and the seed its attacks come from, so every player sees the same attacks at the same moment, and each
-  core anyone grabs hurts it once for everybody. It gets 2 more cores per extra player (up to 14). Nobody can
-  escape until it's down; rejoin mid-fight and you land on the arena.
-- If you die, **REJOIN RUN** puts you back where the run is now. **QUIT TO LOBBY** leaves the run.
+- **WEGA FACE is server-side too:** it starts for everyone when Forget Me Not ends. The server holds its phase, its
+  health, the seed its attacks come from and the gauntlet's queue, so every player sees the same attacks at the same
+  moment, and each hit anyone lands counts for everybody. Hits only land as fast as the server allows, so the fight
+  lasts at least 10 minutes whether 1 or 10 people play. Nobody can escape until it's down; rejoin mid-fight and you
+  land on the arena (or a balcony during the gauntlet).
+- If you die, you watch your killer's death scene and then **spectate** the others until the run moves on (next
+  lap, the chase, or WEGA FACE's next phase). **QUIT TO LOBBY** leaves the run.
 
 The server keeps track of the run (`server/authority.js`). On the free public relays there is no server, so the
 player with the lowest id hosts the run instead, and it is handed to the next player if they leave. If nobody
@@ -85,11 +88,20 @@ Press **AVATAR** in the lobby:
   **kurimanju** (the shiny golden-brown chestnut bun with its pale base, `:3` face and rosy cheeks). Unlockable:
   Lil' Guy buddy, idol hat, devil horns, hard hat, shoe hat, the **golden hat** (it gives off sparkles), flame
   crown, storm cloud (with its own lightning bolt), snorkel mask, propeller cap (the propeller spins), nerd
-  glasses, ice crown, sweatband, the rainbow halo, the **chaos crown** and the **OMNI crown**.
-- **Moves** (animation packs): how your avatar runs, jumps and idles. Classic and Swagger to start with; Ninja Run,
-  Bouncy, Robot, Zombie, Disco, Float, Moonwalk, Spin (twirls when you stand still) and Hype (fist pumps) are
-  unlocked with achievements.
-- **Effect:** a trail, aura or wings (from the shop).
+  glasses, ice crown, sweatband, the rainbow halo, the **chaos crown** and the **OMNI crown**. Crowns, halos and
+  the other magic hats glow and sparkle (the rainbow halo and OMNI crown cycle through every colour).
+- **Moves** (animation packs): every pack has its **own idle, run and jump** (a rising and a falling pose), and
+  everyone squashes a little on landing. Classic and Swagger to start with; the rest are unlocked with achievements
+  or bought in the shop. A few examples: Swagger folds its arms and nods to a beat, then throws a peace sign in the
+  air; Ninja Run stands in a hand-sign stance and does a **tucked front flip**; Bouncy hops on the spot and does a
+  **star jump**; Robot does a ticking robot dance; Float **meditates in mid-air** and glides; Moonwalk strikes the
+  hat-and-toes pose with a kick; Spin goes airplane when it runs and ballerina-spins in the air; Hype does the splits
+  in mid-air; Headspin **cartwheels**; Penguin belly-flops; Superhero flies up fist-first and braces for a hero
+  landing; T-Pose spins.
+- **Effect:** a trail, aura or wings (from the shop). Fire swells and burns out, the rainbow trail is a ribbon,
+  sparkles twinkle as they spiral round you, lightning strikes in bolts, glitch pixels flicker and bubbles wobble
+  up and pop.
+- Every avatar part is glossy toy plastic now: a soft rim of light round its edges and a highlight on top.
 - the fish in your fishbowl
 
 Lots more (hats, outfits, heads, moves, colours and effects) are in the **Lil' Guy shop**.
@@ -124,7 +136,7 @@ banner and a toast tell you when you unlock one, and other players online see it
 | INFERNO RUNNER | Escape the Inferno Chase (grab the idol after Lap 2) | Flame crown + lava colour |
 | STORM CHASER | Escape Wega's Revenge Chase (after Lap 3) | Storm cloud hat |
 | DEEP DIVER | Escape the Deep Chase (after Lap 4) | Snorkel mask + ice colour |
-| **OMNIWEGA SLAYER** | Beat OMNIWEGA and escape | **OMNI crown** (Wega's helmet ring with glowing red eyes) |
+| **WEGA FACE SLAYER** | Beat WEGA FACE and escape | **OMNI crown** (a gold crown set with a piece of every character) |
 | FLAWLESS ESCAPE | Escape without getting hit during the chase | Spin moves |
 | SPEEDRUNNER | Escape in under 5:00 with no modifiers (challenges are fine) | Chrome colour |
 | MOD SQUAD | Escape with 3 or more challenges on | Glitch suit |
@@ -182,7 +194,7 @@ escape with a challenge on, you get a one-time **+500** for clearing it (it's ma
 
 Every Lil' Guy you collect goes into your wallet (it started with every Lil' Guy you've ever collected). You also
 earn a bonus for each lap you clear (40 × the lap), for escaping (150 + 100 × the chase tier), +500 for beating
-OMNIWEGA, and everything is multiplied by your challenges. Your wallet shows on the main menu and the win screen.
+WEGA FACE, and everything is multiplied by your challenges. Your wallet shows on the main menu and the win screen.
 
 The shop is in the lobby: pick a category, pick an item and the mannequin tries it on with the rest of your
 outfit, then press its price to buy it (or **EQUIP** if you own it). Bought items are also in the AVATAR page.
@@ -200,6 +212,12 @@ Prices go from 250 to 2,500 Lil' Guys. Other players see what you wear (effects 
 
 ## Laps
 
+Every lap has its own world:
+**Lap 1 is the NEON VOID** (a glowing grid floor, a starfield and wireframe monoliths floating round the maze, pulsing
+to the beat), **Lap 2 the INFERNO** (volcanoes erupting on the horizon, lava geysers), **Lap 3 WEGA'S REVENGE**
+(forked lightning striking out of a blood storm, red rain), **Lap 4 THE DEEP** and **Lap 5 HELLFIRE** (red and fire:
+lava veins in the walkways, rings of fire, burning obsidian, fire tornadoes and meteors under a burning sky).
+
 - **Lap 1:** collect all 207 Lil' Guys (run through them, jump over them or grab them). At 0 left, a beacon appears (go to the Idol Chamber) and a
   **LAP 2 portal** opens at the start. The portal is optional.
 - **Lap 2 (Inferno)**, **Lap 3 (Wega's Revenge)**, **Lap 4 (The Deep)** and **Lap 5 (The Final Lap)** are timed. If the timer hits 0:00,
@@ -215,13 +233,14 @@ Prices go from 250 to 2,500 Lil' Guys. Other players see what you wear (effects 
 - **Lap 4: the Diver.** Deep-sea lap with the "DIVE" music. A hulking diver in a brass helmet leaps into the sky,
   a red ring marks where he'll land (where you're heading), then he plunges down. Get out of the ring, then
   **jump the shockwave** that rolls out from the impact, and don't bump into him while he stands there. Late in
-  the lap he dives twice in a row. Glowing **jellyfish** drift over the walkways (touching one zaps you). The deep
-  has a kelp forest, branching coral, light shafts from the surface, schools of fish, caustics rippling over the
+  the lap he dives twice in a row. Glowing **jellyfish** drift over the walkways (touching one zaps you); they
+  never drift over a Lil' Guy (they're placed away from them and turn back before they reach one). The deep has a kelp forest, branching coral, light shafts from the surface, schools of fish, caustics rippling over the
   walkways and a huge leviathan swimming past in the dark.
-- **Lap 5: THE FINAL LAP.** "I made it better" plays, the maze turns into a black-and-magenta chaos circuit (glowing
-  circuit lines, every edge glowing and cycling colours, spinning rings and shards in a red vortex sky) and
+- **Lap 5: THE FINAL LAP.** "I made it better" plays, the maze turns to **hellfire** (red and fire, no rainbow:
+  glowing lava veins in the walkways, embers off every edge, rings of fire, fire tornadoes and meteors) and
   **everyone is back, enraged** (tinted red, faster, nastier): Wega hunting you overhead with his lasers, fireballs
-  and floods, the Diver plunging at you, the jellyfish, Wega's glitch head, Rory, the Screamers, the lasers, the Glitch Guy and Shoebench.
+  and floods, the Diver plunging at you, Wega's glitch head, Rory, the Screamers, the lasers, the Glitch Guy and Shoebench
+  (the jellyfish stay in Lap 4).
   A new character joins them:
   - **THE SHADOW:** a pitch-black copy of you that walks your exact footsteps a few seconds behind. Keep moving:
     stop or double back and it catches you (20 damage), then it drops back again. It gets closer as the lap goes on.
@@ -242,34 +261,75 @@ collapse and more hazards:
 | Lap 2 | THE INFERNO CHASE | about 450 m | orange neon over a lava sea, fireballs rain onto the walkway ahead, longer gaps |
 | Lap 3 | WEGA'S REVENGE CHASE | about 580 m | blood storm; Wega follows you, sweeping his eye lasers across the walkway right where you're about to be (jump the burning spot) and spitting fireballs round the corners ahead; a second Rory ambush; more X gates |
 | Lap 4 | THE DEEP CHASE | about 710 m | the deep sea; the Diver keeps plunging onto the walkway just ahead of you (keep running, and jump his shockwave as he lands); a third Rory ambush; a double hurdle; 3 m gaps |
-| Lap 5 | THE FINAL CHASE | about 740 m | the red vortex; Wega **and** the Diver both after you, fireballs raining down, everything enraged, the fastest collapse; it ends on **OMNIWEGA's arena** |
+| Lap 5 | **FORGET ME NOT** | as long as the song | an **RGB** world (rainbow neon, a colour-cycling vortex sky); **WEGA, DESTROYER OF WORLDS** hunts you for the whole song; it ends on **WEGA FACE's arena** |
 
 The collapse also starts closer behind you and moves faster each tier, and the chase plays that lap's song sped up.
 In a shared run, the run's lap decides the chase for everyone, and the collapse runs on the server's clock.
 
-### OMNIWEGA
+**URIO chases you in every chase.** He comes running down the route after you, leaping the gaps, leaving
+afterimages, his eyes burning red. He's a bit slower than your top speed (how much slower depends on the
+difficulty), so keep your speed up. A hit costs 30 and shoves you, then he drops back.
 
-At the end of the Lap 5 chase the walkway opens onto a huge round arena with the white door on its far side. Just
-as you're about to reach it, **a giant purple hand swoops down, grabs the door and lifts it out of reach**, and
-**OMNIWEGA** rises out of the abyss behind the arena to the Mario & Luigi boss theme: every character fused into
-one creature. Wega's glitching face inside the Diver's brass helmet, Rory bodies and glitch panels bursting out of
-its chest, Screamers on its shoulders, Shoebench on its belly, a ring of Lil' Guys spinning round its head as a
-crown, jellyfish drifting round its waist, the Diver's brass fist on one arm and the purple hand on the other.
-The collapse stops at the arena's edge (the arena never falls), but the door stays shut until it's beaten.
+### The Lap 5 chase: FORGET ME NOT
 
-It attacks with every character's moves, one after another, faster as the fight goes on:
-- **Wega's eyes:** two red stripes flash on the arena, then its eye lasers burn along them. Get off the stripes.
-- **Diver fist:** red rings mark three spots; the brass fist slams each one and a shockwave rolls out. Get out of
-  the rings, then jump the shockwaves.
-- **Rory stampede:** three purple lanes, then three Rorys charge down them. Stand between the lanes.
-- **Screamers:** two red lanes at angles, then Screamers dash down them.
-- **Pixel barrage:** fireballs rain onto marked spots all over the arena.
-- **Pixel flood:** a yellow wave rolls across the whole arena. Jump it.
+**Forget Me Not** plays and the chase lasts exactly as long as the song: the route is built so the collapse (at your
+difficulty's speed) needs the whole song to reach the arena. Wega becomes **WEGA, DESTROYER OF WORLDS**: a god of
+light in every colour with a halo, horns, six rainbow wings and two giant floating hands (think Asriel). Every
+attack is telegraphed:
+- **Star Blazing:** big stars fall onto rainbow rings on the route ahead and burst into small stars that skim the
+  floor. Get out of the ring, then jump the small stars.
+- **Chaos Saber:** a hand swings a blade of light across the walkway at shin height where a stripe flashes. Jump it.
+- **Shocker Breaker:** lightning strikes a line of flashing circles down the route.
+- **Hand Slam:** both hands slam onto rings ahead and shockwaves roll out.
+- **Galacta Blazing:** a rain of small stars over the route ahead. Weave through.
+- **Hyper Goner** (near the end of the song): his face swells into a gaping maw behind you and drags you back
+  towards it, spitting stars. Run against the pull.
 
-**Glowing cores** appear on the arena one at a time (a golden beam of light marks each). Run into a core to grab it:
-every core hurts OMNIWEGA (its health bar shows how many are left). Break them all and it explodes, the hand drops
-the door back where it was, OMNIWEGA sinks into the abyss and the exit is free. Beating it pays **+500 Lil' Guys**
-and unlocks **OMNIWEGA SLAYER**. If you die, RETRY puts you back on the arena with the cores you already broke.
+When the song ends he dissolves into light... and WEGA FACE takes the exit.
+
+### WEGA FACE
+
+The boss at the end of the Lap 5 chase, inspired by Pizza Tower's Pizzaface. When Forget Me Not ends, **WEGA
+FACE** (Wega's giant flying head) rises over the arena in front of the exit and seals it. The fight lasts **at least
+10 minutes however many people play** (the server paces it: while the boss is shielded, nothing hurts it):
+
+1. **WEGA FACE** flies round the arena: it swoops through you, dives jaw-first (CHOMP), spits pixel fire, sweeps its
+   eye lasers, drops Lil' Guy bombs and circles the arena spitting. **Golden Lil' Guys** appear on the arena: grab
+   one and it rockets into the face. Enough rockets crack it open...
+2. ...and **WEGA MAN** bursts out of the cracked face: ground pounds, dashing punches, thrown face shards, spin
+   cyclones and mini heads. After a pound or a crashing dash he's **dizzy**: run into him to **BONK** him.
+3. **THE GAUNTLET:** WEGA MAN takes his throne and **every player, one at a time, 1v1s a random character** in the
+   ring (Rory, Shoebench, the Screamer, the Diver, the Glitch Guy, Urio, your Shadow or Wega's glitch head) while
+   everyone else **watches from the balconies** until it's their turn. Grab the cores to beat your opponent. Win at
+   least one duel and WEGA FACE is down (lose them all and the gauntlet starts over).
+
+Beating it pays **+500 Lil' Guys** and unlocks **WEGA FACE SLAYER**. The HUD's top bar shows its health (one
+segment per hit), the phase, and when it's shielded.
+
+## Going down
+
+Every character that can kill you has its **own death scene**: Rory sprints at you out of the dark and grabs you
+with his gloves, the Screamer stops dead in your face and red cracks run across your view, Shoebench comes down on
+you, Urio walks into a spotlight, laughs and lunges, Wega rises and fires his eye lasers, the Diver plunges in front
+of you and the water rises, the jellyfish close in and all zap at once, your Shadow walks into you, the Glitch Guy
+breaks the world into pixels, the flood crashes over you, the Destroyer's hands clap, WEGA FACE chomps and WEGA MAN
+punches. Then the title comes up (jump skips once the hit has landed).
+
+**Online, you then spectate:** you can't come back until the run moves on (the next lap, the chase, or WEGA FACE's
+next phase), or until everyone is down and the stage starts over. Use **< >** to watch someone else.
+
+## Sounds you can read
+
+Every caption at the bottom of the screen has its own sound effect, made in the browser: **[ WEGA LAUGHS ]** is a
+deep, echoing, distorted laugh, **[ URIO LAUGHS ]** a warbling slowed-down cackle, **[ RORY'S FOOTSTEPS ]**,
+**[ THE SCREAMER SCREAMS ]**, **[ WEGA FACE CACKLES ]**, **[ CHOMP ]**, **[ THUNDER ]**, alarms, glitches, crowds and
+more, placed in 3D where they happen.
+
+## The HUD
+
+A speed dial (it turns red past 55 s/s), a card with your Lil' Guys left (RUN! in a chase, FIGHT! against WEGA
+FACE) and your health in ten cells, all in the lap's colour. The bar on top is the lap timer, the chase's progress
+(you, Urio, the collapse eating the route, the exit), Forget Me Not's time left, or the boss's health.
 
 ## Difficulty
 
@@ -324,5 +384,6 @@ The full-screen button is in the top-right corner.
 
 Open `index.html?debug`: keys `1`–`8` jump to Lap 1 / Lap 2 / Idol Chamber / Escape / Win / Lap 3 / Lap 4 / Lap 5.
 `window.WEGA_DEBUG` has `skipToLap2()`, `skipToLap3()`, `skipToLap4()`, `skipToLap5()`, `skipToIdol()`, `skipToEscape()`, `win()`, `godMode(bool)`,
-`setLeft(n)` and `spawnShoebench()`.
+`setLeft(n)`, `spawnShoebench()`, `skipToChase5(seconds)`, `skipToBoss(phase)`, `bossAge(seconds)`, `bossHit()` and
+`die(killer)` (plays that character's death scene).
 Runs that use debug helpers don't save a best time. Add `?offline` to play without connecting to any server.
