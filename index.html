@@ -9,18 +9,41 @@
     font-family: "Courier New", ui-monospace, monospace; }
   canvas { display: block; outline: none; touch-action: none; }
   #overlay { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
-    justify-content: center; gap: 14px; z-index: 10; text-align: center; padding: 16px; box-sizing: border-box;
-    background: radial-gradient(ellipse at center, rgba(42, 10, 64, .88), rgba(0, 0, 0, .96)); }
+    justify-content: center; gap: 14px; z-index: 10; text-align: center; padding: 16px; box-sizing: border-box; overflow: hidden;
+    background: radial-gradient(circle at 20% 15%, rgba(255, 60, 200, .22), transparent 45%),
+      radial-gradient(circle at 80% 85%, rgba(60, 200, 255, .18), transparent 45%),
+      radial-gradient(ellipse at center, rgba(42, 10, 64, .9), rgba(0, 0, 0, .97));
+    background-size: 160% 160%, 160% 160%, 100% 100%; animation: ovDrift 14s ease-in-out infinite alternate; }
+  /* a neon floor grid rolling towards you under everything */
+  #overlay::before { content: ""; position: absolute; left: -50%; right: -50%; bottom: -10%; height: 55%; z-index: -1; pointer-events: none;
+    background-image: linear-gradient(rgba(184, 77, 255, .45) 2px, transparent 2px), linear-gradient(90deg, rgba(184, 77, 255, .45) 2px, transparent 2px);
+    background-size: 64px 64px; transform: perspective(300px) rotateX(62deg); transform-origin: 50% 100%;
+    -webkit-mask-image: linear-gradient(to top, #000 10%, transparent 90%); mask-image: linear-gradient(to top, #000 10%, transparent 90%);
+    animation: ovGrid 2.4s linear infinite; }
+  @keyframes ovDrift { from { background-position: 0% 0%, 100% 100%, 0 0; } to { background-position: 100% 60%, 0% 30%, 0 0; } }
+  @keyframes ovGrid { from { background-position: 0 0, 0 0; } to { background-position: 0 64px, 0 0; } }
+  @keyframes ovShine { from { background-position: 0% 50%; } to { background-position: 200% 50%; } }
+  @keyframes ovPulse { 0%, 100% { filter: drop-shadow(0 0 14px rgba(184, 77, 255, .9)); } 50% { filter: drop-shadow(0 0 26px rgba(255, 80, 220, .95)); } }
   #overlay.hidden { display: none; }
-  #overlay h1 { margin: 0; font: italic 900 clamp(28px, 6vw, 64px) Impact, "Arial Black", sans-serif;
-    letter-spacing: .06em; text-shadow: 0 0 18px #8a2be2, 0 0 4px #b84dff; }
+  #overlay h1 { margin: 0; font: italic 900 clamp(30px, 7vw, 76px) Impact, "Arial Black", sans-serif; letter-spacing: .06em;
+    background: linear-gradient(90deg, #ffffff, #e0a0ff, #ff70d8, #70e8ff, #ffffff, #e0a0ff); background-size: 200% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-stroke: 1px rgba(255, 255, 255, .35);
+    animation: ovShine 6s linear infinite, ovPulse 3s ease-in-out infinite; }
   #overlay h2 { margin: 0 0 8px; font: italic 700 clamp(16px, 3vw, 28px) Impact, "Arial Black", sans-serif;
-    letter-spacing: .3em; color: #e6c8ff; }
-  #overlay button { font: 700 18px "Courier New", monospace; letter-spacing: .12em; padding: 12px 26px;
-    border-radius: 999px; border: 2px solid #b84dff; background: #2a0f40; color: #fff; cursor: pointer; min-width: 260px; }
-  #overlay button:hover { background: #4a1a70; }
-  #overlay button[disabled] { opacity: .4; cursor: default; }
-  #overlay .hint { max-width: 600px; font-size: 13px; line-height: 1.55; color: #cbb6e0; }
+    letter-spacing: .4em; color: #f0d8ff; text-shadow: 0 0 12px rgba(184, 77, 255, .9); }
+  #overlay h2::before, #overlay h2::after { content: "\2014"; margin: 0 .5em; color: #b84dff; }
+  #overlay button { position: relative; overflow: hidden; font: 700 18px "Courier New", monospace; letter-spacing: .12em; padding: 13px 28px;
+    border-radius: 999px; border: 2px solid #d090ff; color: #fff; cursor: pointer; min-width: 280px;
+    background: linear-gradient(180deg, #6a2aa8, #2a0f40 55%, #1a0828); box-shadow: 0 0 16px rgba(184, 77, 255, .55), inset 0 1px 0 rgba(255, 255, 255, .35);
+    text-shadow: 0 0 8px rgba(255, 200, 255, .8); transition: transform .12s, box-shadow .12s; }
+  #overlay button::after { content: ""; position: absolute; top: 0; left: -60%; width: 40%; height: 100%; pointer-events: none;
+    background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .35), transparent); transform: skewX(-20deg); transition: left .45s; }
+  #overlay button:hover { transform: translateY(-1px) scale(1.03); box-shadow: 0 0 26px rgba(255, 90, 230, .8), inset 0 1px 0 rgba(255, 255, 255, .45); }
+  #overlay button:hover::after { left: 120%; }
+  #overlay button[disabled] { opacity: .4; cursor: default; transform: none; }
+  #overlay .hint { max-width: 620px; font-size: 13px; line-height: 1.55; color: #d8c4ee; padding: 12px 18px; border-radius: 14px;
+    background: rgba(16, 4, 28, .6); border: 1px solid rgba(184, 77, 255, .35); box-shadow: inset 0 0 24px rgba(184, 77, 255, .12); }
+  @media (prefers-reduced-motion: reduce) { #overlay, #overlay::before, #overlay h1 { animation: none; } }
   #status { font-size: 14px; color: #ffd21f; min-height: 1.2em; }
   #crosshair { position: fixed; left: 50%; top: 50%; width: 10px; height: 10px; margin: -7px 0 0 -7px;
     border: 2px solid rgba(255, 255, 255, .9); border-radius: 50%; pointer-events: none; display: none; z-index: 5; }
@@ -1490,6 +1513,7 @@ const Cue = {
     boss: ['[ A GIANT FACE BLOCKS THE EXIT ]', 3, () => { Sfx.roar(); Sfx.boom(null, true); }],
     crowd: ['[ THE CROWD GOES WILD ]', 2, () => { for (let i = 0; i < 4; i++) Sfx.noise({ filter: 'bandpass', f0: 900 + i * 300, q: 0.6, dur: 1.6, vol: 0.1, attack: 0.2, when: i * 0.05, verb: 0.6 }); Sfx.arp(); }],
     heart: ['[ HEARTBEAT ]', 1.2, () => Sfx.heartbeat()],
+    healUp: ['[ HEALTH UP ]', 1.2, () => { Sfx.bonus(); Sfx.heartbeat(); }],
   },
   play(id, p, dur) {
     const c = this.LIST[id]; if (!c) return;
@@ -6800,7 +6824,7 @@ const Rory = {
     if (this.hitCD <= 0) {
       const hd = Math.hypot(Player.pos.x - this.pos.x, Player.pos.z - this.pos.z);
       if (hd < CONFIG.RORY_RADIUS + CONFIG.RADIUS && Player.pos.y < this.pos.y + CONFIG.RORY_HEIGHT && Player.pos.y + Player.height > this.pos.y) {
-        if (Player.damage(CONFIG.DMG.rory, 'rory')) { Sfx.honk(); Player.shoveFrom(this.pos); this.stunT = 1.0; }
+        if (Player.damage(CONFIG.DMG.rory, 'rory')) { Cue.play('roryHonk'); Player.shoveFrom(this.pos); this.stunT = 1.0; }
         this.hitCD = 1.5;
       }
     }
@@ -8439,7 +8463,7 @@ const Hearts = {
       o.h.scale.x = 0.7 * Math.cos(this.t * 2.2); o.gl.material.opacity = 0.6 + Math.sin(this.t * 5) * 0.2;
       if (Player.hp > 0 && Math.hypot(p.x - o.h.position.x, p.z - o.h.position.z) < 1.25 && Math.abs(p.y + 1 - o.h.position.y) < 1.6) {
         o.on = false; o.h.visible = o.gl.visible = false;
-        Player.healBy(30); Sfx.bonus(); FX.pickup(o.h.position.x, o.h.position.y, o.h.position.z); Captions.show('[ HEART ]', 1.2);
+        Player.healBy(30); Cue.play('healUp'); FX.pickup(o.h.position.x, o.h.position.y, o.h.position.z);
       }
     }
   },
@@ -11524,7 +11548,7 @@ const DeathCam = {
     this.root.position.copy(this.base); this.root.rotation.set(0, yaw, 0); this.root.visible = true;
     for (const k of Object.keys(this.actors)) { const a = this.actors[k]; if (Array.isArray(a)) a.forEach((x) => { if (x.core) x.show(false); else x.visible = false; }); else a.visible = false; }
     for (const k of Object.keys(this.overlay)) { this.overlay[k].visible = false; this.overlay[k].material.opacity = 0; }
-    this.floor.visible = this.scene !== 'fall' && this.scene !== 'collapse' && this.scene !== 'lava';
+    this.floor.visible = this.scene !== 'fall' && this.scene !== 'collapse' && this.scene !== 'lava' && this.scene !== 'wegaface';
     this.ring.visible = this.floor.visible;
     if (this.shadowRig) { this.shadowRig.dispose(); this.shadowRig = null; }
     this.hideExtras();
