@@ -9,6 +9,7 @@ wega-music.js       the music pack (Lap 1 + Lap 2 songs as base64 MP3 + the Wega
 wega-music-lap3.js  Lap 3 song add-on ("Pillar John's Revenge"); optional, Lap 3 falls back to a sped-up Lap 2 song
 wega-music-lap4.js  Lap 4 song add-on ("DIVE"); optional, Lap 4 falls back to a sped-up Lap 3 song
 wega-music-lap5.js  Lap 5 song add-on ("I made it better"); optional, Lap 5 falls back to a sped-up Lap 4 song
+wega-music-boss.js  WEGA FACE's boss theme (Pizza Tower: "Unexpectancy", parts 1-3); optional, the fight falls back to the Lap 5 song
 wega-music-chase5.js  the Lap 5 chase song ("Forget Me Not"); optional, the chase falls back to a sped-up Lap 5 song
 wega-relay.json     optional: which multiplayer server to use (empty = free public relays)
 server/             the multiplayer server (Node 20+): hosts the game, relays player data and runs the shared runs

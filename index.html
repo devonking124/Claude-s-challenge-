@@ -91,6 +91,8 @@
 <script src="wega-music-lap5.js"></script>
 <!-- Optional Lap 5 chase add-on ("FORGET ME NOT"): the Lap 5 chase lasts exactly as long as this song. -->
 <script src="wega-music-chase5.js"></script>
+<!-- Optional WEGA FACE boss track add-on (Pizza Tower: Unexpectancy). The boss falls back to the Lap 5 song. -->
+<script src="wega-music-boss.js"></script>
 </head>
 <body>
 <div id="overlay">
@@ -1022,7 +1024,7 @@ const Music = {
   stop(secs) { this.desired.track = null; if (this.ok()) window.WegaMusic.stop(secs); },
   hasTrack(t) { return !!(window.WegaMusic && window.WegaMusic.data && window.WegaMusic.data[t]); },
   toast(track) {
-    let title = track === 'lap1' ? 'WEXECUTION' : track === 'lap3' ? "PILLAR JOHN'S REVENGE" : track === 'lap4' ? 'DIVE' : track === 'lap5' ? 'I MADE IT BETTER' : track === 'boss' ? 'BOSS BATTLE' : track === 'chase5' ? 'FORGET ME NOT' : 'WEGAFADENCE';
+    let title = track === 'lap1' ? 'WEXECUTION' : track === 'lap3' ? "PILLAR JOHN'S REVENGE" : track === 'lap4' ? 'DIVE' : track === 'lap5' ? 'I MADE IT BETTER' : track === 'boss' ? 'UNEXPECTANCY' : track === 'chase5' ? 'FORGET ME NOT' : 'WEGAFADENCE';
     try { if (window.WegaMusic && window.WegaMusic.data[track]) title = window.WegaMusic.data[track].title.split('(')[0].trim(); } catch (e) { /* ignore */ }
     UI.toast('♪ ' + title.toUpperCase());
   },
