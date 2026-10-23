@@ -28,7 +28,6 @@ const FILES = {
   '/wega-music-lap3.js': 'text/javascript; charset=utf-8',
   '/wega-music-lap4.js': 'text/javascript; charset=utf-8',
   '/wega-music-lap5.js': 'text/javascript; charset=utf-8',
-  '/wega-music-boss.js': 'text/javascript; charset=utf-8',
   '/wega-music-chase5.js': 'text/javascript; charset=utf-8',
   '/README.md': 'text/markdown; charset=utf-8',
 };

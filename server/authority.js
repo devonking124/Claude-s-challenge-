@@ -23,6 +23,7 @@ const WegaShared = (() => {
   const BONUS = 3, BONUS_EVERY = 25;      // laps 2-4: +3 s on the shared timer every 25 collected
   const CUT_DELAY = 4.2;        // the lap cutscene plays before the lap timer matters
   const RUNNER_TIMEOUT = 12000; // ms without a heartbeat -> no longer in the run / on the server
+  const WIPE_WAIT = 12;         // s: everyone down in a chase / the boss fight -> everyone spectates this long, then it starts over
   const EMPTY_RESET = 15000;    // ms with nobody left in the run -> back to idle
   const FINISH_AFTER_WIN = 90000, ESCAPE_MAX = 240000, ESCAPE_MAX_BOSS = 3600000, DONE_HOLD = 4000;
   // the Lap 5 chase lasts exactly as long as FORGET ME NOT (wega-music-chase5.js): then WEGA FACE takes the exit
@@ -135,7 +136,7 @@ const WegaShared = (() => {
       this.tot = TOTAL; this.bits = new Uint8Array(Math.ceil(MAX_TOTAL / 8)); this.left = TOTAL; this.lapCount = 0;
       this.tEnd = 0; this.shoe = false; this.d = 'normal'; this.rml = MAX_LAP; this.md = 0; this.times = [0, 0, 150, 120, 105, 120];
       this.by = ''; this.gr = ''; this.runners = new Map(); this.startT = this.now(); this.escT = 0; this.winT = 0; this.doneT = 0; this.emptyT = 0;
-      this.boss = null; this.bs = 0; this.lv = 0;
+      this.boss = null; this.bs = 0; this.lv = 0; this.wipeAt = 0;
     }
     event(kind, who, id, extra) { this.ev = [this.ev[0] + 1, kind, who, id || '']; if (extra != null) this.ev.push(extra); }
     changed() { this.sq++; this.dirty = true; }
@@ -146,7 +147,7 @@ const WegaShared = (() => {
       return r;
     }
     // everyone who is down comes back (a new lap, the chase, a boss phase, a duel, or a wipe)
-    revive() { for (const r of this.runners.values()) r.dead = false; this.lv++; }
+    revive() { for (const r of this.runners.values()) r.dead = false; this.lv++; this.wipeAt = 0; }
     ids() { return [...this.runners.keys()]; }
     // someone is on the server (keeps their place in the join order)
     touch(id, who) {
@@ -192,10 +193,15 @@ const WegaShared = (() => {
       else if (res === 'down') { this.revive(); this.st = 'freed'; this.event('bossdown', who, id); }
     }
     // everyone in the run is down: the stage starts over (Lil' Guys you already got stay got)
+    // (in a chase or the boss fight everyone spectates for WIPE_WAIT first: see wipeNow)
     checkWipe() {
-      if (this.ph !== 'run' || !this.runners.size) return;
+      if (this.ph !== 'run' || !this.runners.size || this.wipeAt) return;
       for (const r of this.runners.values()) if (!r.dead) return;
-      const now = this.now();
+      if (this.st === 'escape' || this.st === 'boss') { this.wipeAt = this.now() + WIPE_WAIT * 1000; this.event('wipewait', '', '', this.st); this.changed(); return; }
+      this.wipeNow();
+    }
+    wipeNow() {
+      const now = this.now(); this.wipeAt = 0;
       if (/^(lap|beacon)[1-5]$/.test(this.st)) { if (this.lap >= 2) { this.tEnd = now + ((this.times[this.lap] || 120) + CUT_DELAY) * 1000; this.shoe = false; } }
       else if (this.st === 'escape') this.escT = now;
       else if (this.st === 'boss' && this.boss) this.boss.restartPhase(now, this.ids());
@@ -336,6 +342,8 @@ const WegaShared = (() => {
           else if (now - this.emptyT > EMPTY_RESET) { this.ph = 'idle'; this.st = ''; this.changed(); }
         } else this.emptyT = 0;
         if (/^(lap|beacon)[2-5]$/.test(this.st) && !this.shoe && now >= this.tEnd) { this.shoe = true; this.event('shoe', '', ''); this.changed(); }
+        // everyone has been down for a while: the chase / the boss phase starts over
+        if (this.wipeAt && now >= this.wipeAt) this.wipeNow();
         // the Lap 5 chase's song is over: WEGA FACE
         if (this.st === 'escape' && this.lap >= MAX_LAP && now - this.escT >= CHASE5_LEN * 1000) { this.startBoss(); this.changed(); }
         // the duelist whose turn it is has left the run: skip them
@@ -365,7 +373,7 @@ const WegaShared = (() => {
         ow: this.owner, on: this.ownerName(), ld: this.ld, ml: this.ml, lm: this.lm, hp: here,
         ag: Math.round((now - this.startT) / 100) / 10, e: this.ev,
         ea: this.escT ? Math.round((now - this.escT) / 100) / 10 : 0,             // the chase clock
-        lv: this.lv, dl,
+        lv: this.lv, dl, ww: this.wipeAt ? Math.round(Math.max(0, this.wipeAt - now) / 100) / 10 : 0,
       };
       if (this.boss) Object.assign(s, this.boss.snap(now));
       return s;
@@ -393,12 +401,13 @@ const WegaShared = (() => {
       this.by = String(s.by || ''); this.gr = String(s.gr || ''); this.startT = this.now() - clampNum(s.ag, 0, 1e6, 0) * 1000;
       if (this.st === 'escape' || this.st === 'boss' || this.st === 'freed' || this.st === 'done') this.escT = this.now() - clampNum(s.ea, 0, 1e6, 0) * 1000;
       this.lv = clampNum(s.lv | 0, 0, 1e9, 0);
+      if (s.ww > 0) this.wipeAt = this.now() + clampNum(s.ww, 0, WIPE_WAIT, 0) * 1000;
       if (Array.isArray(s.dl)) for (const d of s.dl) if (Array.isArray(d) && okId(d[0])) this.runners.set(d[0], { n: String(d[1] || 'PLAYER').slice(0, 24), t: this.now(), won: false, dead: !!d[2] });
       if (Number.isInteger(s.bp) && s.bp > 0 && Number.isInteger(s.bs)) { this.boss = Boss.from(s, this.now()); this.bs = s.bs; }
       if (this.st === 'done') this.doneT = this.now();
     }
   }
 
-  return { Room, Boss, hash01, cleanName, nameAllowed, label, TOTAL, MAX_TOTAL, MAX_LAP, NAME_MAX, CHASE5_LEN, BOSS_MIN, BOSS_INTRO, BOSS_HITS, DUEL_GAP, DUEL_INTRO, DUEL_CHARS };
+  return { Room, Boss, hash01, cleanName, nameAllowed, label, TOTAL, MAX_TOTAL, MAX_LAP, NAME_MAX, CHASE5_LEN, BOSS_MIN, BOSS_INTRO, BOSS_HITS, DUEL_GAP, DUEL_INTRO, DUEL_CHARS, WIPE_WAIT };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = WegaShared;

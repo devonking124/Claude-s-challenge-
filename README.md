@@ -8,7 +8,6 @@ wega-music.js       the music pack (Lap 1 + Lap 2 songs as base64 MP3 + the Wega
 wega-music-lap3.js  Lap 3 song add-on ("Pillar John's Revenge"); optional, Lap 3 falls back to a sped-up Lap 2 song
 wega-music-lap4.js  Lap 4 song add-on ("DIVE"); optional, Lap 4 falls back to a sped-up Lap 3 song
 wega-music-lap5.js  Lap 5 song add-on ("I made it better"); optional, Lap 5 falls back to a sped-up Lap 4 song
-wega-music-boss.js  WEGA FACE's boss theme (the Mario & Luigi boss battle); optional, the fight keeps the Lap 5 song
 wega-music-chase5.js  the Lap 5 chase song ("Forget Me Not"); optional, the chase falls back to a sped-up Lap 5 song
 wega-relay.json     optional: which multiplayer server to use (empty = free public relays)
 server/             the multiplayer server (Node 20+): hosts the game, relays player data and runs the shared runs
@@ -318,7 +317,13 @@ breaks the world into pixels, the flood crashes over you, the Destroyer's hands 
 punches. Then the title comes up (jump skips once the hit has landed).
 
 **Online, you then spectate:** you can't come back until the run moves on (the next lap, the chase, or WEGA FACE's
-next phase), or until everyone is down and the stage starts over. Use **< >** to watch someone else.
+next phase), or until everyone is down and the stage starts over. Use **< >** to watch someone else. If everyone
+goes down in a chase or the boss fight, everyone spectates for 12 seconds (riding along over the collapse) before it
+starts over. You always come back with full health.
+
+**Going down in a chase on your own** works the same way: you watch the chase go on without you for 10 seconds,
+then it starts over (on WEGA FACE's arena, the phase starts over). Going down in a lap on your own still gives you
+the death screen with **RETRY**.
 
 ## Sounds you can read
 

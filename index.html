@@ -87,8 +87,6 @@
 <script src="wega-music-lap4.js"></script>
 <!-- Optional Lap 5 track add-on ("I made it better"). Lap 5 falls back to a sped-up Lap 4 song. -->
 <script src="wega-music-lap5.js"></script>
-<!-- Optional WEGA FACE boss track add-on (Mario & Luigi boss battle). The boss falls back to the Lap 5 song. -->
-<script src="wega-music-boss.js"></script>
 <!-- Optional Lap 5 chase add-on ("FORGET ME NOT"): the Lap 5 chase lasts exactly as long as this song. -->
 <script src="wega-music-chase5.js"></script>
 </head>
@@ -144,6 +142,7 @@ const WegaShared = (() => {
   const BONUS = 3, BONUS_EVERY = 25;      // laps 2-4: +3 s on the shared timer every 25 collected
   const CUT_DELAY = 4.2;        // the lap cutscene plays before the lap timer matters
   const RUNNER_TIMEOUT = 12000; // ms without a heartbeat -> no longer in the run / on the server
+  const WIPE_WAIT = 12;         // s: everyone down in a chase / the boss fight -> everyone spectates this long, then it starts over
   const EMPTY_RESET = 15000;    // ms with nobody left in the run -> back to idle
   const FINISH_AFTER_WIN = 90000, ESCAPE_MAX = 240000, ESCAPE_MAX_BOSS = 3600000, DONE_HOLD = 4000;
   // the Lap 5 chase lasts exactly as long as FORGET ME NOT (wega-music-chase5.js): then WEGA FACE takes the exit
@@ -256,7 +255,7 @@ const WegaShared = (() => {
       this.tot = TOTAL; this.bits = new Uint8Array(Math.ceil(MAX_TOTAL / 8)); this.left = TOTAL; this.lapCount = 0;
       this.tEnd = 0; this.shoe = false; this.d = 'normal'; this.rml = MAX_LAP; this.md = 0; this.times = [0, 0, 150, 120, 105, 120];
       this.by = ''; this.gr = ''; this.runners = new Map(); this.startT = this.now(); this.escT = 0; this.winT = 0; this.doneT = 0; this.emptyT = 0;
-      this.boss = null; this.bs = 0; this.lv = 0;
+      this.boss = null; this.bs = 0; this.lv = 0; this.wipeAt = 0;
     }
     event(kind, who, id, extra) { this.ev = [this.ev[0] + 1, kind, who, id || '']; if (extra != null) this.ev.push(extra); }
     changed() { this.sq++; this.dirty = true; }
@@ -267,7 +266,7 @@ const WegaShared = (() => {
       return r;
     }
     // everyone who is down comes back (a new lap, the chase, a boss phase, a duel, or a wipe)
-    revive() { for (const r of this.runners.values()) r.dead = false; this.lv++; }
+    revive() { for (const r of this.runners.values()) r.dead = false; this.lv++; this.wipeAt = 0; }
     ids() { return [...this.runners.keys()]; }
     // someone is on the server (keeps their place in the join order)
     touch(id, who) {
@@ -313,10 +312,15 @@ const WegaShared = (() => {
       else if (res === 'down') { this.revive(); this.st = 'freed'; this.event('bossdown', who, id); }
     }
     // everyone in the run is down: the stage starts over (Lil' Guys you already got stay got)
+    // (in a chase or the boss fight everyone spectates for WIPE_WAIT first: see wipeNow)
     checkWipe() {
-      if (this.ph !== 'run' || !this.runners.size) return;
+      if (this.ph !== 'run' || !this.runners.size || this.wipeAt) return;
       for (const r of this.runners.values()) if (!r.dead) return;
-      const now = this.now();
+      if (this.st === 'escape' || this.st === 'boss') { this.wipeAt = this.now() + WIPE_WAIT * 1000; this.event('wipewait', '', '', this.st); this.changed(); return; }
+      this.wipeNow();
+    }
+    wipeNow() {
+      const now = this.now(); this.wipeAt = 0;
       if (/^(lap|beacon)[1-5]$/.test(this.st)) { if (this.lap >= 2) { this.tEnd = now + ((this.times[this.lap] || 120) + CUT_DELAY) * 1000; this.shoe = false; } }
       else if (this.st === 'escape') this.escT = now;
       else if (this.st === 'boss' && this.boss) this.boss.restartPhase(now, this.ids());
@@ -457,6 +461,8 @@ const WegaShared = (() => {
           else if (now - this.emptyT > EMPTY_RESET) { this.ph = 'idle'; this.st = ''; this.changed(); }
         } else this.emptyT = 0;
         if (/^(lap|beacon)[2-5]$/.test(this.st) && !this.shoe && now >= this.tEnd) { this.shoe = true; this.event('shoe', '', ''); this.changed(); }
+        // everyone has been down for a while: the chase / the boss phase starts over
+        if (this.wipeAt && now >= this.wipeAt) this.wipeNow();
         // the Lap 5 chase's song is over: WEGA FACE
         if (this.st === 'escape' && this.lap >= MAX_LAP && now - this.escT >= CHASE5_LEN * 1000) { this.startBoss(); this.changed(); }
         // the duelist whose turn it is has left the run: skip them
@@ -486,7 +492,7 @@ const WegaShared = (() => {
         ow: this.owner, on: this.ownerName(), ld: this.ld, ml: this.ml, lm: this.lm, hp: here,
         ag: Math.round((now - this.startT) / 100) / 10, e: this.ev,
         ea: this.escT ? Math.round((now - this.escT) / 100) / 10 : 0,             // the chase clock
-        lv: this.lv, dl,
+        lv: this.lv, dl, ww: this.wipeAt ? Math.round(Math.max(0, this.wipeAt - now) / 100) / 10 : 0,
       };
       if (this.boss) Object.assign(s, this.boss.snap(now));
       return s;
@@ -514,13 +520,14 @@ const WegaShared = (() => {
       this.by = String(s.by || ''); this.gr = String(s.gr || ''); this.startT = this.now() - clampNum(s.ag, 0, 1e6, 0) * 1000;
       if (this.st === 'escape' || this.st === 'boss' || this.st === 'freed' || this.st === 'done') this.escT = this.now() - clampNum(s.ea, 0, 1e6, 0) * 1000;
       this.lv = clampNum(s.lv | 0, 0, 1e9, 0);
+      if (s.ww > 0) this.wipeAt = this.now() + clampNum(s.ww, 0, WIPE_WAIT, 0) * 1000;
       if (Array.isArray(s.dl)) for (const d of s.dl) if (Array.isArray(d) && okId(d[0])) this.runners.set(d[0], { n: String(d[1] || 'PLAYER').slice(0, 24), t: this.now(), won: false, dead: !!d[2] });
       if (Number.isInteger(s.bp) && s.bp > 0 && Number.isInteger(s.bs)) { this.boss = Boss.from(s, this.now()); this.bs = s.bs; }
       if (this.st === 'done') this.doneT = this.now();
     }
   }
 
-  return { Room, Boss, hash01, cleanName, nameAllowed, label, TOTAL, MAX_TOTAL, MAX_LAP, NAME_MAX, CHASE5_LEN, BOSS_MIN, BOSS_INTRO, BOSS_HITS, DUEL_GAP, DUEL_INTRO, DUEL_CHARS };
+  return { Room, Boss, hash01, cleanName, nameAllowed, label, TOTAL, MAX_TOTAL, MAX_LAP, NAME_MAX, CHASE5_LEN, BOSS_MIN, BOSS_INTRO, BOSS_HITS, DUEL_GAP, DUEL_INTRO, DUEL_CHARS, WIPE_WAIT };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = WegaShared;
 import * as THREE from 'three';
@@ -616,6 +623,8 @@ const CONFIG = {
 
   // ---- presentation ----
   HUD_DIST: 1.4, HUD_DROP: 0.45, HUD_FOLLOW_DEG: 25, HUD_SMOOTH: 4,
+  LOOK_SPIKE: 280,            // px: a single mouse / touch move bigger than this is a glitch, not a flick (ignored)
+  LOOK_MAX_STEP: 0.9,         // rad: the most the view turns in one frame from the mouse
   ANNOUNCE_DIST: 2.5, ANNOUNCE_IN: 0.25, ANNOUNCE_HOLD: 2.2, ANNOUNCE_OUT: 0.5,
   LIGHT_SCALE: Math.PI,       // r155+ physical lights: scale "legacy" intensities by PI
   NAMES: ['GOLDEN SIGMA', 'SPEEDY SIGMA', 'THE CHOSEN ONE', "LIL' GUY", "WEGA'S NIGHTMARE", 'PLAYER', 'RORY HATER', 'SHOEBENCH FAN', 'IDOL HUNTER', 'PIZZA RUNNER'],
@@ -686,6 +695,7 @@ function makeValueNoise(seed) {
 const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3(), _v4 = new THREE.Vector3();
 const _v5 = new THREE.Vector3(), _v6 = new THREE.Vector3(), _v7 = new THREE.Vector3(), _v8 = new THREE.Vector3();
 const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
+const _hyQ = new THREE.Quaternion(), _hyUp = new THREE.Vector3();      // (Rig.headYaw)
 const _m1 = new THREE.Matrix4(), _m2 = new THREE.Matrix4();
 const _e1 = new THREE.Euler();
 const _c1 = new THREE.Color(), _c2 = new THREE.Color();
@@ -1063,7 +1073,7 @@ const Music = {
     this.setRate(t === 'lap5' ? 1 : 1.15, 0.05); this.play(t, 0.05); this.toast(t);
     this.lapRate = this.desired.rate;
   },
-  // WEGA FACE: the boss theme (wega-music-boss.js), else the Lap 5 song pushed faster
+  // WEGA FACE: the boss theme (a "boss" track add-on, if one is loaded), else the Lap 5 song pushed faster
   cueBoss() {
     this.setMuffled(false, 0.2); this.setLevel(0.95, 0.3);
     const t = this.hasTrack('boss') ? 'boss' : this.hasTrack('lap5') ? 'lap5' : 'lap2';
@@ -1534,14 +1544,17 @@ const Rig = {
   yaw: 0, pitch: 0,
   headWorld(out) { return camera.getWorldPosition(out); },
   // yaw of the gaze direction projected on the floor
+  // (looking almost straight up or down the gaze's floor projection shrinks to nothing and flips about: the top of
+  // your head points the way you face then, so it's mixed in and the yaw stays steady)
   headYaw() {
     camera.getWorldDirection(_v8);
-    return Math.atan2(-_v8.x, -_v8.z);
+    camera.getWorldQuaternion(_hyQ); _hyUp.set(0, 1, 0).applyQuaternion(_hyQ);
+    const x = _v8.x - _v8.y * _hyUp.x, z = _v8.z - _v8.y * _hyUp.z;
+    return Math.atan2(-x, -z);
   },
   headForward(out) { // horizontal unit forward
-    camera.getWorldDirection(out); out.y = 0;
-    if (out.lengthSq() < 1e-6) out.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
-    return out.normalize();
+    const y = this.headYaw();
+    return out.set(-Math.sin(y), 0, -Math.cos(y));
   },
   // rotate the rig around the head so the head stays put
   turn(delta) {
@@ -1742,7 +1755,7 @@ const Input = {
   keys: Object.create(null), keysPressed: Object.create(null),
   mouseDX: 0, mouseDY: 0, dragging: false, lastMouse: { x: 0, y: 0 }, mouseNDC: new THREE.Vector2(),
   prev: new Map(), pauseHold: 0, pauseConsumed: false, snapCooldown: 0,
-  locked: false,
+  locked: false, lockSkip: 0, lookedT: null,
   initDesktop() {
     const el = renderer.domElement;
     window.addEventListener('keydown', (e) => {
@@ -1766,11 +1779,18 @@ const Input = {
     });
     window.addEventListener('mouseup', () => { this.dragging = false; });
     window.addEventListener('mousemove', (e) => {
-      if (this.locked) { this.mouseDX += e.movementX || 0; this.mouseDY += e.movementY || 0; }
-      else if (this.dragging) { this.mouseDX += e.clientX - this.lastMouse.x; this.mouseDY += e.clientY - this.lastMouse.y; this.lastMouse.x = e.clientX; this.lastMouse.y = e.clientY; }
+      if (this.locked) {
+        // with the pointer locked, browsers (Chrome on Windows especially) now and then report one huge bogus jump,
+        // and the first move or two after the lock changes can carry a stale one: drop those, they snap the view round
+        const dx = e.movementX || 0, dy = e.movementY || 0;
+        if (this.lockSkip > 0) this.lockSkip--;
+        else if (Math.abs(dx) <= CONFIG.LOOK_SPIKE && Math.abs(dy) <= CONFIG.LOOK_SPIKE) { this.mouseDX += dx; this.mouseDY += dy; }
+      } else if (this.dragging) { this.mouseDX += e.clientX - this.lastMouse.x; this.mouseDY += e.clientY - this.lastMouse.y; }
+      this.lastMouse.x = e.clientX; this.lastMouse.y = e.clientY;
       this.mouseNDC.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
     });
     document.addEventListener('pointerlockchange', () => {
+      this.dragging = false; this.lockSkip = 2;
       this.locked = document.pointerLockElement === el;
       DOM.crosshair.style.display = this.locked ? 'block' : 'none';
       if (this.locked) DOM.overlay.classList.add('hidden');
@@ -1844,12 +1864,13 @@ const Input = {
         this.mouseDX += Touch.lookDX * 1.6; this.mouseDY += Touch.lookDY * 1.6;
         Touch.consume();
       }
-      // mouse look
+      // mouse look (never more than a quick flick's worth in one frame)
       const sens = 0.0022;
       if (this.mouseDX || this.mouseDY) {
-        Rig.yaw = wrapAngle(Rig.yaw - this.mouseDX * sens);
-        Rig.pitch = clamp(Rig.pitch - this.mouseDY * sens, -1.45, 1.45);
+        Rig.yaw = wrapAngle(Rig.yaw - clamp(this.mouseDX * sens, -CONFIG.LOOK_MAX_STEP, CONFIG.LOOK_MAX_STEP));
+        Rig.pitch = clamp(Rig.pitch - clamp(this.mouseDY * sens, -CONFIG.LOOK_MAX_STEP, CONFIG.LOOK_MAX_STEP), -1.45, 1.45);
         rig.rotation.y = Rig.yaw; camera.rotation.x = Rig.pitch;
+        this.lookedT = Clock.real;
       }
       if (DEBUG_URL) {
         const map = { Digit1: 'LAP1', Digit2: 'LAP2', Digit3: 'IDOL', Digit4: 'ESCAPE', Digit5: 'WIN', Digit6: 'LAP3', Digit7: 'LAP4', Digit8: 'LAP5' };
@@ -1914,7 +1935,8 @@ const Touch = {
     el.addEventListener('pointermove', (e) => {
       if (e.pointerId !== this.lookId) return;
       e.preventDefault();
-      this.lookDX += e.clientX - this.look.x; this.lookDY += e.clientY - this.look.y;
+      const dx = e.clientX - this.look.x, dy = e.clientY - this.look.y;
+      if (Math.abs(dx) <= CONFIG.LOOK_SPIKE && Math.abs(dy) <= CONFIG.LOOK_SPIKE) { this.lookDX += dx; this.lookDY += dy; }      // (a jumpy touch screen)
       this.look.moved = Math.max(this.look.moved, Math.hypot(e.clientX - this.look.sx, e.clientY - this.look.sy));
       this.look.x = e.clientX; this.look.y = e.clientY;
       Input.mouseNDC.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
@@ -5002,7 +5024,7 @@ const GUIDE = [
   { name: 'WEGA, DESTROYER OF WORLDS', where: 'THE LAP 5 CHASE (FORGET ME NOT)', icon: 'destroyer', lines: ['WEGA IN EVERY COLOUR THERE IS, WITH FLOATING HANDS', 'STAR RAIN, RAINBOW BLADES, HAND SLAMS, LASERS', 'EVERY ATTACK IS TELEGRAPHED: WATCH THE GLOW', 'SURVIVE THE WHOLE SONG TO REACH THE ARENA'] },
   { name: 'WEGA FACE', where: 'THE END OF THE LAP 5 CHASE', icon: 'wegaface', lines: ['PHASE 1: HIS GIANT FLYING HEAD SWOOPS AND CHOMPS', 'GRAB THE GOLDEN LIL\' GUYS: THEY ROCKET INTO HIM', 'PHASE 2: WEGA MAN BURSTS OUT - BONK HIS HEAD', 'A SHIELD MEANS WAIT: THE FIGHT LASTS 10+ MINUTES'] },
   { name: 'THE GAUNTLET', where: 'WEGA FACE PHASE 3', icon: 'duel', lines: ['ONE AT A TIME, EVERYONE 1V1S A RANDOM CHARACTER', 'THE OTHERS WATCH FROM THE BALCONIES', 'GRAB THE GLOWING CORES TO HURT YOUR OPPONENT', 'LOSE AND YOU GO TO THE BACK OF THE LINE'] },
-  { name: 'GOING DOWN', where: 'ONLINE RUNS', icon: 'skull', lines: ['WHOEVER GOT YOU PLAYS THEIR OWN DEATH SCENE', 'THEN YOU SPECTATE: < > TO SWITCH PLAYERS', 'YOU\'RE BACK AT THE NEXT LAP, CHASE OR BOSS PHASE', 'IF EVERYONE GOES DOWN, THE STAGE STARTS OVER'] },
+  { name: 'GOING DOWN', where: 'ONLINE RUNS + EVERY CHASE', icon: 'skull', lines: ['WHOEVER GOT YOU PLAYS THEIR OWN DEATH SCENE', 'THEN YOU SPECTATE: < > TO SWITCH PLAYERS', 'YOU\'RE BACK AT THE NEXT LAP, CHASE OR BOSS PHASE', 'EVERYONE DOWN IN A CHASE: WATCH, THEN IT STARTS OVER'] },
   { name: 'THE DIVER', where: 'LAP 4 + LAP 5', icon: 'diver', lines: ['LEAPS INTO THE SKY: A RED RING MARKS', 'WHERE HE LANDS (WHERE YOU ARE HEADING)', 'GET OUT OF THE RING (40 DAMAGE)', 'THEN JUMP HIS SHOCKWAVE (15 DAMAGE)', "DON'T BUMP INTO HIM AFTERWARDS"] },
   { name: 'JELLYFISH', where: 'LAP 4', icon: 'jelly', lines: ['GLOWING JELLIES DRIFT OVER THE WALKWAYS', 'TOUCH ONE AND IT ZAPS YOU (12 DAMAGE)', 'GO AROUND, WAIT, OR DUCK UNDER... JUMP!'] },
   { name: 'THE CHASE', where: 'AFTER YOU GRAB THE IDOL', icon: 'collapse', lines: ['THE PATH FALLS AWAY BEHIND YOU: RUN!', 'THE LAP YOU CAME FROM DECIDES THE CHASE:', 'LATER LAPS = LONGER, THEMED, WAY HARDER', 'AFTER LAP 5: FORGET ME NOT, THEN WEGA FACE'] },
@@ -11084,6 +11106,7 @@ const Session = {
     else if (e[1] === 'duelsagain') UI.toast('NOBODY WON A DUEL: THE GAUNTLET STARTS OVER!');
     else if (e[1] === 'bossdown') UI.toast(who + ' BROUGHT DOWN WEGA FACE!');
     else if (e[1] === 'dead') UI.toast(who + ' IS DOWN! (THEY WATCH UNTIL THE NEXT ROUND)');
+    else if (e[1] === 'wipewait') UI.toast('EVERYONE IS DOWN: IT STARTS OVER IN ' + WegaShared.WIPE_WAIT + 's');
     else if (e[1] === 'wipe') UI.toast('EVERYONE WENT DOWN: STARTING OVER!');
   },
   offer(A) {
@@ -11161,7 +11184,7 @@ const Session = {
     await Fade.to(1, 0.5, 0x000000);
     if (tok !== Game.transTok) return;
     Stage.hideAll(); G.stage.visible = false; scene.background.set(0x000000); Confetti.stop();
-    Game.timerOn = true;
+    Game.timerOn = true; Player.heal();             // back in: full health (spectators sit at 0)
     const A = this.auth;
     if (A && A.run === this.myRun && A.st) st = A.st;          // the run may have moved on during the fade
     if (st === 'done' || st === 'boss' || st === 'freed' || !st) st = 'escape';
@@ -11234,6 +11257,8 @@ const SM = {
     if (this.paused) this.resume();
     if (this.cur && this.cur.exit) this.cur.exit(name);
     this.seq++; this.curName = name; this.cur = this.states[name];
+    // never come back into a stage with no health (you couldn't be hurt, so you couldn't go down)
+    if (GAMEPLAY.has(name) && Player.hp <= 0) Player.heal();
     if (this.cur && this.cur.enter) this.cur.enter(arg || {}, prev);
   },
   isGameplay() { return !this.paused && GAMEPLAY.has(this.curName); },
@@ -11763,6 +11788,9 @@ const Spectate = {
   },
   // the run's lives counter when you went down: a new one means you're back
   markDeath() { this.lv0 = Session.auth ? Session.auth.lv | 0 : -1; },
+  // solo: you went down in a chase. The chase goes on without you for SOLO_WAIT s (you watch), then it starts over
+  SOLO_WAIT: 10,
+  markSolo() { this.soloT0 = Chamber.t0; this.soloBoss = !!FaceBoss.local; },
   targets() {
     const A = Session.auth, dead = new Set(), lvl = Net.levelCode();
     if (A && Array.isArray(A.dl)) for (const d of A.dl) if (d[2]) dead.add(d[0]);
@@ -11771,24 +11799,37 @@ const Spectate = {
   draw(ctx, p) {
     p.bg('rgba(14,4,22,0.88)', '#ff4060', 22);
     const t = this.target;
-    drawText(ctx, t ? 'SPECTATING  ' + t.label() : 'EVERYONE IS DOWN...', 256, 34, { size: 30, style: 'italic 900', font: FONT_IMPACT, fill: '#ffffff', stroke: '#000', lw: 5, spacing: 0.06, maxWidth: 490 });
-    drawText(ctx, "YOU'RE BACK AT THE NEXT LAP, CHASE OR BOSS PHASE", 256, 70, { size: 15, fill: '#ffb0c0', stroke: '#000', lw: 3, maxWidth: 490 });
-    p.button('prev', 14, 92, 110, 50, '<', () => this.step(-1), { size: 26 });
+    const left = this.countdown();
+    drawText(ctx, t ? 'SPECTATING  ' + t.label() : this.solo ? "YOU'RE DOWN" : 'EVERYONE IS DOWN...', 256, 34, { size: 30, style: 'italic 900', font: FONT_IMPACT, fill: '#ffffff', stroke: '#000', lw: 5, spacing: 0.06, maxWidth: 490 });
+    drawText(ctx, left > 0 ? (this.soloBoss && this.solo ? 'THE PHASE STARTS OVER IN ' : 'THE CHASE STARTS OVER IN ') + left : "YOU'RE BACK AT THE NEXT LAP, CHASE OR BOSS PHASE", 256, 70, { size: left > 0 ? 18 : 15, fill: left > 0 ? '#ffe080' : '#ffb0c0', stroke: '#000', lw: 3, maxWidth: 490 });
+    if (!this.solo) p.button('prev', 14, 92, 110, 50, '<', () => this.step(-1), { size: 26 });
     p.button('lobby', 140, 92, 232, 50, 'QUIT TO LOBBY', () => Game.transition('LOBBY'), { size: 20, fill: '#3a0a1a', border: '#ff5070' });
-    p.button('next', 388, 92, 110, 50, '>', () => this.step(1), { size: 26 });
+    if (!this.solo) p.button('next', 388, 92, 110, 50, '>', () => this.step(1), { size: 26 });
+  },
+  // whole seconds until it all starts over (solo, or everyone down online), else 0
+  countdown() {
+    if (this.solo) return Math.max(0, Math.ceil(this.soloLeft || 0));
+    const A = Session.auth; return A && A.ww > 0 ? Math.max(1, Math.ceil(A.ww - (performance.now() - Session.authT) / 1000)) : 0;
   },
   step(d) { const T = this.targets(); if (!T.length) return; this.idx = (this.idx + d + T.length) % T.length; this.target = T[this.idx]; this.panel.redraw(); Sfx.hover(); },
   // which world the run is on: a lap's maze, or the chamber (+ the chase / boss)
-  wantWorld() { const st = Session.auth ? Session.auth.st : ''; const m = /^(lap|beacon)([1-5])$/.exec(st); return m ? 'lap' + m[2] : st === 'chamber' ? 'chamber' : 'chase'; },
+  wantWorld() { if (this.solo) return 'chase'; const st = Session.auth ? Session.auth.st : ''; const m = /^(lap|beacon)([1-5])$/.exec(st); return m ? 'lap' + m[2] : st === 'chamber' ? 'chamber' : 'chase'; },
   loadWorld(key) {
     this.worldKey = key;
     Stage.hideAll(); G.stage.visible = false; DeathCam.stop();
     if (key.startsWith('lap')) { setupLap(+key[3]); }
-    else { setupChamber(); if (key === 'chase') { Chamber.triggerCollapseVisuals(); Chamber.startCollapse(false); if (Chamber.rumble) Chamber.rumble.set(0.15, 0.5); } }
+    else {
+      setupChamber();
+      if (key === 'chase') {
+        if (this.solo && this.soloT0 != null) Chamber.t0 = this.soloT0;      // solo: the chase you went down in carries on
+        Chamber.triggerCollapseVisuals(); Chamber.startCollapse(false); if (Chamber.rumble) Chamber.rumble.set(0.15, 0.5);
+      }
+    }
     Hazards.clear(); HUD.setVisible(false);
     Player.locomotion = 'none'; Player.hp = 0;
   },
-  begin() {
+  begin(arg = {}) {
+    this.solo = !!arg.solo; this.soloLeft = this.SOLO_WAIT; this.shownLeft = -1; this.lookT = 0;
     this.active = true; this.deadT = 0; this.target = null; this.idx = 0; this.orbit = Rig.headYaw();
     this.loadWorld(this.wantWorld());
     camera.getWorldPosition(this.pos);
@@ -11800,38 +11841,63 @@ const Spectate = {
   end() { this.active = false; this.root.visible = false; UI.setActive([]); Music.setMuffled(false, 0.4); Net.heartbeat(); },
   update(dt) {
     if (!this.active) return;
-    const A = Session.auth;
-    // the run is over or gone: back to the lobby
-    if (!Session.inRun()) { if ((this.deadT += dt) > 3) Game.transition('LOBBY'); return; }
-    this.deadT = 0;
-    // you're back (a new lap, the chase, the next boss phase, a wipe)
-    if ((A.lv | 0) !== this.lv0 && !Game.transitioning) { this.active = false; Session.enterStage(A.st); return; }
-    // the authority didn't hear that you're down: say it again
-    if ((this.resendT = (this.resendT || 0) - dt) <= 0) { this.resendT = 1.5; const me = (A.dl || []).find((d) => d[0] === Net.id); if (me && !me[2]) Session.request('dead', { by: 'hp' }); }
-    // the others moved to another world without you (the beacon took them to the chamber): follow them there
-    const want = this.wantWorld();
-    if (want !== this.worldKey && !Game.transitioning) { this.reloadWorld(want); return; }
+    if (this.solo) {
+      // solo: watch the chase carry on, then it starts over (full health)
+      this.soloLeft -= dt;
+      if (this.countdown() !== this.shownLeft) { this.shownLeft = this.countdown(); this.panel.redraw(); }
+      if (this.soloLeft <= 0 && !Game.transitioning) { this.active = false; Game.retry(); return; }
+    } else {
+      const A = Session.auth;
+      // the run is over or gone: back to the lobby
+      if (!Session.inRun()) { if ((this.deadT += dt) > 3) Game.transition('LOBBY'); return; }
+      this.deadT = 0;
+      // you're back (a new lap, the chase, the next boss phase, a wipe)
+      if ((A.lv | 0) !== this.lv0 && !Game.transitioning) { this.active = false; Session.enterStage(A.st); return; }
+      // the authority didn't hear that you're down: say it again
+      if ((this.resendT = (this.resendT || 0) - dt) <= 0) { this.resendT = 1.5; const me = (A.dl || []).find((d) => d[0] === Net.id); if (me && !me[2]) Session.request('dead', { by: 'hp' }); }
+      if (this.countdown() !== this.shownLeft) { this.shownLeft = this.countdown(); this.panel.redraw(); }
+      // the others moved to another world without you (the beacon took them to the chamber): follow them there
+      const want = this.wantWorld();
+      if (want !== this.worldKey && !Game.transitioning) { this.reloadWorld(want); return; }
+    }
     // whoever you're watching (they may have gone down too)
-    const T = this.targets();
-    if (!this.target || !T.includes(this.target)) { this.target = T[this.idx % Math.max(1, T.length)] || null; this.panel.redraw(); }
-    // drift along behind and above them (in VR your head turns freely; on a screen the view turns with them)
+    const T = this.solo ? [] : this.targets();
+    if (!this.target || !T.includes(this.target)) { const n = T[this.idx % Math.max(1, T.length)] || null; if (n !== this.target) { this.target = n; this.panel.redraw(); } }
+    // on a screen the view follows the action, unless you're looking around yourself (it eases back after a moment)
+    this.lookT = Input.lookedT != null && Clock.real - Input.lookedT < 2.5 ? 1 : Math.max(0, (this.lookT || 0) - dt);
+    const steer = !XR.inVR && this.lookT <= 0;
     if (this.target) {
+      // drift along behind and above them
       const c = this.target.cur, yaw = c.yaw;
       _v1.set(c.x + Math.sin(yaw) * 4.2, c.y + 2.2, c.z + Math.cos(yaw) * 4.2);
       this.pos.lerp(_v1, 1 - Math.exp(-3 * dt));
-      if (!XR.inVR) { Rig.yaw = wrapAngle(Rig.yaw + wrapAngle(yaw - Rig.yaw) * (1 - Math.exp(-2.5 * dt))); rig.rotation.y = Rig.yaw; Rig.pitch = damp(Rig.pitch, -0.3, 3, dt); camera.rotation.x = Rig.pitch; }
+      if (steer) this.aim(yaw, -0.3, 2.5, dt);
+    } else if (Chamber.route && G.chamber.visible && (!FaceBoss.started() || !Chamber.arena) && Chamber.front > -1e8) {
+      // nobody to watch in a chase: ride along over the collapse, watching the walkway fall
+      const s = Math.max(Chamber.front + 4, Chamber.daisS - 6);
+      if (Chamber.polyAt(s, _v1) && Chamber.polyAt(s + 14, _v2)) {
+        const yaw = Math.atan2(-(_v2.x - _v1.x), -(_v2.z - _v1.z));
+        _v3.set(_v1.x + Math.sin(yaw) * 6, _v1.y + 5.5, _v1.z + Math.cos(yaw) * 6);
+        this.pos.lerp(_v3, 1 - Math.exp(-2 * dt));
+        if (steer) this.aim(yaw, -0.35, 2, dt);
+      }
     } else {
       // nobody to watch: circle slowly over the stage
       this.orbit += dt * 0.15;
       const ctr = Chamber.arena && G.chamber.visible ? _v2.set(Chamber.arena.x, Chamber.arena.y, Chamber.arena.z) : _v2.set(0, 4, 0);
       _v1.set(ctr.x + Math.sin(this.orbit) * 26, ctr.y + 12, ctr.z + Math.cos(this.orbit) * 26); this.pos.lerp(_v1, 1 - Math.exp(-1.5 * dt));
-      if (!XR.inVR) { Rig.yaw = this.orbit; rig.rotation.y = Rig.yaw; camera.rotation.x = Rig.pitch = damp(Rig.pitch, -0.35, 2, dt); }
+      if (steer) this.aim(this.orbit, -0.35, 2, dt);
     }
     Player.pos.set(this.pos.x, this.pos.y - Rig.eyeHeight(), this.pos.z); Player.viewY = Player.pos.y;
     Rig.placeFeet(Player.pos.x, Player.pos.y, Player.pos.z);
     // the boss and the duels keep going for the spectators (nothing can hurt or count for you)
     if (G.chamber.visible) FaceBoss.update(dt);
     this.follow.update(dt);
+  },
+  // turn the (screen) view smoothly towards yaw / pitch
+  aim(yaw, pitch, k, dt) {
+    Rig.yaw = wrapAngle(Rig.yaw + wrapAngle(yaw - Rig.yaw) * (1 - Math.exp(-k * dt))); rig.rotation.y = Rig.yaw;
+    Rig.pitch = damp(Rig.pitch, pitch, k, dt); camera.rotation.x = Rig.pitch;
   },
   async reloadWorld(key) {
     const tok = ++Game.transTok; Game.transitioning = true;
@@ -12026,9 +12092,10 @@ const Game = {
   playerDied(src) {
     if (!GAMEPLAY.has(SM.curName) || this.transitioning) return;
     if (!this.debugRun) Achievements.stat('deaths');
-    const online = Session.inRun();
+    const online = Session.inRun(), chase = SM.curName === 'ESCAPE';
     if (online) { Spectate.markDeath(); Session.request('dead', { by: String(src || 'hp').slice(0, 12) }); }
-    SM.go('DEATHCAM', { killer: src || 'hp', online });
+    else if (chase) Spectate.markSolo();
+    SM.go('DEATHCAM', { killer: src || 'hp', online, chase });
   },
   respawnAllowed(p) { return SM.curName !== 'ESCAPE' || Chamber.respawnOk(p); },
   onCollect(left) {
@@ -12272,7 +12339,7 @@ SM.states.ESCAPE = {
   enter(arg) {
     Game.retryTarget = 'ESCAPE'; Player.locomotion = 'full'; Game.chaseHits0 = Player.hits;
     if (arg.retry) {
-      setupChamber();
+      setupChamber(); Player.heal();
       Chamber.triggerCollapseVisuals();
       // solo: WEGA FACE picks up at the start of the phase you were on (the gauntlet: a fresh duel)
       if (!Session.inRun() && Chamber.arena && FaceBoss.local) { FaceBoss.restartLocal(); Chamber.t0 = Clock.t - 1000; }
@@ -12353,6 +12420,7 @@ SM.states.DEATHCAM = {
     DeathCam.play(arg.killer, () => {
       if (tok !== SM.seq) return;
       if (arg.online && Session.inRun()) SM.go('SPECTATE');
+      else if (arg.chase && !arg.online) SM.go('SPECTATE', { solo: true });       // a chase: you watch it go on without you, then it starts over
       else SM.go('DEAD', { reason: arg.killer });
     });
   },
@@ -12360,7 +12428,7 @@ SM.states.DEATHCAM = {
   exit() { DeathCam.stop(); },
 };
 SM.states.SPECTATE = {
-  enter() { Spectate.begin(); },
+  enter(arg) { Spectate.begin(arg); },
   update(dt) { Spectate.update(dt); },
   exit() { Spectate.end(); },
 };
@@ -12456,7 +12524,7 @@ window.WEGA_DEBUG = {
   player: () => ({ pos: Player.pos.toArray().map((v) => +v.toFixed(2)), hp: Player.hp, speed: +(Player.hspeed * CONFIG.SPEED_MULT).toFixed(1), grounded: Player.grounded }),
 };
 // test/debug access to internals (only with ?debug in the URL)
-if (DEBUG_URL) window.WEGA_DEBUG.internals = { SM, Session, FaceBoss, Duel, Destroyer, Urio, Cue, Sfx, Lap1Deco, Lap2Deco, Lap3Deco, Mods, MOD, MODS, Shop, SHOP, SHOP_CATS, Wallet, Shadow, Enraged, Lap5Deco, WegaShared, NameEdit, AvatarRig, WegaBoss, Diver, Jellies, DeepDeco, LobbyPlus, Achievements, Player, Collect, Beacon, Chamber, Hazards, Game, Rory, Screamer, LapTimer, Lap2: LapTimer, Flood, Shoebench, LapPortal, FPBody, Touch, Net, AV, Avatar, WegaHead, GlitchGuy, Idol, Music, HUD, Maze, Nav, World, Rig, Input, Fade, AudioSys, Save, Lobby, Stage, UI, get renderer() { return renderer; }, get scene() { return scene; }, get camera() { return camera; }, get perf() { return { upd: +Perf.upd.toFixed(2), ren: +Perf.ren.toFixed(2), calls: renderer.info.render.calls, tris: renderer.info.render.triangles }; } };
+if (DEBUG_URL) window.WEGA_DEBUG.internals = { SM, Session, FaceBoss, Duel, Spectate, DeathCam, Clock, Destroyer, Urio, Cue, Sfx, Lap1Deco, Lap2Deco, Lap3Deco, Mods, MOD, MODS, Shop, SHOP, SHOP_CATS, Wallet, Shadow, Enraged, Lap5Deco, WegaShared, NameEdit, AvatarRig, WegaBoss, Diver, Jellies, DeepDeco, LobbyPlus, Achievements, Player, Collect, Beacon, Chamber, Hazards, Game, Rory, Screamer, LapTimer, Lap2: LapTimer, Flood, Shoebench, LapPortal, FPBody, Touch, Net, AV, Avatar, WegaHead, GlitchGuy, Idol, Music, HUD, Maze, Nav, World, Rig, Input, Fade, AudioSys, Save, Lobby, Stage, UI, get renderer() { return renderer; }, get scene() { return scene; }, get camera() { return camera; }, get perf() { return { upd: +Perf.upd.toFixed(2), ren: +Perf.ren.toFixed(2), calls: renderer.info.render.calls, tris: renderer.info.render.triangles }; } };
 
 // =====================================================================================
 // MAIN LOOP
