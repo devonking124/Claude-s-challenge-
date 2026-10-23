@@ -21,6 +21,7 @@ const WegaShared = (() => {
   const BONUS = 3, BONUS_EVERY = 25;      // laps 2-4: +3 s on the shared timer every 25 collected
   const CUT_DELAY = 4.2;        // the lap cutscene plays before the lap timer matters
   const RUNNER_TIMEOUT = 12000; // ms without a heartbeat -> no longer in the run / on the server
+  const HELLO_GRACE = 6000;     // a new host waits this long for everyone's heartbeat (they come every 3 s)
   const EMPTY_RESET = 15000;    // ms with nobody left in the run -> back to idle
   const FINISH_AFTER_WIN = 90000, ESCAPE_MAX = 240000, ESCAPE_MAX_BOSS = 600000, DONE_HOLD = 4000;
   const BOSS_HP = 6, BOSS_HP_PER = 2, BOSS_HP_MAX = 14;  // OMNIWEGA: cores to break (more with more players)
@@ -179,11 +180,19 @@ const WegaShared = (() => {
           if (this.bh <= 0) { this.bh = 0; this.st = 'freed'; this.event('bossdown', who, m.i); }
           this.changed();
           return;
+        case 'out': {               // knocked out of the chase while others still run it: they spectate now
+          if (!mine || (this.st !== 'escape' && this.st !== 'boss' && this.st !== 'freed')) return;
+          const r = this.runner(m.i, who);
+          if (r.won || r.out) return;
+          r.out = true; this.event('out', who, m.i);
+          this.checkDone(); this.changed();
+          return;
+        }
         case 'win': {
           if (!mine || (this.st !== 'escape' && this.st !== 'freed' && this.st !== 'done')) return;
           if (this.lap >= MAX_LAP && this.st === 'escape') return;          // Lap 5: OMNIWEGA has the exit until it's beaten
           const r = this.runner(m.i, who);
-          if (r.won) return;
+          if (r.won || r.out) return;
           r.won = true; if (!this.winT) this.winT = now;
           this.event('win', who, m.i, clampNum(m.t, 0, 36000, 0));
           this.checkDone(); this.changed();
@@ -197,10 +206,12 @@ const WegaShared = (() => {
     }
     checkDone() {
       if (this.st !== 'escape' && this.st !== 'boss' && this.st !== 'freed') return;
-      let all = this.runners.size > 0;
-      for (const r of this.runners.values()) if (!r.won) all = false;
+      // everyone has escaped or been knocked out (spectating): nobody is left running. (Just after taking over
+      // as host only the runners in the snapshot are known: wait for everyone's heartbeat first.)
+      let all = this.runners.size > 0 && !(this.graceT > this.now());
+      for (const r of this.runners.values()) if (!r.won && !r.out) all = false;
       const max = this.lap >= MAX_LAP ? ESCAPE_MAX_BOSS : ESCAPE_MAX;
-      if ((this.st !== 'boss' && (all || (this.winT && this.now() - this.winT > FINISH_AFTER_WIN))) || this.now() - this.escT > max) { this.st = 'done'; this.doneT = this.now(); }
+      if (all || (this.st !== 'boss' && this.winT && this.now() - this.winT > FINISH_AFTER_WIN) || this.now() - this.escT > max) { this.st = 'done'; this.doneT = this.now(); }
     }
     // call a few times a second
     tick() {
@@ -233,8 +244,10 @@ const WegaShared = (() => {
       }
     }
     snapshot() {
-      const now = this.now(), names = [];
+      const now = this.now(), names = [], rw = [], ro = [];
       for (const r of this.runners.values()) if (names.length < 6) names.push(r.n);
+      // who already escaped / got knocked out of the chase (so a new host keeps it)
+      for (const [id, r] of this.runners) { if (r.won && rw.length < 12) rw.push(id); else if (r.out && ro.length < 12) ro.push(id); }
       const here = [];
       for (const p of this.present.values()) if (here.length < 8) here.push(p.n);
       let hex = '';
@@ -248,6 +261,7 @@ const WegaShared = (() => {
         ag: Math.round((now - this.startT) / 100) / 10, e: this.ev,
         ea: this.escT ? Math.round((now - this.escT) / 100) / 10 : 0,             // the chase clock
         bm: this.bm, bh: this.bh, bs: this.bs, ba: this.bossT ? Math.round((now - this.bossT) / 100) / 10 : 0,
+        rw, ro,
       };
     }
     // take over from a snapshot (a new host after the old one left): the lobby owner and settings,
@@ -274,6 +288,8 @@ const WegaShared = (() => {
       if (this.st === 'escape' || this.st === 'boss' || this.st === 'freed' || this.st === 'done') this.escT = this.now() - clampNum(s.ea, 0, 1e6, 0) * 1000;
       if (Number.isInteger(s.bm) && s.bm > 0) { this.bm = clampNum(s.bm, 1, BOSS_HP_MAX, BOSS_HP); this.bh = clampNum(s.bh | 0, 0, this.bm, this.bm); this.bs = s.bs | 0; this.bossT = this.now() - clampNum(s.ba, 0, 1e6, 0) * 1000; }
       if (this.st === 'done') this.doneT = this.now();
+      for (const [list, k] of [[s.rw, 'won'], [s.ro, 'out']]) if (Array.isArray(list)) for (const id of list.slice(0, 12)) if (okId(id)) this.runner(id, '')[k] = true;
+      this.graceT = this.now() + HELLO_GRACE;
     }
   }
 

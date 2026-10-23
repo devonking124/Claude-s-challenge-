@@ -64,7 +64,7 @@
 <script src="wega-music-lap4.js"></script>
 <!-- Optional Lap 5 track add-on ("I made it better"). Lap 5 falls back to a sped-up Lap 4 song. -->
 <script src="wega-music-lap5.js"></script>
-<!-- Optional OMNIWEGA boss track add-on (Mario & Luigi boss battle). The boss falls back to the Lap 5 song. -->
+<!-- Optional OMNIWEGA boss add-on (Pizza Tower "Unexpectancy" Parts 1-3, one per phase). The boss falls back to the Lap 5 song. -->
 <script src="wega-music-boss.js"></script>
 </head>
 <body>
@@ -117,6 +117,7 @@ const WegaShared = (() => {
   const BONUS = 3, BONUS_EVERY = 25;      // laps 2-4: +3 s on the shared timer every 25 collected
   const CUT_DELAY = 4.2;        // the lap cutscene plays before the lap timer matters
   const RUNNER_TIMEOUT = 12000; // ms without a heartbeat -> no longer in the run / on the server
+  const HELLO_GRACE = 6000;     // a new host waits this long for everyone's heartbeat (they come every 3 s)
   const EMPTY_RESET = 15000;    // ms with nobody left in the run -> back to idle
   const FINISH_AFTER_WIN = 90000, ESCAPE_MAX = 240000, ESCAPE_MAX_BOSS = 600000, DONE_HOLD = 4000;
   const BOSS_HP = 6, BOSS_HP_PER = 2, BOSS_HP_MAX = 14;  // OMNIWEGA: cores to break (more with more players)
@@ -275,11 +276,19 @@ const WegaShared = (() => {
           if (this.bh <= 0) { this.bh = 0; this.st = 'freed'; this.event('bossdown', who, m.i); }
           this.changed();
           return;
+        case 'out': {               // knocked out of the chase while others still run it: they spectate now
+          if (!mine || (this.st !== 'escape' && this.st !== 'boss' && this.st !== 'freed')) return;
+          const r = this.runner(m.i, who);
+          if (r.won || r.out) return;
+          r.out = true; this.event('out', who, m.i);
+          this.checkDone(); this.changed();
+          return;
+        }
         case 'win': {
           if (!mine || (this.st !== 'escape' && this.st !== 'freed' && this.st !== 'done')) return;
           if (this.lap >= MAX_LAP && this.st === 'escape') return;          // Lap 5: OMNIWEGA has the exit until it's beaten
           const r = this.runner(m.i, who);
-          if (r.won) return;
+          if (r.won || r.out) return;
           r.won = true; if (!this.winT) this.winT = now;
           this.event('win', who, m.i, clampNum(m.t, 0, 36000, 0));
           this.checkDone(); this.changed();
@@ -293,10 +302,12 @@ const WegaShared = (() => {
     }
     checkDone() {
       if (this.st !== 'escape' && this.st !== 'boss' && this.st !== 'freed') return;
-      let all = this.runners.size > 0;
-      for (const r of this.runners.values()) if (!r.won) all = false;
+      // everyone has escaped or been knocked out (spectating): nobody is left running. (Just after taking over
+      // as host only the runners in the snapshot are known: wait for everyone's heartbeat first.)
+      let all = this.runners.size > 0 && !(this.graceT > this.now());
+      for (const r of this.runners.values()) if (!r.won && !r.out) all = false;
       const max = this.lap >= MAX_LAP ? ESCAPE_MAX_BOSS : ESCAPE_MAX;
-      if ((this.st !== 'boss' && (all || (this.winT && this.now() - this.winT > FINISH_AFTER_WIN))) || this.now() - this.escT > max) { this.st = 'done'; this.doneT = this.now(); }
+      if (all || (this.st !== 'boss' && this.winT && this.now() - this.winT > FINISH_AFTER_WIN) || this.now() - this.escT > max) { this.st = 'done'; this.doneT = this.now(); }
     }
     // call a few times a second
     tick() {
@@ -329,8 +340,10 @@ const WegaShared = (() => {
       }
     }
     snapshot() {
-      const now = this.now(), names = [];
+      const now = this.now(), names = [], rw = [], ro = [];
       for (const r of this.runners.values()) if (names.length < 6) names.push(r.n);
+      // who already escaped / got knocked out of the chase (so a new host keeps it)
+      for (const [id, r] of this.runners) { if (r.won && rw.length < 12) rw.push(id); else if (r.out && ro.length < 12) ro.push(id); }
       const here = [];
       for (const p of this.present.values()) if (here.length < 8) here.push(p.n);
       let hex = '';
@@ -344,6 +357,7 @@ const WegaShared = (() => {
         ag: Math.round((now - this.startT) / 100) / 10, e: this.ev,
         ea: this.escT ? Math.round((now - this.escT) / 100) / 10 : 0,             // the chase clock
         bm: this.bm, bh: this.bh, bs: this.bs, ba: this.bossT ? Math.round((now - this.bossT) / 100) / 10 : 0,
+        rw, ro,
       };
     }
     // take over from a snapshot (a new host after the old one left): the lobby owner and settings,
@@ -370,6 +384,8 @@ const WegaShared = (() => {
       if (this.st === 'escape' || this.st === 'boss' || this.st === 'freed' || this.st === 'done') this.escT = this.now() - clampNum(s.ea, 0, 1e6, 0) * 1000;
       if (Number.isInteger(s.bm) && s.bm > 0) { this.bm = clampNum(s.bm, 1, BOSS_HP_MAX, BOSS_HP); this.bh = clampNum(s.bh | 0, 0, this.bm, this.bm); this.bs = s.bs | 0; this.bossT = this.now() - clampNum(s.ba, 0, 1e6, 0) * 1000; }
       if (this.st === 'done') this.doneT = this.now();
+      for (const [list, k] of [[s.rw, 'won'], [s.ro, 'out']]) if (Array.isArray(list)) for (const id of list.slice(0, 12)) if (okId(id)) this.runner(id, '')[k] = true;
+      this.graceT = this.now() + HELLO_GRACE;
     }
   }
 
@@ -842,7 +858,7 @@ const Music = {
   stop(secs) { this.desired.track = null; if (this.ok()) window.WegaMusic.stop(secs); },
   hasTrack(t) { return !!(window.WegaMusic && window.WegaMusic.data && window.WegaMusic.data[t]); },
   toast(track) {
-    let title = track === 'lap1' ? 'WEXECUTION' : track === 'lap3' ? "PILLAR JOHN'S REVENGE" : track === 'lap4' ? 'DIVE' : track === 'lap5' ? 'I MADE IT BETTER' : track === 'boss' ? 'BOSS BATTLE' : 'WEGAFADENCE';
+    let title = track === 'lap1' ? 'WEXECUTION' : track === 'lap3' ? "PILLAR JOHN'S REVENGE" : track === 'lap4' ? 'DIVE' : track === 'lap5' ? 'I MADE IT BETTER' : /^boss/.test(track) ? 'UNEXPECTANCY' : 'WEGAFADENCE';
     try { if (window.WegaMusic && window.WegaMusic.data[track]) title = window.WegaMusic.data[track].title.split('(')[0].trim(); } catch (e) { /* ignore */ }
     UI.toast('♪ ' + title.toUpperCase());
   },
@@ -900,13 +916,20 @@ const Music = {
     this.setRate(t === 'lap5' ? 1 : 1.15, 0.05); this.play(t, 0.05); this.toast(t);
     this.lapRate = this.desired.rate;
   },
-  // OMNIWEGA: the boss theme (wega-music-boss.js), else the Lap 5 song pushed faster
-  cueBoss() {
+  // OMNIWEGA: Pizza Tower's "Unexpectancy" (wega-music-boss.js), one part per phase of the fight
+  // (it moves on to the next part as OMNIWEGA loses health); without the add-on, the Lap 5 song pushed faster
+  cueBoss(phase = 1) {
     this.setMuffled(false, 0.2); this.setLevel(0.95, 0.3);
-    const t = this.hasTrack('boss') ? 'boss' : this.hasTrack('lap5') ? 'lap5' : 'lap2';
-    this.setRate(t === 'boss' ? 1 : 1.12, 0.3);
-    if (!this.ok() || window.WegaMusic.currentTrack() !== t) this.play(t, 0.1);
-    this.desired.track = t; this.toast(t);
+    const want = 'boss' + clamp(phase | 0, 1, 3);
+    const t = this.hasTrack(want) ? want : this.hasTrack('lap5') ? 'lap5' : 'lap2';
+    this.setRate(t === want ? 1 : 1.12, 0.3);
+    const cur = this.ok() ? window.WegaMusic.currentTrack() : null;
+    if (this.ok() && cur !== t) {
+      if (/^boss/.test(cur || '')) window.WegaMusic.crossfadeTo(t, 0.8);       // next phase: blend into the next part
+      else this.play(t, 0.1);
+    }
+    if (this.desired.track !== t) this.toast(t);
+    this.desired.track = t;
   },
   lapRate: 1,
   cueLap2Tension() { this.setRate(this.lapRate * 1.04, 2); },
@@ -938,7 +961,6 @@ const Music = {
     if (kind === 'LAP3') { this.cueLap3Start(); return; }
     if (kind === 'LAP4') { this.cueLap4Start(); return; }
     if (kind === 'LAP5') { this.cueLap5Start(); return; }
-    if (kind === 'BOSS') { this.setRate(1, 0.01); this.cueBoss(); return; }
     // escape retry: the chase's track fresh, RUN settings
     const tier = typeof kind === 'number' ? kind : 1;
     this.setRate(1, 0.01); this.play(this.chaseTrack(tier), 0.05); this.cueRun(tier);
@@ -1148,16 +1170,20 @@ const LAYER_AVATAR = 3;      // mirror-only avatar (XR eye cameras render layers
 const Rig = {
   yaw: 0, pitch: 0,
   headWorld(out) { return camera.getWorldPosition(out); },
-  // yaw of the gaze direction projected on the floor
-  headYaw() {
-    camera.getWorldDirection(_v8);
-    return Math.atan2(-_v8.x, -_v8.z);
-  },
-  headForward(out) { // horizontal unit forward
-    camera.getWorldDirection(out); out.y = 0;
+  _q: new THREE.Quaternion(), _up: new THREE.Vector3(),
+  // which way the head faces on the floor. Looking straight up or down the gaze has almost no
+  // horizontal part (its yaw would swing wildly and everything that follows it would snap round),
+  // so blend in the head's up vector: it points the way you face when you look down.
+  // For pitch p: gaze = (cos p * d, sin p), up = (-sin p * d, cos p)  =>  d = cos p * gaze - sin p * up
+  headDir(out) {
+    camera.getWorldDirection(out); camera.getWorldQuaternion(this._q);
+    const u = this._up.set(0, 1, 0).applyQuaternion(this._q), s = out.y, c = Math.sqrt(Math.max(0, 1 - s * s));
+    out.set(c * out.x - s * u.x, 0, c * out.z - s * u.z);
     if (out.lengthSq() < 1e-6) out.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     return out.normalize();
   },
+  headYaw() { this.headDir(_v8); return Math.atan2(-_v8.x, -_v8.z); },
+  headForward(out) { return this.headDir(out); },  // horizontal unit forward
   // rotate the rig around the head so the head stays put
   turn(delta) {
     rig.updateMatrixWorld(true);
@@ -1356,7 +1382,7 @@ const Input = {
   grabPressed: false, gripHeld: { left: false, right: false }, gripPressed: { left: false, right: false }, gripReleased: { left: false, right: false },
   keys: Object.create(null), keysPressed: Object.create(null),
   mouseDX: 0, mouseDY: 0, dragging: false, lastMouse: { x: 0, y: 0 }, mouseNDC: new THREE.Vector2(),
-  prev: new Map(), pauseHold: 0, pauseConsumed: false, snapCooldown: 0,
+  prev: new Map(), pauseHold: 0, pauseConsumed: false, snapCooldown: 0, lockT: 0, moveAvg: 0,
   locked: false,
   initDesktop() {
     const el = renderer.domElement;
@@ -1381,12 +1407,21 @@ const Input = {
     });
     window.addEventListener('mouseup', () => { this.dragging = false; });
     window.addEventListener('mousemove', (e) => {
-      if (this.locked) { this.mouseDX += e.movementX || 0; this.mouseDY += e.movementY || 0; }
+      if (this.locked) {
+        // Chrome sometimes reports one huge bogus jump while the pointer is locked (and just after it
+        // locks): the view would snap round. Drop a lone spike far bigger than the motion around it.
+        const dx = e.movementX || 0, dy = e.movementY || 0, mag = Math.abs(dx) + Math.abs(dy), cap = 5 * (this.moveAvg + 25);
+        const spike = mag > 180 && mag > cap;
+        this.moveAvg += (Math.min(mag, cap) - this.moveAvg) * 0.3;
+        if (spike || performance.now() - this.lockT < 120) return;
+        this.mouseDX += dx; this.mouseDY += dy;
+      }
       else if (this.dragging) { this.mouseDX += e.clientX - this.lastMouse.x; this.mouseDY += e.clientY - this.lastMouse.y; this.lastMouse.x = e.clientX; this.lastMouse.y = e.clientY; }
       this.mouseNDC.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
     });
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === el;
+      if (this.locked) { this.lockT = performance.now(); this.moveAvg = 0; }
       DOM.crosshair.style.display = this.locked ? 'block' : 'none';
       if (this.locked) DOM.overlay.classList.add('hidden');
       // Esc releases pointer lock (browsers swallow the key) => treat as pause
@@ -3128,7 +3163,7 @@ const FPBody = {
     this.suitMat.color.set(o.torso); this.tieMat.color.set(o.accent);
   },
   update(dt) {
-    const show = G.lobby.visible || G.maze.visible || G.chamber.visible;
+    const show = (G.lobby.visible || G.maze.visible || G.chamber.visible) && SM.curName !== 'SPECTATE';
     this.group.visible = show;
     if (!show) return;
     camera.getWorldPosition(_v1);
@@ -7049,7 +7084,7 @@ const Omni = {
   group: null, head: null, faceUni: null, eyes: [], hand: null, fingers: [], arm: null, crown: null, jellies: [], bar: null, barCanvas: null,
   stripes: [], rings: [], waves: [], dashers: [], beams: [], fist: null, core: null,
   local: { st: 'none', bm: 0, bh: 0, bs: 0, t0: 0 },
-  seen: 'none', atks: [], atkI: -1, kinds: [], kindsSeed: -1, hpShown: -1, pendingK: -1, pendingT: 0, downT: 0, roarT: 0, punch: 0, t: 0, A: null,
+  seen: 'none', atks: [], atkI: -1, kinds: [], kindsSeed: -1, hpShown: -1, pendingK: -1, pendingT: 0, downT: 0, musicPhase: 0, roarT: 0, punch: 0, t: 0, A: null,
   init() {
     const g = this.group = new THREE.Group(); g.visible = false; G.fx.add(g);
     const brass = new THREE.MeshStandardMaterial({ color: 0xc8963a, metalness: 0.9, roughness: 0.35, envMap: ENV_MAP, envMapIntensity: 1.3 });
@@ -7167,18 +7202,20 @@ const Omni = {
   },
   // ---- per frame (ESCAPE on the lap 5 chase) ----
   update(dt) {
-    if (!this.A || !Chamber.arena || SM.curName !== 'ESCAPE') return;
+    // (spectators see the fight too, but can't set it off or grab cores)
+    const live = SM.curName === 'ESCAPE';
+    if (!this.A || !Chamber.arena || (!live && SM.curName !== 'SPECTATE')) return;
     this.t += dt; this.faceUni.uTime.value += dt;
     const S = this.state();
     // you're about to reach the exit (on the arena, past its middle): the hand grabs it
     const A = this.A, p = Player.pos;
-    if (S.st === 'none' && Chamber.collapsing && !Player.respawning && Math.hypot(p.x - A.x, p.z - A.z) < A.r && (p.x - A.x) * A.hx + (p.z - A.z) * A.hz > -4 && Math.abs(p.y - A.y) < 2.5) {
+    if (live && S.st === 'none' && Chamber.collapsing && !Player.respawning && Math.hypot(p.x - A.x, p.z - A.z) < A.r && (p.x - A.x) * A.hx + (p.z - A.z) * A.hz > -4 && Math.abs(p.y - A.y) < 2.5) {
       if (Session.inRun()) Session.request('hand', null, 1500); else this.localStart(false);
     }
     if (S.st !== this.seen) this.onState(S, this.seen);
     if (S.st === 'none') return;
     this.animateBody(dt, S);
-    if (S.st === 'fight') { this.animateHand(S.age); this.updateAttacks(S); this.updateCore(S); }
+    if (S.st === 'fight') { this.animateHand(S.age); this.updateAttacks(S, live); this.updateCore(S, live); }
     else this.updateDown(dt);
     if (S.bh !== this.hpShown) this.onHp(S);
   },
@@ -7188,7 +7225,7 @@ const Omni = {
       // the hand grabs the door: chase hazards stop, the boss music starts
       this.group.visible = true; this.hand.visible = true; this.arm.visible = true;
       WegaBoss.stop(); Diver.stop();
-      Music.cueBoss(); Sfx.roar(); Sfx.boom(null, true); Hands.pulse('both', 0.8, 500);
+      this.musicPhase = this.phase(S); Music.cueBoss(this.musicPhase); Sfx.roar(); Sfx.boom(null, true); Hands.pulse('both', 0.8, 500);
       if (S.age < OMNI_ATK_T0) {
         UI.announce('OMNIWEGA!', { color: '#ff3070' }); UI.announce('EVERY CHARACTER... FUSED INTO ONE', { color: '#ffd84a' });
         UI.announce('GRAB THE GLOWING CORES!', { color: '#ffd040' });
@@ -7208,9 +7245,15 @@ const Omni = {
       } else { this.group.visible = false; this.hand.visible = false; this.arm.visible = false; this.downT = 99; }
     }
   },
+  // the fight's three phases (the boss music moves on to the next part of "Unexpectancy" with each)
+  phase(S) { return S.bm > 0 ? Math.min(3, 1 + Math.floor((1 - S.bh / S.bm) * 3)) : 1; },
   onHp(S) {
     const hurt = this.hpShown > 0 && S.bh < this.hpShown;
     this.hpShown = S.bh;
+    if (S.st === 'fight' && S.bh > 0 && this.phase(S) !== this.musicPhase) {
+      this.musicPhase = this.phase(S); Music.cueBoss(this.musicPhase);
+      if (hurt) UI.announce(this.musicPhase === 2 ? 'OMNIWEGA IS GETTING ANGRY!' : 'OMNIWEGA IS FURIOUS!', { color: '#ff3070' });
+    }
     // the bar: OMNIWEGA + one segment per core
     const c = this.barCanvas, ctx = c.getContext('2d'); ctx.clearRect(0, 0, 512, 96);
     drawText(ctx, 'OMNIWEGA', 256, 26, { size: 30, style: 'italic 900', font: FONT_IMPACT, fill: '#ff3070', stroke: '#000', lw: 6, spacing: 0.15 });
@@ -7276,7 +7319,7 @@ const Omni = {
     while (this.kinds.length <= i) { const j = this.kinds.length, prev = j ? this.kinds[j - 1] : -1; this.kinds.push(prev < 0 ? Math.floor(ohash(seed, 900) * 6) : (prev + 1 + Math.floor(ohash(seed, 900 + j) * 5)) % 6); }
     return OMNI_KINDS[this.kinds[i]];
   },
-  updateAttacks(S) {
+  updateAttacks(S, live = true) {
     if (S.age < OMNI_ATK_T0) return;
     let i = Math.max(0, this.atkI), t;
     while ((t = this.atkStart(i + 1)) <= S.age) i++;
@@ -7286,7 +7329,7 @@ const Omni = {
       for (const b of this.beams) b.show(false);
       this.atks = [this.makeAttack(this.kindOf(S.bs, i), S.bs, i, this.atkStart(i))];
     }
-    for (const a of this.atks) this.runAttack(a, S.age - a.t0);
+    for (const a of this.atks) this.runAttack(a, S.age - a.t0, live);
   },
   // a point in the arena from the seed (radius in metres from its centre)
   apt(seed, i, j, rmax, out) {
@@ -7325,11 +7368,11 @@ const Omni = {
     return a;
   },
   hurt(a, j, dmg, why) {
-    if (a.hit[j]) return; a.hit[j] = true;
+    if (a.hit[j] || SM.curName !== 'ESCAPE') return; a.hit[j] = true;
     if (Player.damage(dmg, why)) { Hands.pulse('both', 0.6, 160); const p = Player.pos; FX.spark(p.x, p.y + 0.5, p.z, 1, 0.3, 0.3); }
   },
-  runAttack(a, tau) {
-    const p = Player.pos, A = this.A, onFloor = p.y < A.y + 0.35 && p.y > A.y - 1.2, flash = Save.s.reduceFlash ? 0.45 : (Math.sin(tau * 30) > 0 ? 0.7 : 0.25);
+  runAttack(a, tau, live = true) {
+    const p = Player.pos, A = this.A, onFloor = live && p.y < A.y + 0.35 && p.y > A.y - 1.2, flash = Save.s.reduceFlash ? 0.45 : (Math.sin(tau * 30) > 0 ? 0.7 : 0.25);
     const stripe = (s, it, w, col) => {
       s.visible = true; s.material.color.set(col);
       s.position.set(it.c.x, A.y + 0.06, it.c.z); s.rotation.set(0, Math.PI / 2 - it.th, 0); s.scale.set(w, 1, it.a.distanceTo(it.b));
@@ -7374,12 +7417,12 @@ const Omni = {
         d.scale.set(a.kind === 'stampede' ? 1.6 : 2.2, a.kind === 'stampede' ? 3.2 : 2.2, 1);
         _v5.copy(it.a).lerp(it.b, k); d.position.set(_v5.x, A.y + (a.kind === 'stampede' ? 1.6 : 1.3), _v5.z);
         if (!it.sfx) { it.sfx = true; if (a.kind === 'scream') Sfx.scream(null); else Sfx.dashWhoosh(); }
-        if (Math.hypot(p.x - _v5.x, p.z - _v5.z) < 1.1 && p.y < A.y + 1.6) { this.hurt(a, j, 30, a.kind === 'stampede' ? 'rory' : 'screamer'); if (a.kind === 'stampede') Player.shoveFrom(_v5); }
+        if (live && Math.hypot(p.x - _v5.x, p.z - _v5.z) < 1.1 && p.y < A.y + 1.6) { this.hurt(a, j, 30, a.kind === 'stampede' ? 'rory' : 'screamer'); if (a.kind === 'stampede') Player.shoveFrom(_v5); }
       });
     } else if (a.kind === 'fire') {
       if (!a.launched) {
         a.launched = true;
-        if (tau < 0.3) for (const it of a.items) { const f = Hazards.fireballs.find((x) => !x.busy); if (f) f.launch(it.c, _v6.copy(this.head.getWorldPosition(_v7))); }
+        if (tau < 0.3 && live) for (const it of a.items) { const f = Hazards.fireballs.find((x) => !x.busy); if (f) f.launch(it.c, _v6.copy(this.head.getWorldPosition(_v7))); }
       }
     } else if (a.kind === 'flood') {
       const it = a.items[0], w = this.waves[0];
@@ -7391,7 +7434,7 @@ const Omni = {
     }
   },
   // ---- the cores: one at a time, from the seed; grabbing one asks the authority to count it ----
-  updateCore(S) {
+  updateCore(S, live = true) {
     const k = S.bm - S.bh, A = this.A;
     if (this.pendingK === k && this.t - this.pendingT > 2.5) this.pendingK = -1;      // the grab never got counted: show it again
     if (S.age < OMNI_ATK_T0 - 1 || k >= S.bm || this.pendingK === k) { this.core.visible = false; return; }
@@ -7401,7 +7444,7 @@ const Omni = {
     this.coreOrb.material.color.setHSL((this.t * 0.4) % 1, 1, 0.65); this.coreOrb.rotation.y += 0.05; this.coreRing.rotation.z += 0.04;
     this.coreGlow.scale.setScalar(2.6 + Math.sin(this.t * 6) * 0.4);
     const p = Player.pos;
-    if (!Player.respawning && Math.hypot(p.x - x, p.z - z) < 1.15 && p.y > A.y - 1 && p.y < A.y + 2.6) {
+    if (live && !Player.respawning && Math.hypot(p.x - x, p.z - z) < 1.15 && p.y > A.y - 1 && p.y < A.y + 2.6) {
       this.pendingK = k; this.pendingT = this.t; this.core.visible = false;
       Sfx.collect(5); Sfx.gold(); FX.pickup(x, y, z); FX.spark(x, y, z, 1, 0.85, 0.3);
       if (Session.inRun()) Session.request('core', { c: k }, 0);
@@ -8321,7 +8364,7 @@ class Remote {
     this.tag.scale.set(1.2, 0.375, 1); this.tag.renderOrder = 6;
   }
   label() { return this.name + ' #' + this.num; }
-  status() { return this.level === 1 ? 'IN THE LOBBY' : this.level >= 2 && this.level <= 5 ? `LAP ${this.level - 1} · ${this.left} LEFT` : this.level === 6 ? (this.st === 'ESCAPE' ? 'ESCAPING!' : 'IDOL CHAMBER') : this.st === 'WIN' ? 'ESCAPED!' : 'BETWEEN LIVES'; }
+  status() { return this.st === 'SPECTATE' ? 'SPECTATING' : this.level === 1 ? 'IN THE LOBBY' : this.level >= 2 && this.level <= 5 ? `LAP ${this.level - 1} · ${this.left} LEFT` : this.level === 6 ? (this.st === 'ESCAPE' ? 'ESCAPING!' : 'IDOL CHAMBER') : this.st === 'WIN' ? 'ESCAPED!' : 'BETWEEN LIVES'; }
   drawTag() {
     const key = this.label() + '|' + this.status(); if (key === this.tagKey) return; this.tagKey = key;
     const ctx = this.tagCanvas.getContext('2d'); ctx.clearRect(0, 0, 256, 80);
@@ -8473,6 +8516,8 @@ const Net = {
     this.server = null; this.clearRemotes(); this.version++;
   },
   clearRemotes() { for (const r of this.remotes.values()) r.dispose(); this.remotes.clear(); },
+  // the level other players see you in: none while you spectate (you'd float behind whoever you watch)
+  sentLevel() { return SM.curName === 'SPECTATE' ? 0 : this.levelCode(); },
   levelCode() {
     if (G.lobby.visible) return 1;
     if (G.maze.visible) return 1 + (Maze.lap || 1);
@@ -8481,7 +8526,7 @@ const Net = {
   },
   heartbeat() {
     if (!this.client || !this.server) return;
-    const p = { n: playerName(), k: Save.data.num, a: AV.toArr(Save.data.avatar), l: this.levelCode(), left: Collect.left | 0, s: SM.curName.slice(0, 16), v: 1, r: Session.myRun || 0 };
+    const p = { n: playerName(), k: Save.data.num, a: AV.toArr(Save.data.avatar), l: this.sentLevel(), left: Collect.left | 0, s: SM.curName.slice(0, 16), v: 1, r: Session.myRun || 0 };
     this.client.publish(`${this.NS}/s/${this.server}/hi`, JSON.stringify(Object.assign(p, { i: this.id })));
   },
   event(kind, extra) {
@@ -8495,7 +8540,7 @@ const Net = {
     const yaw = FPBody.yaw, hy = Rig.headYaw();
     camera.getWorldDirection(_v2);
     const pitch = Math.asin(clamp(_v2.y, -1, 1));
-    const st = [r2(Player.pos.x), r2(Player.viewY), r2(Player.pos.z), r2(yaw), r2(hy), r2(pitch), r2(Player.hspeed), (Player.grounded ? 1 : 0) | (XR.inVR ? 2 : 0), this.levelCode()];
+    const st = [r2(Player.pos.x), r2(Player.viewY), r2(Player.pos.z), r2(yaw), r2(hy), r2(pitch), r2(Player.hspeed), (Player.grounded ? 1 : 0) | (XR.inVR ? 2 : 0), this.sentLevel()];
     if (XR.inVR) {
       const l = Hands.pos('left'), rp = Hands.pos('right');
       const L = l ? [r2(l.x), r2(l.y), r2(l.z)] : [r2(_v1.x - 0.25), r2(_v1.y - 0.6), r2(_v1.z)];
@@ -8677,8 +8722,27 @@ const Session = {
     this.myRun = A.run; this.seenRun = A.run; this.pending.clear(); this.pendingLap = 0; this.mismatchT = 0; this.startWait = 0;
     Game.beginRun(); Game.hadIdol = false;
     Net.heartbeat(); Net.version++;
+    if (this.outRun === A.run && ['escape', 'boss', 'freed'].includes(A.st)) { this.spectateNow(); return; }   // you're out of this chase
     if (A.st === 'lap1' && A.ag < 10) { if (SM.curName !== 'INTRO') SM.go('INTRO'); }
     else this.enterStage(A.st);
+  },
+  // knocked out of the shared chase while others still run it: the run can end without you
+  outRun: 0,
+  goOut() { if (!this.inRun()) return; this.outRun = this.myRun; this.request('out'); },
+  // back from the lobby to a chase you were knocked out of: straight to spectating it
+  async spectateNow() {
+    const tok = ++Game.transTok;
+    Game.transitioning = true; UI.setActive([]); Player.locomotion = 'none';
+    await Fade.to(1, 0.5, 0x000000);
+    if (tok !== Game.transTok) return;
+    Stage.hideAll(); G.stage.visible = false; scene.background.set(0x000000); Confetti.stop();
+    setupChamber(); Idol.detach(); Game.hadIdol = false;
+    Chamber.triggerCollapseVisuals(); Chamber.startCollapse(false);
+    Music.cueRun(Chamber.tier);
+    this.goOut();
+    SM.go('SPECTATE', { late: true });
+    Game.transitioning = false;
+    await Fade.to(0, 0.6);
   },
   leaveRun() {
     if (!this.myRun) return;
@@ -8724,6 +8788,7 @@ const Session = {
     else if (e[1] === 'hand') UI.toast(who + ' REACHED THE EXIT... OMNIWEGA GRABBED IT!');
     else if (e[1] === 'core') UI.toast(who + ' HIT OMNIWEGA! (' + (e[4] != null ? e[4] : '?') + ' LEFT)');
     else if (e[1] === 'bossdown') UI.toast(who + ' BROUGHT DOWN OMNIWEGA!');
+    else if (e[1] === 'out') UI.toast(who + " DIDN'T MAKE IT · SPECTATING");
   },
   offer(A) {
     const s = SM.curName;
@@ -9267,6 +9332,8 @@ const Game = {
     if (!GAMEPLAY.has(SM.curName) || this.transitioning) return;
     if (!this.debugRun) Achievements.stat('deaths');
     const reason = src === 'shoebench' ? 'shoebench' : src === 'collapse' ? 'collapse' : 'hp';
+    // a shared chase someone else is still running: you're out and spectate them (no rejoining)
+    if (SM.curName === 'ESCAPE' && Session.inRun() && Spectate.targets().length) { SM.go('SPECTATE', { reason }); return; }
     SM.go('DEAD', { reason });
   },
   respawnAllowed(p) { return SM.curName !== 'ESCAPE' || Chamber.respawnOk(p); },
@@ -9487,6 +9554,7 @@ SM.states.ENRAGED_CUTSCENE = {
 SM.states.IDOL_CHAMBER = {
   enter() {
     Omni.resetLocal(); setupChamber();
+    if (Player.hp <= 0) Player.heal();     // rejoining a shared run at the chamber after dying
     Player.spawn(Chamber.spawn.x, Chamber.spawn.y, Chamber.spawn.z, 0);
     Player.locomotion = 'full'; Game.hadIdol = false;
     Music.cueChamber();
@@ -9499,6 +9567,7 @@ SM.states.ESCAPE = {
     Game.retryTarget = 'ESCAPE'; Player.locomotion = 'full'; Game.chaseHits0 = Player.hits;
     if (arg.retry) {
       setupChamber();
+      Player.heal();                     // back after dying: full health again (it was stuck at 0)
       Chamber.triggerCollapseVisuals();
       // solo: OMNIWEGA keeps the cores you've already broken; the fight picks up without its intro
       const L = Omni.local;
@@ -9592,6 +9661,96 @@ SM.states.DEAD = {
   exit() { Stage.hideAll(); UI.setActive([]); scene.background.set(0x000000); },
 };
 
+// ---------------- spectating: knocked out of a shared chase ----------------
+// Die in a shared chase while someone else is still running it and you're out: you watch the players
+// still running it from an orbit camera behind them (look around with the mouse / your head; JUMP or
+// NEXT PLAYER switches who you watch), the collapse and OMNIWEGA included. When the run ends (everyone
+// escaped or got knocked out) you go back to the lobby at full health.
+const Spectate = {
+  panel: null, follow: null, target: null, focus: new THREE.Vector3(), cam: new THREE.Vector3(), placed: false,
+  ending: false, snapArmed: true, key: '',
+  init() {
+    this.panel = new Panel({ w: 1.1, h: 0.44, cw: 512, ch: 205, page: 'spec', overlay: true, renderOrder: 2900, pages: { spec: (ctx, p) => this.draw(ctx, p) } });
+    this.panel.mesh.visible = false; scene.add(this.panel.mesh);
+    this.follow = new Follower(this.panel.mesh, 1.7, 1.2, 30, 4);     // low in view, under who you watch
+  },
+  // the players still running the chase: in the chamber (level 6) and not spectating themselves
+  targets() { return Net.players().filter((r) => r.hasState && r.level === 6 && r.st !== 'SPECTATE'); },
+  draw(ctx, p) {
+    p.bg('rgba(22,4,12,0.88)', '#ff3060');
+    const T = this.target, n = this.targets().length;
+    drawText(ctx, T ? 'SPECTATING ' + T.label() : 'NOBODY LEFT RUNNING · WAITING…', 256, 38, { size: 28, style: 'italic 900', font: FONT_IMPACT, fill: '#ffffff', stroke: '#000', lw: 6, maxWidth: 490 });
+    drawText(ctx, "YOU DIDN'T MAKE IT · " + n + (n === 1 ? ' PLAYER' : ' PLAYERS') + ' STILL RUNNING', 256, 74, { size: 17, fill: '#ffb0c0', stroke: '#000', lw: 3, maxWidth: 490 });
+    p.button('next', 22, 96, 228, 64, 'NEXT PLAYER', () => this.next(), { size: 24, fill: '#3a0a1a', border: '#ff5080', hoverFill: '#801838' });
+    p.button('lobby', 262, 96, 228, 64, 'LOBBY', () => this.quit(), { size: 24, fill: '#2a0f40', hoverFill: '#6a2aa0' });
+    drawText(ctx, (XR.inVR ? 'A / X' : IS_TOUCH ? 'JUMP' : 'SPACE') + ': NEXT PLAYER', 256, 184, { size: 15, fill: '#d8b0c0', stroke: '#000', lw: 3 });
+  },
+  show() { this.follow.reset = true; this.panel.mesh.visible = true; this.panel.setPage('spec'); UI.setActive([this.panel]); },
+  hide() { this.panel.mesh.visible = false; },
+  next() {
+    const L = this.targets(); if (!L.length) return;
+    this.setTarget(L[(L.indexOf(this.target) + 1) % L.length]); Sfx.hover();
+  },
+  // watch someone: the camera swings round behind them
+  setTarget(r) {
+    this.target = r || null; this.placed = false; this.key = '';
+    if (r) { if (XR.inVR) Rig.setYaw(r.cur.yaw); else { Rig.yaw = wrapAngle(r.cur.yaw); rig.rotation.y = Rig.yaw; } }
+  },
+  quit() { if (this.ending) return; this.ending = true; Game.transition('LOBBY'); },
+  update(dt) {
+    // the run is over (everyone escaped or got knocked out): back to the lobby
+    if (!this.ending && !Game.transitioning && (!Session.inRun() || Session.auth.st === 'done')) { UI.toast('THE RUN IS OVER'); this.quit(); return; }
+    Session.request('out', null, 4000);       // keep the authority told (a lost message, or a new host on a public relay)
+    if (Input.jumpPressed) this.next();
+    // VR: the right stick still turns you (the camera orbits round who you're watching)
+    if (XR.inVR) {
+      const tx = Input.turnX;
+      if (Save.s.turn === 2) { if (tx) Rig.turn(-tx * Save.s.turnSpeed * Math.PI / 180 * dt); }
+      else {
+        if (Math.abs(tx) < 0.3) this.snapArmed = true;
+        if (this.snapArmed && Math.abs(tx) > 0.7 && Input.snapCooldown <= 0) { Rig.turn(-Math.sign(tx) * (Save.s.turn === 0 ? 30 : 45) * Math.PI / 180); Input.snapCooldown = CONFIG.SNAP_COOLDOWN; this.snapArmed = false; }
+      }
+    }
+    const L = this.targets();
+    if (!this.target || !L.includes(this.target)) this.setTarget(L[0]);
+    const T = this.target;
+    if (T) this.focus.set(T.cur.x, T.cur.y, T.cur.z);
+    else if (Chamber.exit) this.focus.set(Chamber.exit.x, Chamber.exit.y, Chamber.exit.z);
+    // orbit camera: behind the focus along where you're facing, up high (it glides; a big jump cuts)
+    const yaw = Rig.yaw, dist = T ? 5.5 : 9, up = T ? 2.2 : 5;
+    _v1.set(this.focus.x + Math.sin(yaw) * dist, this.focus.y + up, this.focus.z + Math.cos(yaw) * dist);
+    if (!this.placed || this.cam.distanceTo(_v1) > 40) { this.cam.copy(_v1); this.placed = true; }
+    else this.cam.lerp(_v1, 1 - Math.exp(-5 * dt));
+    Rig.placeFeet(this.cam.x, this.cam.y - Rig.eyeHeight(), this.cam.z);
+    Player.pos.copy(this.focus); Player.viewY = this.focus.y;       // (nearest-players sorting, chunk tracking)
+    this.follow.update(dt);
+    const key = (T ? T.id : '-') + '|' + L.length;
+    if (key !== this.key) { this.key = key; this.panel.redraw(); }
+  },
+};
+SM.states.SPECTATE = {
+  enter(arg) {
+    const tok = SM.seq;
+    Spectate.ending = false; Spectate.target = null; Spectate.placed = false; Spectate.snapArmed = true;
+    Player.locomotion = 'none'; Player.vel.set(0, 0, 0); Game.transitioning = false;
+    Hazards.clear(); Announce.clear(); Captions.update(99); Idol.detach(); HUD.setVisible(false);
+    if (arg.late) { Spectate.setTarget(Spectate.targets()[0]); Spectate.show(); return; }
+    Session.goOut();
+    Sfx.laugh(); Hands.pulse('both', 0.8, 300); Captions.show('[ WEGA LAUGHS ]', 2.0);
+    (async () => {
+      await Fade.to(1, 0.45, 0x3a0000);
+      if (tok !== SM.seq) return;
+      Spectate.setTarget(Spectate.targets()[0]);
+      if (!XR.inVR) { Rig.pitch = -0.25; camera.rotation.x = Rig.pitch; }
+      Spectate.show();
+      UI.announce("YOU'RE OUT!", { color: '#ff3060' }); UI.announce('SPECTATING THE CHASE', { color: '#ffd84a', short: true });
+      await Fade.to(0, 0.6);
+    })();
+  },
+  update(dt) { Spectate.update(dt); Omni.update(dt); },
+  exit() { Spectate.hide(); UI.setActive([]); if (!XR.inVR) { Rig.pitch = 0; camera.rotation.x = 0; } },
+};
+
 function recenter() {
   HUD.follow.reset = true; Announce.follow.reset = true; Player.recenterOnHead = true;
   if (SM.paused) placeFront(PauseMenu.panel.mesh, 1.5, -0.05);
@@ -9646,7 +9805,7 @@ window.WEGA_DEBUG = {
   player: () => ({ pos: Player.pos.toArray().map((v) => +v.toFixed(2)), hp: Player.hp, speed: +(Player.hspeed * CONFIG.SPEED_MULT).toFixed(1), grounded: Player.grounded }),
 };
 // test/debug access to internals (only with ?debug in the URL)
-if (DEBUG_URL) window.WEGA_DEBUG.internals = { SM, Session, Omni, Mods, MOD, MODS, Shop, SHOP, SHOP_CATS, Wallet, Shadow, Enraged, Lap5Deco, WegaShared, NameEdit, AvatarRig, WegaBoss, Diver, Jellies, DeepDeco, LobbyPlus, Achievements, Player, Collect, Beacon, Chamber, Hazards, Game, Rory, Screamer, LapTimer, Lap2: LapTimer, Flood, Shoebench, LapPortal, FPBody, Touch, Net, AV, Avatar, WegaHead, GlitchGuy, Idol, Music, HUD, Maze, Nav, World, Rig, Input, Fade, AudioSys, Save, Lobby, Stage, UI, get renderer() { return renderer; }, get scene() { return scene; }, get camera() { return camera; }, get perf() { return { upd: +Perf.upd.toFixed(2), ren: +Perf.ren.toFixed(2), calls: renderer.info.render.calls, tris: renderer.info.render.triangles }; } };
+if (DEBUG_URL) window.WEGA_DEBUG.internals = { SM, Session, Omni, Spectate, Mods, MOD, MODS, Shop, SHOP, SHOP_CATS, Wallet, Shadow, Enraged, Lap5Deco, WegaShared, NameEdit, AvatarRig, WegaBoss, Diver, Jellies, DeepDeco, LobbyPlus, Achievements, Player, Collect, Beacon, Chamber, Hazards, Game, Rory, Screamer, LapTimer, Lap2: LapTimer, Flood, Shoebench, LapPortal, FPBody, Touch, Net, AV, Avatar, WegaHead, GlitchGuy, Idol, Music, HUD, Maze, Nav, World, Rig, Input, Fade, AudioSys, Save, Lobby, Stage, UI, get renderer() { return renderer; }, get scene() { return scene; }, get camera() { return camera; }, get perf() { return { upd: +Perf.upd.toFixed(2), ren: +Perf.ren.toFixed(2), calls: renderer.info.render.calls, tris: renderer.info.render.triangles }; } };
 
 // =====================================================================================
 // MAIN LOOP
@@ -9737,7 +9896,7 @@ function init() {
   Sky.init(); Beacon.init(); LapPortal.init(); Maze.init(); Lobby.init(); FPBody.init();
   buildEnvMap(); Idol.init();
   Collect.init(); Confetti.init(); Hazards.init(); Omni.init();
-  Stage.init(); SkyFace.init(); PauseMenu.init(); BonusPop.init(); Net.init();
+  Stage.init(); SkyFace.init(); PauseMenu.init(); Spectate.init(); BonusPop.init(); Net.init();
   warmup();
 
   renderer.xr.addEventListener('sessionstart', () => XR.onStart());

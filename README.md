@@ -8,7 +8,7 @@ wega-music.js       the music pack (Lap 1 + Lap 2 songs as base64 MP3 + the Wega
 wega-music-lap3.js  Lap 3 song add-on ("Pillar John's Revenge"); optional, Lap 3 falls back to a sped-up Lap 2 song
 wega-music-lap4.js  Lap 4 song add-on ("DIVE"); optional, Lap 4 falls back to a sped-up Lap 3 song
 wega-music-lap5.js  Lap 5 song add-on ("I made it better"); optional, Lap 5 falls back to a sped-up Lap 4 song
-wega-music-boss.js  OMNIWEGA's boss theme (the Mario & Luigi boss battle); optional, the fight keeps the Lap 5 song
+wega-music-boss.js  OMNIWEGA's boss theme (Pizza Tower's "Unexpectancy" Parts 1-3, one per phase); optional, the fight keeps the Lap 5 song
 wega-relay.json     optional: which multiplayer server to use (empty = free public relays)
 server/             the multiplayer server (Node 20+): hosts the game, relays player data and runs the shared runs
 render.yaml         one-click deploy of server/ on Render
@@ -40,7 +40,12 @@ Everyone on a server plays **one shared run**:
   health and the seed its attacks come from, so every player sees the same attacks at the same moment, and each
   core anyone grabs hurts it once for everybody. It gets 2 more cores per extra player (up to 14). Nobody can
   escape until it's down; rejoin mid-fight and you land on the arena.
-- If you die, **REJOIN RUN** puts you back where the run is now. **QUIT TO LOBBY** leaves the run.
+- If you die, **REJOIN RUN** puts you back where the run is now (at full health). **QUIT TO LOBBY** leaves the run.
+- **Die in the chase while someone else is still running it and you're out:** you **spectate** the players still
+  running (a camera behind them; look around with the mouse or your head, **NEXT PLAYER** or JUMP switches who you
+  watch), OMNIWEGA included. You can't rejoin that chase (JOIN RUN from the lobby puts you back to spectating).
+  When the run ends (everyone escaped or got knocked out) you go back to the lobby. If you were the last one
+  running, you get the normal death screen and can rejoin.
 
 The server keeps track of the run (`server/authority.js`). On the free public relays there is no server, so the
 player with the lowest id hosts the run instead, and it is handed to the next player if they leave. If nobody
@@ -251,7 +256,7 @@ In a shared run, the run's lap decides the chase for everyone, and the collapse 
 
 At the end of the Lap 5 chase the walkway opens onto a huge round arena with the white door on its far side. Just
 as you're about to reach it, **a giant purple hand swoops down, grabs the door and lifts it out of reach**, and
-**OMNIWEGA** rises out of the abyss behind the arena to the Mario & Luigi boss theme: every character fused into
+**OMNIWEGA** rises out of the abyss behind the arena to Pizza Tower's final boss theme: every character fused into
 one creature. Wega's glitching face inside the Diver's brass helmet, Rory bodies and glitch panels bursting out of
 its chest, Screamers on its shoulders, Shoebench on its belly, a ring of Lil' Guys spinning round its head as a
 crown, jellyfish drifting round its waist, the Diver's brass fist on one arm and the purple hand on the other.
@@ -270,6 +275,10 @@ It attacks with every character's moves, one after another, faster as the fight 
 every core hurts OMNIWEGA (its health bar shows how many are left). Break them all and it explodes, the hand drops
 the door back where it was, OMNIWEGA sinks into the abyss and the exit is free. Beating it pays **+500 Lil' Guys**
 and unlocks **OMNIWEGA SLAYER**. If you die, RETRY puts you back on the arena with the cores you already broke.
+
+The music follows the fight: "Unexpectancy, Part 1" while it has most of its health, Part 2 once a third of the cores
+are gone ("OMNIWEGA IS GETTING ANGRY!") and Part 3 for the last third ("OMNIWEGA IS FURIOUS!"). Each part is cut to
+a section that loops seamlessly.
 
 ## Difficulty
 
