@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Wega's Challenge: The Idol (VR)</title>
+<title>Wega's Challenge: The Idol</title>
 <style>
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; color: #fff;
     font-family: "Courier New", ui-monospace, monospace; }
@@ -41,6 +41,8 @@
   #overlay button:hover { transform: translateY(-1px) scale(1.03); box-shadow: 0 0 26px rgba(255, 90, 230, .8), inset 0 1px 0 rgba(255, 255, 255, .45); }
   #overlay button:hover::after { left: 120%; }
   #overlay button[disabled] { opacity: .4; cursor: default; transform: none; }
+  #overlay button.alt { font-size: 14px; padding: 8px 20px; min-width: 200px; background: rgba(30, 10, 48, .7); box-shadow: none; border-color: rgba(208, 144, 255, .5); }
+  #btnDesktop { font-size: 22px; padding: 16px 34px; min-width: 320px; }
   #overlay .hint { max-width: 620px; font-size: 13px; line-height: 1.55; color: #d8c4ee; padding: 12px 18px; border-radius: 14px;
     background: rgba(16, 4, 28, .6); border: 1px solid rgba(184, 77, 255, .35); box-shadow: inset 0 0 24px rgba(184, 77, 255, .12); }
   @media (prefers-reduced-motion: reduce) { #overlay, #overlay::before, #overlay h1 { animation: none; } }
@@ -95,13 +97,13 @@
   <h1>WEGA'S CHALLENGE</h1>
   <h2>THE IDOL</h2>
   <div id="status">LOADING…</div>
-  <button id="btnVR" disabled>ENTER VR</button>
-  <button id="btnDesktop" disabled>CLICK TO PLAY (DESKTOP)</button>
+  <button id="btnDesktop" disabled>CLICK TO PLAY</button>
+  <button id="btnVR" class="alt" disabled>ENTER VR</button>
   <div class="hint">
-    Quest 3S: press <b>ENTER VR</b>. Left stick moves, right stick turns, <b>A</b> jumps, <b>B</b> pauses, grip grabs, trigger clicks menus.<br>
-    Desktop: <b>WASD</b> move, mouse look, <b>Space</b> jump, <b>E</b> grab, <b>Shift</b> sprint lock, <b>Esc</b> pause, <b>M</b> mute, <b>F</b> full screen.
-    Aim the crosshair at a menu button and click.<br>
-    Phone / tablet: left stick moves, drag the right side to look, tap menu buttons, JUMP / GRAB / SPRINT buttons on the right.
+    <b>WASD</b> move · <b>mouse</b> look · <b>Space</b> jump · <b>E</b> grab · <b>Shift</b> sprint lock · <b>Esc</b> pause · <b>M</b> mute · <b>F</b> full screen.
+    Aim the crosshair at a menu button and click. Mouse sensitivity, field of view and graphics are in <b>SETTINGS</b>.<br>
+    VR headset: press <b>ENTER VR</b> (left stick moves, right stick turns, <b>A</b> jumps, <b>B</b> pauses, grip grabs).
+    Phone / tablet: left stick moves, drag the right side to look.
   </div>
 </div>
 <div id="crosshair"></div>
@@ -771,6 +773,11 @@ const Save = {
         difficulty: 'normal',
         captions: true,
         fps: false,
+        mouseSens: 10,      // 1-20 (10 = the classic feel)
+        invertY: false,
+        fov: 75,            // vertical field of view on a screen (degrees)
+        gfx: 2,             // 0 low, 1 medium, 2 high (render resolution)
+        shake: true,        // screen shake (death scenes, big hits)
         edgeGuard: false,   // opt-in assist: can't walk off a ledge into the void (no invisible walls by default)
         edgeGuardV: 1,      // settings saved before the walls came out get the new default once
         mods: 0,            // offline run modifiers (bit per MODS entry)
@@ -1624,6 +1631,16 @@ function initRenderer() {
   });
 }
 
+// the screen settings: field of view and render resolution (VR uses the headset's own)
+function applyViewSettings() {
+  const s = Save.s;
+  if (!renderer || !camera) return;
+  if (!renderer.xr.isPresenting) {
+    const dpr = window.devicePixelRatio || 1, cap = IS_TOUCH ? 1.5 : 2;
+    renderer.setPixelRatio([Math.min(dpr, 1) * 0.75, Math.min(dpr, 1.25), Math.min(dpr, cap)][clamp(s.gfx | 0, 0, 2)]);
+    camera.fov = clamp(s.fov || 75, 60, 100); camera.updateProjectionMatrix();
+  }
+}
 // pooled dynamic point lights (max 3 active)
 const Lights = {
   pool: [],
@@ -1681,6 +1698,7 @@ const XR = {
     this.inVR = false; this.session = null;
     camera.position.set(0, CONFIG.DESKTOP_EYE, 0);
     camera.quaternion.identity(); camera.rotation.set(0, 0, 0); camera.rotation.order = 'YXZ';
+    setTimeout(applyViewSettings, 0);              // back on the screen: your field of view + resolution
     Hands.list.forEach((h) => { h.source = null; h.hand = 'none'; });
     DOM.showOverlay('VR session ended. Click to keep playing on desktop or re-enter VR.');
     Player.recenterOnHead = true;
@@ -1865,10 +1883,10 @@ const Input = {
         Touch.consume();
       }
       // mouse look (never more than a quick flick's worth in one frame)
-      const sens = 0.0022;
+      const sens = 0.0022 * clamp(Save.s.mouseSens || 10, 1, 20) / 10, inv = Save.s.invertY ? -1 : 1;
       if (this.mouseDX || this.mouseDY) {
         Rig.yaw = wrapAngle(Rig.yaw - clamp(this.mouseDX * sens, -CONFIG.LOOK_MAX_STEP, CONFIG.LOOK_MAX_STEP));
-        Rig.pitch = clamp(Rig.pitch - clamp(this.mouseDY * sens, -CONFIG.LOOK_MAX_STEP, CONFIG.LOOK_MAX_STEP), -1.45, 1.45);
+        Rig.pitch = clamp(Rig.pitch - inv * clamp(this.mouseDY * sens, -CONFIG.LOOK_MAX_STEP, CONFIG.LOOK_MAX_STEP), -1.45, 1.45);
         rig.rotation.y = Rig.yaw; camera.rotation.x = Rig.pitch;
         this.lookedT = Clock.real;
       }
@@ -2767,6 +2785,13 @@ class Follower {
   }
   update(dt) {
     camera.getWorldPosition(_v1);
+    if (!XR.inVR) {
+      // on a screen it's part of the screen: locked to your view, so it never lags behind and swings back into place
+      camera.getWorldQuaternion(this.obj.quaternion);
+      this.obj.position.set(0, -this.drop, -this.dist).applyQuaternion(this.obj.quaternion).add(_v1);
+      this.reset = true;
+      return;
+    }
     const hy = Rig.headYaw();
     if (this.reset) { this.yaw = hy; this.reset = false; this.following = false; }
     const d = wrapAngle(hy - this.yaw);
@@ -3339,14 +3364,21 @@ const Ouch = {
 
 // ---------------- settings rows (shared by lobby + pause panels) ----------------
 const ONOFF = (v) => (v ? 'ON' : 'OFF');
+// (vr: only shown in VR, pc: only on a screen)
+const GFX_NAMES = ['LOW', 'MEDIUM', 'HIGH'];
 const SETTINGS_ROWS = [
-  { label: 'TURN', get: (s) => ['SNAP 30°', 'SNAP 45°', 'SMOOTH'][s.turn], step: (s, d) => { s.turn = (s.turn + d + 3) % 3; } },
-  { label: 'SMOOTH TURN SPEED', get: (s) => s.turnSpeed + '°/S', step: (s, d) => { s.turnSpeed = clamp(s.turnSpeed + d * 30, 60, 180); } },
-  { label: 'MOVE DIRECTION', get: (s) => (s.moveDir ? 'CONTROLLER' : 'HEAD'), step: (s) => { s.moveDir = 1 - s.moveDir; } },
-  { label: 'SWAP HANDS', get: (s) => ONOFF(s.swap), step: (s) => { s.swap = !s.swap; } },
-  { label: 'COMFORT VIGNETTE', get: (s) => ['OFF', 'LOW', 'HIGH'][s.vignette], step: (s, d) => { s.vignette = (s.vignette + d + 3) % 3; } },
-  { label: 'FLOATING HUD', get: (s) => ONOFF(s.floatHud), step: (s) => { s.floatHud = !s.floatHud; HUD.vals.speed = -1; } },
-  { label: 'SEATED MODE', get: (s) => ONOFF(s.seated), step: (s) => { s.seated = !s.seated; } },
+  { pc: true, label: 'MOUSE SENSITIVITY', get: (s) => String(s.mouseSens), step: (s, d) => { s.mouseSens = clamp(s.mouseSens + d, 1, 20); } },
+  { pc: true, label: 'INVERT MOUSE Y', get: (s) => ONOFF(s.invertY), step: (s) => { s.invertY = !s.invertY; } },
+  { pc: true, label: 'FIELD OF VIEW', get: (s) => s.fov + '°', step: (s, d) => { s.fov = clamp(s.fov + d * 5, 60, 100); applyViewSettings(); } },
+  { pc: true, label: 'GRAPHICS', get: (s) => GFX_NAMES[s.gfx], step: (s, d) => { s.gfx = clamp(s.gfx + d, 0, 2); applyViewSettings(); } },
+  { vr: true, label: 'TURN', get: (s) => ['SNAP 30°', 'SNAP 45°', 'SMOOTH'][s.turn], step: (s, d) => { s.turn = (s.turn + d + 3) % 3; } },
+  { vr: true, label: 'SMOOTH TURN SPEED', get: (s) => s.turnSpeed + '°/S', step: (s, d) => { s.turnSpeed = clamp(s.turnSpeed + d * 30, 60, 180); } },
+  { vr: true, label: 'MOVE DIRECTION', get: (s) => (s.moveDir ? 'CONTROLLER' : 'HEAD'), step: (s) => { s.moveDir = 1 - s.moveDir; } },
+  { vr: true, label: 'SWAP HANDS', get: (s) => ONOFF(s.swap), step: (s) => { s.swap = !s.swap; } },
+  { vr: true, label: 'COMFORT VIGNETTE', get: (s) => ['OFF', 'LOW', 'HIGH'][s.vignette], step: (s, d) => { s.vignette = (s.vignette + d + 3) % 3; } },
+  { vr: true, label: 'FLOATING HUD', get: (s) => ONOFF(s.floatHud), step: (s) => { s.floatHud = !s.floatHud; HUD.vals.speed = -1; } },
+  { vr: true, label: 'SEATED MODE', get: (s) => ONOFF(s.seated), step: (s) => { s.seated = !s.seated; } },
+  { label: 'SCREEN SHAKE', get: (s) => ONOFF(s.shake), step: (s) => { s.shake = !s.shake; } },
   { label: 'REDUCE FLASHING', get: (s) => ONOFF(s.reduceFlash), step: (s) => { s.reduceFlash = !s.reduceFlash; } },
   { label: 'MUSIC VOLUME', get: (s) => Math.round(s.musicVol * 100) + '%', step: (s, d) => { s.musicVol = clamp(Math.round(s.musicVol * 10 + d) / 10, 0, 1); Music.onVolumeSetting(); } },
   { label: 'SFX VOLUME', get: (s) => Math.round(s.sfxVol * 100) + '%', step: (s, d) => { s.sfxVol = clamp(Math.round(s.sfxVol * 10 + d) / 10, 0, 1); AudioSys.updateSfxGain(0.1); Sfx.collect(4); } },
@@ -3359,8 +3391,8 @@ const SETTINGS_ROWS = [
 function drawSettingsPage(ctx, panel, onBack) {
   panel.bg();
   drawText(ctx, 'SETTINGS', 256, 34, { size: 30, style: 'italic 900', font: FONT_IMPACT, fill: '#fff', stroke: '#000', lw: 5, spacing: 0.15 });
-  const s = Save.s, y0 = 62, rh = Math.min(30.5, 398 / SETTINGS_ROWS.length);
-  SETTINGS_ROWS.forEach((row, i) => {
+  const s = Save.s, y0 = 62, rows = SETTINGS_ROWS.filter((r) => (XR.inVR ? !r.pc : !r.vr)), rh = Math.min(32, 398 / rows.length);
+  rows.forEach((row, i) => {
     const y = y0 + i * rh;
     if (i % 2 === 0) { ctx.fillStyle = 'rgba(255,255,255,0.04)'; ctx.fillRect(20, y, 472, rh); }
     drawText(ctx, row.label, 30, y + rh / 2, { size: 16, align: 'left', fill: '#e6d0ff', stroke: '#000', lw: 3, maxWidth: 220 });
@@ -5492,7 +5524,7 @@ const LOBBY_PAGES = {
       ['rory', 'AVOID RORY, LASERS, SCREAMERS', 'BUILD SPEED TO OUTRUN RORY'],
       ['beacon', 'AT 0 LEFT: BEACON OR LAP PORTAL', 'PORTALS = OPTIONAL LAPS 2, 3 + 4'],
       ['wega', 'LAPS 2-4: BEAT THE TIMER', "WEGA HUNTS YOU ON LAP 3, THE DIVER ON LAP 4"],
-      ['idol', 'GET THE IDOL', 'SQUEEZE GRIP (DESKTOP: E)'],
+      ['idol', 'GET THE IDOL', XR.inVR ? 'SQUEEZE GRIP' : 'PRESS E'],
       ['door', 'RUN FOR YOUR LIFE!', 'REACH THE WHITE DOOR'],
     ];
     rows.forEach((r, i) => {
@@ -5501,7 +5533,7 @@ const LOBBY_PAGES = {
       drawText(ctx, r[1], 104, y + 16, { size: 20, align: 'left', fill: '#fff', stroke: '#000', lw: 4, maxWidth: 390 });
       drawText(ctx, r[2], 104, y + 40, { size: 15, align: 'left', fill: '#cbb6e0', stroke: '#000', lw: 3, maxWidth: 390 });
     });
-    drawText(ctx, 'L-STICK MOVE · R-STICK TURN · A JUMP · B PAUSE', 256, 440, { size: 14, fill: '#ffd21f', stroke: '#000', lw: 3, maxWidth: 480 });
+    drawText(ctx, XR.inVR ? 'L-STICK MOVE · R-STICK TURN · A JUMP · B PAUSE' : 'WASD MOVE · MOUSE LOOK · SPACE JUMP · E GRAB · SHIFT SPRINT · ESC PAUSE', 256, 440, { size: 14, fill: '#ffd21f', stroke: '#000', lw: 3, maxWidth: 480 });
     p.button('back', 176, 458, 160, 40, 'BACK', () => p.setPage('main'), { size: 22 });
   },
   settings(ctx, p) { drawSettingsPage(ctx, p, () => p.setPage('main')); },
@@ -11172,7 +11204,7 @@ const Session = {
   escapeNow() {
     Idol.detach(); Game.hadIdol = false;
     // the chase clock is shared: anyone still back on the causeway is pulled up to the idol's dais
-    if (Chamber.route && Chamber.route.sAt(Player.pos).s < Chamber.daisS - 8) Player.spawn(2.2 + rr(-1, 1), 6, -54 + rr(-1, 1), 0);
+    if (Chamber.route && Chamber.route.sAt(Player.pos).s < Chamber.daisS - 8) Player.spawn(2.2 + rr(-1, 1), 6, -54 + rr(-1, 1), null);    // (keeps your view)
     Sfx.idolChord(); Hands.pulse('both', 0.6, 400);
     Chamber.triggerCollapseVisuals();
     SM.go('ESCAPE', { fromGrab: true });
@@ -11585,7 +11617,7 @@ const DeathCam = {
   // the big one-off models (made on first use) - hidden between scenes so they never leak into the next one
   hideExtras() { if (this.god) { this.god.visible = false; this.godHands.forEach((h) => { h.visible = false; }); } if (this.wf) this.wf.root.visible = false; if (this.wm) this.wm.root.visible = false; },
   once(k) { if (this.steps[k]) return false; this.steps[k] = true; return true; },
-  shake(a) { this.shakeAmt = Math.max(this.shakeAmt, a * (Save.s.reduceFlash ? 0.3 : 1)); },
+  shake(a) { if (Save.s.shake === false) return; this.shakeAmt = Math.max(this.shakeAmt, a * (Save.s.reduceFlash ? 0.3 : 1)); },
   over(name, op, color) { const o = this.overlay[name]; o.visible = op > 0.004; o.material.opacity = clamp(op, 0, 1); if (color != null) o.material.color.set(color); },
   // the title + subtitle across your view
   title(op) {
@@ -12607,7 +12639,7 @@ function warmup() {
 
 function init() {
   Save.load();
-  initRenderer();
+  initRenderer(); applyViewSettings();
   buildTextures();
   Fade.init(); Effects.init(); HUD.init(); Announce.init(); Wrist.init(); Toast.init(); Captions.init(); Ouch.init();
   Hands.init(); Input.initDesktop(); Touch.init();

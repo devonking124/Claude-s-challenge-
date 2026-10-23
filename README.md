@@ -1,6 +1,7 @@
 # Claude-s-challenge-
 
-**Wega's Challenge: The Idol (VR)** is a WebXR fan remake for the Meta Quest 3S browser. It also plays on desktop with mouse and keyboard.
+**Wega's Challenge: The Idol** is a fan remake made for **PC** (mouse and keyboard, in the browser). It also plays in VR
+(Meta Quest browser) and on phones and tablets.
 
 ```
 index.html          the whole game (Three.js r160 from jsDelivr, everything else inline)
@@ -364,24 +365,41 @@ stops you at a gap's lip, a jump from there keeps your run-up, so you can still 
 
 ## Play
 
-Host this folder over **HTTPS** (GitHub Pages, Netlify drop, itch.io HTML upload) and open `index.html`
-in the Quest browser, then press **ENTER VR**. WebXR will not start from `file://`.
+Host this folder over **HTTPS** (GitHub Pages, Netlify drop, itch.io HTML upload) and open `index.html` in your
+browser, then **CLICK TO PLAY**. For VR, open it in the Quest browser and press **ENTER VR** (WebXR will not start
+from `file://`).
 The game still runs if `wega-music.js` is missing (just without music).
 
 ## Controls
 
-| Quest | Action |
+| PC | Action |
 |---|---|
-| Left stick | Move (speed builds up the longer you run) |
+| WASD / arrow keys | Move (speed builds up the longer you run) |
+| Mouse | Look (click the game to lock the pointer) |
+| Space | Jump (hold it to keep hopping) |
+| E | Grab the idol |
+| Shift | Sprint lock |
+| Esc / P | Pause |
+| M / F | Mute / full screen |
+| Click | Press the menu button under the crosshair |
+
+The HUD is part of the screen (it stays put however fast you turn), and glitchy mouse jumps from the browser are
+filtered out so the view never snaps round.
+
+**PC settings** (main menu or pause menu > SETTINGS): mouse sensitivity, invert mouse Y, field of view (60°-100°),
+graphics (LOW / MEDIUM / HIGH render resolution), screen shake, reduce flashing, music and sound volume,
+difficulty, captions, edge guard and an FPS counter. The VR-only settings (turning, comfort vignette, seated mode,
+hands) show up when you're in VR.
+
+| Quest (VR) | Action |
+|---|---|
+| Left stick | Move |
 | Right stick | Snap turn (or smooth turn in Settings) |
-| A / X | Jump (hold it to keep hopping) |
+| A / X | Jump |
 | Left stick click | Toggle sprint lock |
 | Grip | Grab the idol |
 | Trigger | Click menu buttons with the laser |
 | B / Y | Pause (hold 1 s to recentre) |
-
-Desktop: WASD move, mouse look (click to lock the pointer), Space jump (hold to keep hopping), E grab, Shift sprint lock,
-Esc or P pause, M mute, F full screen. Aim the crosshair at a menu button and click.
 
 Phone / tablet: tap **TAP TO PLAY** (it goes full screen and asks for landscape). Left stick moves, drag the
 right side of the screen to look, tap the 3D menu buttons, and use the JUMP / GRAB / SPRINT / pause buttons.
