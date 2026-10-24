@@ -8,7 +8,9 @@
 // attacks are drawn from and the 1v1 duel queue), who is dead (spectating until the next lap / chase /
 // boss phase; if everyone is down the stage restarts), and who escaped. It also owns the lobby: the first
 // player to join is the owner (the next earliest takes over if they leave), and only the owner can START
-// and change the lobby settings (difficulty, how many laps, run modifiers). The real server
+// and change the lobby settings (game mode, difficulty, how many laps, run modifiers). The game modes: CLASSIC (the
+// laps, the chase, WEGA FACE) and RORY'S CHALLENGE (one huge map, 500+ Lil' Guys, the whole run on its song's
+// clock: the timer is the song, anyone who is down is back at the song's next section, Shoebench when it ends). The real server
 // (server/server.js) runs one per room; on a public relay the game itself runs one in the player with the
 // lowest id (and hands it over if they leave). Plain JS, no dependencies: the same file is inlined into index.html.
 //
@@ -16,8 +18,21 @@
 // the authority publishes the room snapshot on  .../auth  (on every change + once a second).
 // =====================================================================================
 const WegaShared = (() => {
-  const TOTAL = 207, MAX_TOTAL = 330;     // Lil' Guys per lap (the owner's difficulty can ask for more)
+  const TOTAL = 207, LAP_TOTAL = 330;     // Lil' Guys per lap (the owner's difficulty can ask for more)
+  const MAX_TOTAL = 720;                  // ...and in RORY'S CHALLENGE (500+)
   const MAX_LAP = 5;
+  const MODES = ['classic', 'rory'];      // the game modes the lobby owner picks from
+  // RORY'S CHALLENGE (stage 'rory', then 'roryexit' once every Lil' Guy is in): the song starts RORY_LEAD s after
+  // START (the count-in) and the timer ends with its last bar; then Shoebench. RORY_SECTIONS: where the song's
+  // sections start (s into it); anyone who is down comes back when it moves on to the next one (in overtime: every 8 bars).
+  const RORY_LAP = 6, RORY_LEAD = 4.2, RORY_LEN = 278.28, RORY_BAR = 240 / 145;
+  const RORY_SECTIONS = [0.21, 13.45, 26.69, 53.17, 79.66, 106.14, 132.62, 144.21, 159.10, 212.07, 251.79, 265.04];
+  function rorySection(t) {
+    if (t < RORY_SECTIONS[0]) return -1;
+    if (t >= RORY_LEN) return RORY_SECTIONS.length + Math.floor((t - RORY_LEN) / (RORY_BAR * 8));
+    let i = 0; while (i + 1 < RORY_SECTIONS.length && t >= RORY_SECTIONS[i + 1]) i++;
+    return i;
+  }
   const MOD_MAX = 0xffff;                 // run modifier bits (the game decides what each one does)
   const DIFFS = ['chill', 'normal', 'hard', 'wega'];
   const BONUS = 3, BONUS_EVERY = 25;      // laps 2-4: +3 s on the shared timer every 25 collected
@@ -126,7 +141,7 @@ const WegaShared = (() => {
       this.publish = o.publish || (() => {}); this.now = o.now || (() => Date.now());
       // everyone on this server, in the order they joined: id -> { t: last heartbeat, n: name }
       this.present = new Map();
-      this.owner = ''; this.ld = 'normal'; this.ml = MAX_LAP; this.lm = 0;     // lobby: owner + settings (+ modifier bits)
+      this.owner = ''; this.ld = 'normal'; this.ml = MAX_LAP; this.lm = 0; this.gm = 'classic';     // lobby: owner + settings (+ modifier bits, game mode)
       this.sq = 0; this.ev = [0, '', '', ''];
       this.dirty = false; this.lastPub = -1e9;
       this.reset(0);
@@ -137,6 +152,7 @@ const WegaShared = (() => {
       this.tEnd = 0; this.shoe = false; this.d = 'normal'; this.rml = MAX_LAP; this.md = 0; this.times = [0, 0, 150, 120, 105, 120];
       this.by = ''; this.gr = ''; this.runners = new Map(); this.startT = this.now(); this.escT = 0; this.winT = 0; this.doneT = 0; this.emptyT = 0;
       this.boss = null; this.bs = 0; this.lv = 0; this.wipeAt = 0;
+      this.rgm = 'classic'; this.rT0 = 0; this.rsec = -1;      // the run's game mode; RORY'S CHALLENGE: when its clock started
     }
     event(kind, who, id, extra) { this.ev = [this.ev[0] + 1, kind, who, id || '']; if (extra != null) this.ev.push(extra); }
     changed() { this.sq++; this.dirty = true; }
@@ -175,6 +191,16 @@ const WegaShared = (() => {
       this.tEnd = n >= 2 ? this.now() + ((this.times[n] || 120) + delay) * 1000 : 0;
       this.revive();
     }
+    // RORY'S CHALLENGE from the top: fresh Lil' Guys, the song (and so the timer) from the count-in
+    startRory() {
+      const now = this.now();
+      this.lap = RORY_LAP; this.st = 'rory';
+      this.bits.fill(0); this.left = this.tot; this.lapCount = 0; this.shoe = false; this.escT = 0;
+      this.rT0 = now; this.rsec = -1; this.tEnd = now + (RORY_LEAD + RORY_LEN) * 1000;
+    }
+    roryAge() { return (this.now() - this.rT0) / 1000; }
+    // the stage everyone collects Lil' Guys on right now
+    collecting() { return this.st === 'lap' + this.lap || this.st === 'rory'; }
     has(i) { return (this.bits[i >> 3] >> (i & 7)) & 1; }
     // WEGA FACE takes the exit: the Lap 5 chase's song is over
     startBoss(who, id) {
@@ -205,6 +231,7 @@ const WegaShared = (() => {
       if (/^(lap|beacon)[1-5]$/.test(this.st)) { if (this.lap >= 2) { this.tEnd = now + ((this.times[this.lap] || 120) + CUT_DELAY) * 1000; this.shoe = false; } }
       else if (this.st === 'escape') this.escT = now;
       else if (this.st === 'boss' && this.boss) this.boss.restartPhase(now, this.ids());
+      else if (this.st === 'rory' || this.st === 'roryexit') this.startRory();      // an endurance run: from the top
       else if (this.st !== 'chamber' && this.st !== 'freed') return;
       this.revive(); this.event('wipe', '', '', this.st);
       this.changed();
@@ -227,6 +254,7 @@ const WegaShared = (() => {
       switch (m.q) {
         case 'cfg':                 // lobby settings: owner only
           if (!owner) return;
+          if (MODES.includes(m.gm)) this.gm = m.gm;
           if (DIFFS.includes(m.ld)) this.ld = m.ld;
           if (Number.isInteger(m.ml) && m.ml >= 1 && m.ml <= MAX_LAP) this.ml = m.ml;
           if (Number.isInteger(m.lm) && m.lm >= 0 && m.lm <= MOD_MAX) this.lm = m.lm;
@@ -236,26 +264,33 @@ const WegaShared = (() => {
           if (live && this.st !== 'done') { this.runner(m.i, who); this.changed(); return; }   // already going: you just join it
           if (!owner) return;                                                                   // only the owner starts runs
           this.reset(Math.floor(Math.random() * 2147483646) + 1);
-          this.ph = 'run'; this.by = who; this.d = this.ld; this.rml = this.ml; this.md = this.lm;
-          this.tot = Math.round(clampNum(m.tot, 50, MAX_TOTAL, TOTAL));
+          this.ph = 'run'; this.by = who; this.d = this.ld; this.rml = this.ml; this.md = this.lm; this.rgm = this.gm;
+          const rory = this.rgm === 'rory';
+          this.tot = Math.round(clampNum(m.tot, 50, rory ? MAX_TOTAL : LAP_TOTAL, rory ? 550 : TOTAL));
           this.times = [0, 0, clampNum(m.t2, 50, 400, 150), clampNum(m.t3, 50, 400, 120), clampNum(m.t4, 50, 400, 105), clampNum(m.t5, 50, 400, 120)];
-          this.startLap(1, 0); this.startT = now;
+          if (rory) { this.startRory(); this.revive(); } else this.startLap(1, 0);
+          this.startT = now;
           this.runner(m.i, who);
           this.event('start', who, m.i); this.changed();
           return;
         }
         case 'col': {
-          if (!mine || m.lap !== this.lap || this.st !== 'lap' + this.lap || !Array.isArray(m.ix)) return;
+          if (!mine || m.lap !== this.lap || !this.collecting() || !Array.isArray(m.ix)) return;
           this.runner(m.i, who);
           let got = 0;
           for (let k = 0; k < m.ix.length && k < 64; k++) {
             const i = m.ix[k];
             if (!Number.isInteger(i) || i < 0 || i >= this.tot || this.has(i)) continue;
             this.bits[i >> 3] |= 1 << (i & 7); this.left--; this.lapCount++; got++;
-            if (this.lap >= 2 && !this.shoe && this.lapCount % BONUS_EVERY === 0) this.tEnd += BONUS * 1000;
+            // laps 2-5: +3 s now and then (RORY'S CHALLENGE: never - its timer is the song)
+            if (this.lap >= 2 && this.lap <= MAX_LAP && !this.shoe && this.lapCount % BONUS_EVERY === 0) this.tEnd += BONUS * 1000;
           }
           if (!got) return;
-          if (this.left <= 0) { this.left = 0; this.st = 'beacon' + this.lap; this.event('clear', who, m.i); }
+          if (this.left <= 0) {
+            this.left = 0;
+            if (this.st === 'rory') { this.st = 'roryexit'; this.escT = now; } else this.st = 'beacon' + this.lap;
+            this.event('clear', who, m.i);
+          }
           this.changed();
           return;
         }
@@ -285,7 +320,7 @@ const WegaShared = (() => {
           return;
         }
         case 'dead': {              // you're down: you watch until the next lap / the chase / the next boss phase
-          if (!mine || !/^(lap|beacon)[1-5]$|^chamber$|^escape$|^boss$/.test(this.st)) return;
+          if (!mine || !/^(lap|beacon)[1-5]$|^chamber$|^escape$|^boss$|^rory$|^roryexit$/.test(this.st)) return;
           const r = this.runner(m.i, who); if (r.dead) return;
           r.dead = true; this.event('dead', who, m.i, typeof m.by === 'string' ? m.by.slice(0, 12) : '');
           // a duelist who goes down loses the duel: the next player is up
@@ -293,8 +328,8 @@ const WegaShared = (() => {
           this.checkWipe(); this.changed();
           return;
         }
-        case 'win': {
-          if (!mine || (this.st !== 'escape' && this.st !== 'freed' && this.st !== 'done')) return;
+        case 'win': {              // escaped (or reached RORY'S CHALLENGE's exit)
+          if (!mine || (this.st !== 'escape' && this.st !== 'freed' && this.st !== 'done' && this.st !== 'roryexit')) return;
           if (this.lap >= MAX_LAP && this.st === 'escape') return;          // Lap 5: WEGA FACE has the exit until it's beaten
           const r = this.runner(m.i, who);
           if (r.won) return;
@@ -316,7 +351,7 @@ const WegaShared = (() => {
       if (res) this.bossResult(res, '', id); else this.event('duellost', '', id, this.boss.di);
     }
     checkDone() {
-      if (this.st !== 'escape' && this.st !== 'boss' && this.st !== 'freed') return;
+      if (this.st !== 'escape' && this.st !== 'boss' && this.st !== 'freed' && this.st !== 'roryexit') return;
       let all = this.runners.size > 0;
       for (const r of this.runners.values()) if (!r.won) all = false;
       const max = this.lap >= MAX_LAP ? ESCAPE_MAX_BOSS : ESCAPE_MAX;
@@ -341,7 +376,15 @@ const WegaShared = (() => {
           if (!this.emptyT) this.emptyT = now;
           else if (now - this.emptyT > EMPTY_RESET) { this.ph = 'idle'; this.st = ''; this.changed(); }
         } else this.emptyT = 0;
-        if (/^(lap|beacon)[2-5]$/.test(this.st) && !this.shoe && now >= this.tEnd) { this.shoe = true; this.event('shoe', '', ''); this.changed(); }
+        if ((/^(lap|beacon)[2-5]$/.test(this.st) || this.st === 'rory' || this.st === 'roryexit') && !this.shoe && now >= this.tEnd) { this.shoe = true; this.event('shoe', '', ''); this.changed(); }
+        // RORY'S CHALLENGE: whoever is down is back as the song moves on to its next section
+        if (this.st === 'rory' || this.st === 'roryexit') {
+          const sec = rorySection(this.roryAge() - RORY_LEAD);
+          if (sec !== this.rsec) {
+            const was = this.rsec; this.rsec = sec;
+            if (was >= 0 && [...this.runners.values()].some((r) => r.dead)) { this.revive(); this.event('section', '', '', sec); this.changed(); }
+          }
+        }
         // everyone has been down for a while: the chase / the boss phase starts over
         if (this.wipeAt && now >= this.wipeAt) this.wipeNow();
         // the Lap 5 chase's song is over: WEGA FACE
@@ -370,12 +413,13 @@ const WegaShared = (() => {
         v: 1, a: this.src, sq: this.sq, ph: this.ph, run: this.run, st: this.st, lap: this.lap, c: hex, left: this.left, tot: this.tot,
         tl: this.tEnd ? Math.round(Math.max(0, this.tEnd - now) / 100) / 10 : 0, shoe: this.shoe ? 1 : 0,
         d: this.d, rml: this.rml, md: this.md, t2: this.times[2], t3: this.times[3], t4: this.times[4], t5: this.times[5], by: this.by, gr: this.gr, nr: this.runners.size, rn: names,
-        ow: this.owner, on: this.ownerName(), ld: this.ld, ml: this.ml, lm: this.lm, hp: here,
+        ow: this.owner, on: this.ownerName(), ld: this.ld, ml: this.ml, lm: this.lm, gm: this.gm, hp: here,
         ag: Math.round((now - this.startT) / 100) / 10, e: this.ev,
         ea: this.escT ? Math.round((now - this.escT) / 100) / 10 : 0,             // the chase clock
         lv: this.lv, dl, ww: this.wipeAt ? Math.round(Math.max(0, this.wipeAt - now) / 100) / 10 : 0,
       };
       if (this.boss) Object.assign(s, this.boss.snap(now));
+      if (this.rgm === 'rory') { s.rgm = 'rory'; s.ra = Math.round((now - this.rT0) / 100) / 10; }   // the song's clock
       return s;
     }
     // take over from a snapshot (a new host after the old one left): the lobby owner and settings,
@@ -386,11 +430,14 @@ const WegaShared = (() => {
       if (DIFFS.includes(s.ld)) this.ld = s.ld;
       if (Number.isInteger(s.ml) && s.ml >= 1 && s.ml <= MAX_LAP) this.ml = s.ml;
       if (Number.isInteger(s.lm) && s.lm >= 0 && s.lm <= MOD_MAX) this.lm = s.lm;
+      if (MODES.includes(s.gm)) this.gm = s.gm;
       if (Array.isArray(s.e)) this.ev = s.e.slice(0, 5);
       this.sq = (s.sq | 0) + 1; this.dirty = true;
       if (s.ph !== 'run' || !Number.isInteger(s.run)) return;
       this.reset(s.run);
-      this.ph = 'run'; this.st = String(s.st || 'lap1'); this.lap = clampNum(s.lap | 0, 1, MAX_LAP, 1);
+      this.rgm = s.rgm === 'rory' ? 'rory' : 'classic';
+      this.ph = 'run'; this.st = String(s.st || 'lap1'); this.lap = clampNum(s.lap | 0, 1, this.rgm === 'rory' ? RORY_LAP : MAX_LAP, 1);
+      if (this.rgm === 'rory') { this.rT0 = this.now() - clampNum(s.ra, 0, 1e6, 0) * 1000; this.rsec = rorySection(this.roryAge() - RORY_LEAD); }
       this.tot = Math.round(clampNum(s.tot, 50, MAX_TOTAL, TOTAL)); this.left = Math.round(clampNum(s.left, 0, this.tot, this.tot));
       if (typeof s.c === 'string') for (let i = 0; i < Math.ceil(this.tot / 8); i++) this.bits[i] = parseInt(s.c.substr(i * 2, 2), 16) || 0;
       this.lapCount = this.tot - this.left; this.shoe = !!s.shoe;
@@ -399,7 +446,7 @@ const WegaShared = (() => {
       this.md = Number.isInteger(s.md) && s.md >= 0 && s.md <= MOD_MAX ? s.md : 0;
       this.times = [0, 0, clampNum(s.t2, 50, 400, 150), clampNum(s.t3, 50, 400, 120), clampNum(s.t4, 50, 400, 105), clampNum(s.t5, 50, 400, 120)];
       this.by = String(s.by || ''); this.gr = String(s.gr || ''); this.startT = this.now() - clampNum(s.ag, 0, 1e6, 0) * 1000;
-      if (this.st === 'escape' || this.st === 'boss' || this.st === 'freed' || this.st === 'done') this.escT = this.now() - clampNum(s.ea, 0, 1e6, 0) * 1000;
+      if (this.st === 'escape' || this.st === 'boss' || this.st === 'freed' || this.st === 'done' || this.st === 'roryexit') this.escT = this.now() - clampNum(s.ea, 0, 1e6, 0) * 1000;
       this.lv = clampNum(s.lv | 0, 0, 1e9, 0);
       if (s.ww > 0) this.wipeAt = this.now() + clampNum(s.ww, 0, WIPE_WAIT, 0) * 1000;
       if (Array.isArray(s.dl)) for (const d of s.dl) if (Array.isArray(d) && okId(d[0])) this.runners.set(d[0], { n: String(d[1] || 'PLAYER').slice(0, 24), t: this.now(), won: false, dead: !!d[2] });
@@ -408,6 +455,7 @@ const WegaShared = (() => {
     }
   }
 
-  return { Room, Boss, hash01, cleanName, nameAllowed, label, TOTAL, MAX_TOTAL, MAX_LAP, NAME_MAX, CHASE5_LEN, BOSS_MIN, BOSS_INTRO, BOSS_HITS, DUEL_GAP, DUEL_INTRO, DUEL_CHARS, WIPE_WAIT };
+  return { Room, Boss, hash01, cleanName, nameAllowed, label, TOTAL, MAX_TOTAL, MAX_LAP, NAME_MAX, CHASE5_LEN, BOSS_MIN, BOSS_INTRO, BOSS_HITS, DUEL_GAP, DUEL_INTRO, DUEL_CHARS, WIPE_WAIT,
+    MODES, RORY_LAP, RORY_LEAD, RORY_LEN, RORY_SECTIONS, rorySection };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = WegaShared;

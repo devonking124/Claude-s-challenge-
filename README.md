@@ -11,6 +11,7 @@ wega-music-lap4.js  Lap 4 song add-on ("DIVE"); optional, Lap 4 falls back to a 
 wega-music-lap5.js  Lap 5 song add-on ("I made it better"); optional, Lap 5 falls back to a sped-up Lap 4 song
 wega-music-boss.js  WEGA FACE's boss theme (Pizza Tower: "Unexpectancy", parts 1-3); optional, the fight falls back to the Lap 5 song
 wega-music-chase5.js  the Lap 5 chase song ("Forget Me Not"); optional, the chase falls back to a sped-up Lap 5 song
+wega-music-rory.js  RORY'S CHALLENGE's song ("RORY'S CHALLENGE"); needed for that game mode (the whole run is synced to it)
 wega-relay.json     optional: which multiplayer server to use (empty = free public relays)
 server/             the multiplayer server (Node 20+): hosts the game, relays player data and runs the shared runs
 render.yaml         one-click deploy of server/ on Render
@@ -150,6 +151,8 @@ banner and a toast tell you when you unlock one, and other players online see it
 | PARTY OF FOUR | Play a shared run with 3 or more other players | Hype moves |
 | HOARDER | Collect 5,000 Lil' Guys | Golden Lil' Guy head |
 | MARATHON | Run 42.2 km in total | Sweatband |
+| RORY'S CHALLENGE | Beat RORY'S CHALLENGE | Rory blue colour |
+| BEAT THE BEAT | Beat RORY'S CHALLENGE before its song ends | Electric blue colour |
 | COMPLETIONIST | Unlock every other achievement | Rainbow halo |
 
 Achievements are saved in the browser. Runs that use the debug helpers don't count.
@@ -165,6 +168,66 @@ around the edge.
 - **Lil' Guy shop** (the green kiosk with the mannequin): spend your Lil' Guys on cosmetics.
 - **No invisible walls:** the railing round the edge stops you, but it's only a metre high, so you can hop over it
   (and fall off; you land back in the lobby, no damage).
+
+## Game modes
+
+The lobby menu has a **GAME MODE** button that opens the **GAME MODES** page. Online, **only the lobby owner can
+pick** (everyone else sees what's picked and who picks it); offline it's your own choice, and it's saved.
+
+- **WEGA'S CHALLENGE** (classic): lap after lap, the idol, the chase and WEGA FACE.
+- **RORY'S CHALLENGE** (endurance): one huge map, one song, no laps.
+
+Difficulty and challenges (the lobby page) apply to both.
+
+### RORY'S CHALLENGE
+
+An endurance run on **one huge map** (a 14 x 14 grid of platforms, about three times the area of a lap, lit up in
+blue) with **500+ Lil' Guys** to collect:
+
+| CHILL | NORMAL | HARD | WEGA MODE |
+|---|---|---|---|
+| 500 | 550 | 600 | 650 |
+
+**The whole run is synced to its song** (RORY'S CHALLENGE, 145 BPM, 4:38). A 3-2-1-GO count-in lands on the
+song's first beat, and from then on everything happens on the beat: the walkways pulse with the kick, a spectrum of
+light round the world dances to the song, and **each part of the song brings its own enemies** (they land on
+the beat, and each part is announced as it starts):
+
+| Part | Bars | What comes |
+|---|---|---|
+| THE BLUE HOUR | 0-7 | nothing yet: start collecting |
+| SEARCHLIGHTS | 8-15 | sweeping lasers with the hi-hats |
+| THE BASS DROPS | 16-31 | Rory (his footsteps on the beat), the Screamer |
+| THE GLITCH | 32-47 | the Glitch Guy, more lasers |
+| FIREFALL | 48-63 | fire lands on the beat, Wega's head |
+| THE DEEP END | 64-79 | the Diver lands on the downbeat, a pixel flood |
+| BREAKDOWN | 80-86 | the lights die, your Shadow and the jellyfish, **walkways fall away** |
+| SOMETHING IS COMING | 87-95 | the build-up: **sky bridges rise**, Wega shows up and watches |
+| THE DROP | 96-127 | everyone at once: lasers, Wega, the Screamer, the Diver, fire, Rory |
+| THE STORM | 128-151 | a pixel flood on every phrase, Wega, the Glitch Guy, fire; **the drop's bridges fall** |
+| THE FINAL STRETCH | 152-159 | laser gates to jump on the beat; **more walkways fall** |
+| THE LAST 8 BARS | 160-167 | a bar countdown, **new bridges rise** |
+| OVERTIME | after the song | Shoebench, plus lasers, the Screamer and Rory |
+
+**The map changes with the song.** Every part has its own shade of blue (sky, fog, lights and the neon edges), the
+drop and the last 8 bars snap in with a flash, and whole groups of walkways **flash a warning for two bars, then
+fall away** (or rise up out of the void) on the downbeat. The route-finding enemies follow the map as it changes.
+If the ground you were last safe on is gone, a fall puts you on the nearest platform instead.
+
+**The timer is the song.** The HUD shows the song's time left and a timeline of its parts. Collect every Lil'
+Guy and an exit opens in the far corner: reach it to win. **If the song ends first, Shoebench spawns** and comes
+for you, the song's last part loops as **OVERTIME** and the timer counts up how far past it you are (the stage
+stays blue, with a red alarm flare on every bar). You can still win in overtime, if Shoebench doesn't get you.
+
+It's very hard on purpose: 550 Lil' Guys in 4:38 is a sprint the whole way (your top speed is the highest in the
+game), and HARD / WEGA MODE bring the enemies faster and more often. Beating it pays a big Lil' Guy payout (more
+if you beat the song) and unlocks **RORY'S CHALLENGE**; beating it before the song ends also unlocks **BEAT THE
+BEAT**. Your best time is saved on the GAME MODES page.
+
+**Online**, everyone plays the same map on **one song clock** (the server keeps it, so everyone hears the same bar
+at the same time, and late joiners drop in where the song is). Lil' Guys anyone collects are gone for everyone. If
+you go down you spectate and **come back when the song moves on to its next part** (in overtime: every 8 bars).
+If everyone goes down, the song starts over from the top. **Offline**, going down gives you **START OVER**.
 
 ## Challenges and modifiers
 
@@ -305,6 +368,10 @@ FACE** (Wega's giant flying head) rises over the arena in front of the exit and 
    everyone else **watches from the balconies** until it's their turn. Grab the cores to beat your opponent. Win at
    least one duel and WEGA FACE is down (lose them all and the gauntlet starts over).
 
+**The music follows the fight.** "Unexpectancy" plays one part at a time: phase 1 loops **part 1** for as long as
+it lasts, the next phase crossfades into **part 2** and loops it, then **part 3** for the gauntlet, and the **finale**
+when WEGA FACE goes down. It's synced to the fight's clock, so online everyone hears the same part at the same time.
+
 Every hit you land (a rocket, a bonk, a duel core) also gives you **+25 health**, so the fight can be won on every
 difficulty. Beating it pays **+500 Lil' Guys** and unlocks **WEGA FACE SLAYER**. The HUD's top bar shows its health (one
 segment per hit), the phase, and when it's shielded.
@@ -408,8 +475,11 @@ The full-screen button is in the top-right corner.
 
 ## Debug
 
-Open `index.html?debug`: keys `1`–`8` jump to Lap 1 / Lap 2 / Idol Chamber / Escape / Win / Lap 3 / Lap 4 / Lap 5.
+Open `index.html?debug`: keys `1`–`9` jump to Lap 1 / Lap 2 / Idol Chamber / Escape / Win / Lap 3 / Lap 4 / Lap 5 /
+RORY'S CHALLENGE.
 `window.WEGA_DEBUG` has `skipToLap2()`, `skipToLap3()`, `skipToLap4()`, `skipToLap5()`, `skipToIdol()`, `skipToEscape()`, `win()`, `godMode(bool)`,
 `setLeft(n)`, `spawnShoebench()`, `skipToChase5(seconds)`, `skipToBoss(phase)`, `bossAge(seconds)`, `bossHit()` and
-`die(killer)` (plays that character's death scene).
+`die(killer)` (plays that character's death scene). For RORY'S CHALLENGE: `skipToRory(seconds)` starts it at that
+point of the song, `rorySeek(seconds)` jumps the song (offline) and `roryTime()` shows the song clock, the music's
+position and the current part.
 Runs that use debug helpers don't save a best time. Add `?offline` to play without connecting to any server.

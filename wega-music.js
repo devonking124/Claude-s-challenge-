@@ -20,6 +20,12 @@
  *   WegaMusic.getLevel();                   // 0..1 loudness for pulsing visuals
  *   WegaMusic.stop(2);                      // fade out over 2 s
  *
+ * Sections: play / crossfadeTo take an offset and a loop of their own, so one track can hold several parts
+ * (WEGA FACE's theme: one part per phase; RORY'S CHALLENGE: the drop loops in overtime):
+ *   WegaMusic.crossfadeTo("boss", 1.2, 120.25, { start: 178.5, end: 260.1 });   // from 120.25 s, loop 178.5-260.1
+ *   WegaMusic.play("rory", 0.05, 12.3, false);                                  // from 12.3 s, no loop
+ *   WegaMusic.position();                   // where in the track it is right now (loops included)
+ *
  * You can also pass your own AudioContext: WegaMusic.init(myCtx)
  * Raw data:  WEGA_MUSIC_DATA.lap1.src  -> "data:audio/mpeg;base64,..."
  */
@@ -69,19 +75,23 @@ function decode(name) {
   }).then(function (buf) { buffers[name] = buf; return buf; });
 }
 
-function makeVoice(name, offset) {
+// loop: undefined = the track's own loop, { start, end } = loop that part of it, false = play once
+function makeVoice(name, offset, loop) {
   var t = WEGA_MUSIC_DATA[name], buf = buffers[name];
+  var ls = t.loopStart, le = t.loopEnd;
+  if (loop && loop.end > loop.start) { ls = loop.start; le = loop.end; }
   var src = ctx.createBufferSource();
   src.buffer = buf;
-  src.loop = true;
-  src.loopStart = Math.min(t.loopStart, buf.duration);
-  src.loopEnd = Math.min(t.loopEnd, buf.duration);
+  src.loop = loop !== false;
+  src.loopStart = Math.min(ls, buf.duration);
+  src.loopEnd = Math.min(le, buf.duration);
   src.playbackRate.value = rate;
   var g = ctx.createGain();
   g.gain.value = 0;
   src.connect(g); g.connect(filter);
-  src.start(0, offset != null ? offset : t.loopStart);
-  return { name: name, src: src, gain: g, trackGain: t.gain, startedAt: ctx.currentTime, offset: offset != null ? offset : t.loopStart };
+  var at = offset != null ? Math.max(0, Math.min(offset, buf.duration - 0.05)) : (loop && loop.start != null ? loop.start : t.loopStart);
+  src.start(0, at);
+  return { name: name, src: src, gain: g, trackGain: t.gain, startedAt: ctx.currentTime, offset: at, loop: src.loop, loopStart: src.loopStart, loopEnd: src.loopEnd };
 }
 
 function fadeVoice(v, to, secs) {
@@ -121,24 +131,24 @@ var WegaMusic = {
   getMasterNode: function () { return master; },
   getAnalyser: function () { return analyser; },
 
-  /** Hard-start a track (short 0.05 s de-click fade), optionally `offset` seconds in. */
-  play: function (name, fadeIn, offset) {
+  /** Hard-start a track (short 0.05 s de-click fade), optionally `offset` seconds in, optionally with its own `loop`. */
+  play: function (name, fadeIn, offset, loop) {
     if (!buffers[name]) { console.warn("[WegaMusic] not ready or unknown track:", name); return; }
     if (ctx.state === "suspended") ctx.resume();
     if (current) killVoice(current, 0.05);
     var t = WEGA_MUSIC_DATA[name];
-    current = makeVoice(name, offset != null && offset > 0 ? Math.min(offset, Math.max(t.loopStart, buffers[name].duration - 0.05)) : null);
+    current = makeVoice(name, offset != null && offset > 0 ? Math.min(offset, Math.max(t.loopStart, buffers[name].duration - 0.05)) : (loop != null ? offset : null), loop);
     fadeVoice(current, current.trackGain, fadeIn != null ? fadeIn : 0.05);
     emit("trackchange", name);
   },
 
-  /** Equal-time crossfade from whatever is playing to `name`. */
-  crossfadeTo: function (name, secs) {
+  /** Equal-time crossfade from whatever is playing to `name` (with an offset / loop: also to another part of the same track). */
+  crossfadeTo: function (name, secs, offset, loop) {
     secs = secs == null ? 1.5 : secs;
     if (!buffers[name]) { console.warn("[WegaMusic] not ready or unknown track:", name); return; }
-    if (current && current.name === name) return;
+    if (current && current.name === name && offset == null && loop == null) return;
     if (current) killVoice(current, secs);
-    current = makeVoice(name);
+    current = makeVoice(name, offset, loop);
     fadeVoice(current, current.trackGain, secs);
     emit("trackchange", name);
   },
@@ -158,6 +168,17 @@ var WegaMusic = {
 
   /** Seconds since the current track started (playback-rate scaled, ignores loops). */
   elapsed: function () { return current ? (ctx.currentTime - current.startedAt) * rate + (current.offset || 0) : 0; },
+
+  /** Where in the current track it is right now, in seconds (its loop wrapped in; playback-rate scaled). */
+  position: function () {
+    if (!current) return 0;
+    var p = WegaMusic.elapsed(), L = current.loopEnd - current.loopStart;
+    if (current.loop && L > 0.05 && p >= current.loopEnd) p = current.loopStart + (p - current.loopStart) % L;
+    return p;
+  },
+
+  /** The current voice's loop: { start, end }, or false when it plays once. */
+  currentLoop: function () { return current ? (current.loop ? { start: current.loopStart, end: current.loopEnd } : false) : null; },
 
   /** Master volume 0..1 */
   setVolume: function (v, secs) {

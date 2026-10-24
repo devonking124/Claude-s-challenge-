@@ -93,6 +93,8 @@
 <script src="wega-music-chase5.js"></script>
 <!-- Optional WEGA FACE boss track add-on (Pizza Tower: Unexpectancy). The boss falls back to the Lap 5 song. -->
 <script src="wega-music-boss.js"></script>
+<!-- Optional RORY'S CHALLENGE add-on: the whole game mode is synced to this song (it still runs silently without it). -->
+<script src="wega-music-rory.js"></script>
 </head>
 <body>
 <div id="overlay">
@@ -131,7 +133,9 @@
 // attacks are drawn from and the 1v1 duel queue), who is dead (spectating until the next lap / chase /
 // boss phase; if everyone is down the stage restarts), and who escaped. It also owns the lobby: the first
 // player to join is the owner (the next earliest takes over if they leave), and only the owner can START
-// and change the lobby settings (difficulty, how many laps, run modifiers). The real server
+// and change the lobby settings (game mode, difficulty, how many laps, run modifiers). The game modes: CLASSIC (the
+// laps, the chase, WEGA FACE) and RORY'S CHALLENGE (one huge map, 500+ Lil' Guys, the whole run on its song's
+// clock: the timer is the song, anyone who is down is back at the song's next section, Shoebench when it ends). The real server
 // (server/server.js) runs one per room; on a public relay the game itself runs one in the player with the
 // lowest id (and hands it over if they leave). Plain JS, no dependencies: the same file is inlined into index.html.
 //
@@ -139,8 +143,21 @@
 // the authority publishes the room snapshot on  .../auth  (on every change + once a second).
 // =====================================================================================
 const WegaShared = (() => {
-  const TOTAL = 207, MAX_TOTAL = 330;     // Lil' Guys per lap (the owner's difficulty can ask for more)
+  const TOTAL = 207, LAP_TOTAL = 330;     // Lil' Guys per lap (the owner's difficulty can ask for more)
+  const MAX_TOTAL = 720;                  // ...and in RORY'S CHALLENGE (500+)
   const MAX_LAP = 5;
+  const MODES = ['classic', 'rory'];      // the game modes the lobby owner picks from
+  // RORY'S CHALLENGE (stage 'rory', then 'roryexit' once every Lil' Guy is in): the song starts RORY_LEAD s after
+  // START (the count-in) and the timer ends with its last bar; then Shoebench. RORY_SECTIONS: where the song's
+  // sections start (s into it); anyone who is down comes back when it moves on to the next one (in overtime: every 8 bars).
+  const RORY_LAP = 6, RORY_LEAD = 4.2, RORY_LEN = 278.28, RORY_BAR = 240 / 145;
+  const RORY_SECTIONS = [0.21, 13.45, 26.69, 53.17, 79.66, 106.14, 132.62, 144.21, 159.10, 212.07, 251.79, 265.04];
+  function rorySection(t) {
+    if (t < RORY_SECTIONS[0]) return -1;
+    if (t >= RORY_LEN) return RORY_SECTIONS.length + Math.floor((t - RORY_LEN) / (RORY_BAR * 8));
+    let i = 0; while (i + 1 < RORY_SECTIONS.length && t >= RORY_SECTIONS[i + 1]) i++;
+    return i;
+  }
   const MOD_MAX = 0xffff;                 // run modifier bits (the game decides what each one does)
   const DIFFS = ['chill', 'normal', 'hard', 'wega'];
   const BONUS = 3, BONUS_EVERY = 25;      // laps 2-4: +3 s on the shared timer every 25 collected
@@ -249,7 +266,7 @@ const WegaShared = (() => {
       this.publish = o.publish || (() => {}); this.now = o.now || (() => Date.now());
       // everyone on this server, in the order they joined: id -> { t: last heartbeat, n: name }
       this.present = new Map();
-      this.owner = ''; this.ld = 'normal'; this.ml = MAX_LAP; this.lm = 0;     // lobby: owner + settings (+ modifier bits)
+      this.owner = ''; this.ld = 'normal'; this.ml = MAX_LAP; this.lm = 0; this.gm = 'classic';     // lobby: owner + settings (+ modifier bits, game mode)
       this.sq = 0; this.ev = [0, '', '', ''];
       this.dirty = false; this.lastPub = -1e9;
       this.reset(0);
@@ -260,6 +277,7 @@ const WegaShared = (() => {
       this.tEnd = 0; this.shoe = false; this.d = 'normal'; this.rml = MAX_LAP; this.md = 0; this.times = [0, 0, 150, 120, 105, 120];
       this.by = ''; this.gr = ''; this.runners = new Map(); this.startT = this.now(); this.escT = 0; this.winT = 0; this.doneT = 0; this.emptyT = 0;
       this.boss = null; this.bs = 0; this.lv = 0; this.wipeAt = 0;
+      this.rgm = 'classic'; this.rT0 = 0; this.rsec = -1;      // the run's game mode; RORY'S CHALLENGE: when its clock started
     }
     event(kind, who, id, extra) { this.ev = [this.ev[0] + 1, kind, who, id || '']; if (extra != null) this.ev.push(extra); }
     changed() { this.sq++; this.dirty = true; }
@@ -298,6 +316,16 @@ const WegaShared = (() => {
       this.tEnd = n >= 2 ? this.now() + ((this.times[n] || 120) + delay) * 1000 : 0;
       this.revive();
     }
+    // RORY'S CHALLENGE from the top: fresh Lil' Guys, the song (and so the timer) from the count-in
+    startRory() {
+      const now = this.now();
+      this.lap = RORY_LAP; this.st = 'rory';
+      this.bits.fill(0); this.left = this.tot; this.lapCount = 0; this.shoe = false; this.escT = 0;
+      this.rT0 = now; this.rsec = -1; this.tEnd = now + (RORY_LEAD + RORY_LEN) * 1000;
+    }
+    roryAge() { return (this.now() - this.rT0) / 1000; }
+    // the stage everyone collects Lil' Guys on right now
+    collecting() { return this.st === 'lap' + this.lap || this.st === 'rory'; }
     has(i) { return (this.bits[i >> 3] >> (i & 7)) & 1; }
     // WEGA FACE takes the exit: the Lap 5 chase's song is over
     startBoss(who, id) {
@@ -328,6 +356,7 @@ const WegaShared = (() => {
       if (/^(lap|beacon)[1-5]$/.test(this.st)) { if (this.lap >= 2) { this.tEnd = now + ((this.times[this.lap] || 120) + CUT_DELAY) * 1000; this.shoe = false; } }
       else if (this.st === 'escape') this.escT = now;
       else if (this.st === 'boss' && this.boss) this.boss.restartPhase(now, this.ids());
+      else if (this.st === 'rory' || this.st === 'roryexit') this.startRory();      // an endurance run: from the top
       else if (this.st !== 'chamber' && this.st !== 'freed') return;
       this.revive(); this.event('wipe', '', '', this.st);
       this.changed();
@@ -350,6 +379,7 @@ const WegaShared = (() => {
       switch (m.q) {
         case 'cfg':                 // lobby settings: owner only
           if (!owner) return;
+          if (MODES.includes(m.gm)) this.gm = m.gm;
           if (DIFFS.includes(m.ld)) this.ld = m.ld;
           if (Number.isInteger(m.ml) && m.ml >= 1 && m.ml <= MAX_LAP) this.ml = m.ml;
           if (Number.isInteger(m.lm) && m.lm >= 0 && m.lm <= MOD_MAX) this.lm = m.lm;
@@ -359,26 +389,33 @@ const WegaShared = (() => {
           if (live && this.st !== 'done') { this.runner(m.i, who); this.changed(); return; }   // already going: you just join it
           if (!owner) return;                                                                   // only the owner starts runs
           this.reset(Math.floor(Math.random() * 2147483646) + 1);
-          this.ph = 'run'; this.by = who; this.d = this.ld; this.rml = this.ml; this.md = this.lm;
-          this.tot = Math.round(clampNum(m.tot, 50, MAX_TOTAL, TOTAL));
+          this.ph = 'run'; this.by = who; this.d = this.ld; this.rml = this.ml; this.md = this.lm; this.rgm = this.gm;
+          const rory = this.rgm === 'rory';
+          this.tot = Math.round(clampNum(m.tot, 50, rory ? MAX_TOTAL : LAP_TOTAL, rory ? 550 : TOTAL));
           this.times = [0, 0, clampNum(m.t2, 50, 400, 150), clampNum(m.t3, 50, 400, 120), clampNum(m.t4, 50, 400, 105), clampNum(m.t5, 50, 400, 120)];
-          this.startLap(1, 0); this.startT = now;
+          if (rory) { this.startRory(); this.revive(); } else this.startLap(1, 0);
+          this.startT = now;
           this.runner(m.i, who);
           this.event('start', who, m.i); this.changed();
           return;
         }
         case 'col': {
-          if (!mine || m.lap !== this.lap || this.st !== 'lap' + this.lap || !Array.isArray(m.ix)) return;
+          if (!mine || m.lap !== this.lap || !this.collecting() || !Array.isArray(m.ix)) return;
           this.runner(m.i, who);
           let got = 0;
           for (let k = 0; k < m.ix.length && k < 64; k++) {
             const i = m.ix[k];
             if (!Number.isInteger(i) || i < 0 || i >= this.tot || this.has(i)) continue;
             this.bits[i >> 3] |= 1 << (i & 7); this.left--; this.lapCount++; got++;
-            if (this.lap >= 2 && !this.shoe && this.lapCount % BONUS_EVERY === 0) this.tEnd += BONUS * 1000;
+            // laps 2-5: +3 s now and then (RORY'S CHALLENGE: never - its timer is the song)
+            if (this.lap >= 2 && this.lap <= MAX_LAP && !this.shoe && this.lapCount % BONUS_EVERY === 0) this.tEnd += BONUS * 1000;
           }
           if (!got) return;
-          if (this.left <= 0) { this.left = 0; this.st = 'beacon' + this.lap; this.event('clear', who, m.i); }
+          if (this.left <= 0) {
+            this.left = 0;
+            if (this.st === 'rory') { this.st = 'roryexit'; this.escT = now; } else this.st = 'beacon' + this.lap;
+            this.event('clear', who, m.i);
+          }
           this.changed();
           return;
         }
@@ -408,7 +445,7 @@ const WegaShared = (() => {
           return;
         }
         case 'dead': {              // you're down: you watch until the next lap / the chase / the next boss phase
-          if (!mine || !/^(lap|beacon)[1-5]$|^chamber$|^escape$|^boss$/.test(this.st)) return;
+          if (!mine || !/^(lap|beacon)[1-5]$|^chamber$|^escape$|^boss$|^rory$|^roryexit$/.test(this.st)) return;
           const r = this.runner(m.i, who); if (r.dead) return;
           r.dead = true; this.event('dead', who, m.i, typeof m.by === 'string' ? m.by.slice(0, 12) : '');
           // a duelist who goes down loses the duel: the next player is up
@@ -416,8 +453,8 @@ const WegaShared = (() => {
           this.checkWipe(); this.changed();
           return;
         }
-        case 'win': {
-          if (!mine || (this.st !== 'escape' && this.st !== 'freed' && this.st !== 'done')) return;
+        case 'win': {              // escaped (or reached RORY'S CHALLENGE's exit)
+          if (!mine || (this.st !== 'escape' && this.st !== 'freed' && this.st !== 'done' && this.st !== 'roryexit')) return;
           if (this.lap >= MAX_LAP && this.st === 'escape') return;          // Lap 5: WEGA FACE has the exit until it's beaten
           const r = this.runner(m.i, who);
           if (r.won) return;
@@ -439,7 +476,7 @@ const WegaShared = (() => {
       if (res) this.bossResult(res, '', id); else this.event('duellost', '', id, this.boss.di);
     }
     checkDone() {
-      if (this.st !== 'escape' && this.st !== 'boss' && this.st !== 'freed') return;
+      if (this.st !== 'escape' && this.st !== 'boss' && this.st !== 'freed' && this.st !== 'roryexit') return;
       let all = this.runners.size > 0;
       for (const r of this.runners.values()) if (!r.won) all = false;
       const max = this.lap >= MAX_LAP ? ESCAPE_MAX_BOSS : ESCAPE_MAX;
@@ -464,7 +501,15 @@ const WegaShared = (() => {
           if (!this.emptyT) this.emptyT = now;
           else if (now - this.emptyT > EMPTY_RESET) { this.ph = 'idle'; this.st = ''; this.changed(); }
         } else this.emptyT = 0;
-        if (/^(lap|beacon)[2-5]$/.test(this.st) && !this.shoe && now >= this.tEnd) { this.shoe = true; this.event('shoe', '', ''); this.changed(); }
+        if ((/^(lap|beacon)[2-5]$/.test(this.st) || this.st === 'rory' || this.st === 'roryexit') && !this.shoe && now >= this.tEnd) { this.shoe = true; this.event('shoe', '', ''); this.changed(); }
+        // RORY'S CHALLENGE: whoever is down is back as the song moves on to its next section
+        if (this.st === 'rory' || this.st === 'roryexit') {
+          const sec = rorySection(this.roryAge() - RORY_LEAD);
+          if (sec !== this.rsec) {
+            const was = this.rsec; this.rsec = sec;
+            if (was >= 0 && [...this.runners.values()].some((r) => r.dead)) { this.revive(); this.event('section', '', '', sec); this.changed(); }
+          }
+        }
         // everyone has been down for a while: the chase / the boss phase starts over
         if (this.wipeAt && now >= this.wipeAt) this.wipeNow();
         // the Lap 5 chase's song is over: WEGA FACE
@@ -493,12 +538,13 @@ const WegaShared = (() => {
         v: 1, a: this.src, sq: this.sq, ph: this.ph, run: this.run, st: this.st, lap: this.lap, c: hex, left: this.left, tot: this.tot,
         tl: this.tEnd ? Math.round(Math.max(0, this.tEnd - now) / 100) / 10 : 0, shoe: this.shoe ? 1 : 0,
         d: this.d, rml: this.rml, md: this.md, t2: this.times[2], t3: this.times[3], t4: this.times[4], t5: this.times[5], by: this.by, gr: this.gr, nr: this.runners.size, rn: names,
-        ow: this.owner, on: this.ownerName(), ld: this.ld, ml: this.ml, lm: this.lm, hp: here,
+        ow: this.owner, on: this.ownerName(), ld: this.ld, ml: this.ml, lm: this.lm, gm: this.gm, hp: here,
         ag: Math.round((now - this.startT) / 100) / 10, e: this.ev,
         ea: this.escT ? Math.round((now - this.escT) / 100) / 10 : 0,             // the chase clock
         lv: this.lv, dl, ww: this.wipeAt ? Math.round(Math.max(0, this.wipeAt - now) / 100) / 10 : 0,
       };
       if (this.boss) Object.assign(s, this.boss.snap(now));
+      if (this.rgm === 'rory') { s.rgm = 'rory'; s.ra = Math.round((now - this.rT0) / 100) / 10; }   // the song's clock
       return s;
     }
     // take over from a snapshot (a new host after the old one left): the lobby owner and settings,
@@ -509,11 +555,14 @@ const WegaShared = (() => {
       if (DIFFS.includes(s.ld)) this.ld = s.ld;
       if (Number.isInteger(s.ml) && s.ml >= 1 && s.ml <= MAX_LAP) this.ml = s.ml;
       if (Number.isInteger(s.lm) && s.lm >= 0 && s.lm <= MOD_MAX) this.lm = s.lm;
+      if (MODES.includes(s.gm)) this.gm = s.gm;
       if (Array.isArray(s.e)) this.ev = s.e.slice(0, 5);
       this.sq = (s.sq | 0) + 1; this.dirty = true;
       if (s.ph !== 'run' || !Number.isInteger(s.run)) return;
       this.reset(s.run);
-      this.ph = 'run'; this.st = String(s.st || 'lap1'); this.lap = clampNum(s.lap | 0, 1, MAX_LAP, 1);
+      this.rgm = s.rgm === 'rory' ? 'rory' : 'classic';
+      this.ph = 'run'; this.st = String(s.st || 'lap1'); this.lap = clampNum(s.lap | 0, 1, this.rgm === 'rory' ? RORY_LAP : MAX_LAP, 1);
+      if (this.rgm === 'rory') { this.rT0 = this.now() - clampNum(s.ra, 0, 1e6, 0) * 1000; this.rsec = rorySection(this.roryAge() - RORY_LEAD); }
       this.tot = Math.round(clampNum(s.tot, 50, MAX_TOTAL, TOTAL)); this.left = Math.round(clampNum(s.left, 0, this.tot, this.tot));
       if (typeof s.c === 'string') for (let i = 0; i < Math.ceil(this.tot / 8); i++) this.bits[i] = parseInt(s.c.substr(i * 2, 2), 16) || 0;
       this.lapCount = this.tot - this.left; this.shoe = !!s.shoe;
@@ -522,7 +571,7 @@ const WegaShared = (() => {
       this.md = Number.isInteger(s.md) && s.md >= 0 && s.md <= MOD_MAX ? s.md : 0;
       this.times = [0, 0, clampNum(s.t2, 50, 400, 150), clampNum(s.t3, 50, 400, 120), clampNum(s.t4, 50, 400, 105), clampNum(s.t5, 50, 400, 120)];
       this.by = String(s.by || ''); this.gr = String(s.gr || ''); this.startT = this.now() - clampNum(s.ag, 0, 1e6, 0) * 1000;
-      if (this.st === 'escape' || this.st === 'boss' || this.st === 'freed' || this.st === 'done') this.escT = this.now() - clampNum(s.ea, 0, 1e6, 0) * 1000;
+      if (this.st === 'escape' || this.st === 'boss' || this.st === 'freed' || this.st === 'done' || this.st === 'roryexit') this.escT = this.now() - clampNum(s.ea, 0, 1e6, 0) * 1000;
       this.lv = clampNum(s.lv | 0, 0, 1e9, 0);
       if (s.ww > 0) this.wipeAt = this.now() + clampNum(s.ww, 0, WIPE_WAIT, 0) * 1000;
       if (Array.isArray(s.dl)) for (const d of s.dl) if (Array.isArray(d) && okId(d[0])) this.runners.set(d[0], { n: String(d[1] || 'PLAYER').slice(0, 24), t: this.now(), won: false, dead: !!d[2] });
@@ -531,7 +580,8 @@ const WegaShared = (() => {
     }
   }
 
-  return { Room, Boss, hash01, cleanName, nameAllowed, label, TOTAL, MAX_TOTAL, MAX_LAP, NAME_MAX, CHASE5_LEN, BOSS_MIN, BOSS_INTRO, BOSS_HITS, DUEL_GAP, DUEL_INTRO, DUEL_CHARS, WIPE_WAIT };
+  return { Room, Boss, hash01, cleanName, nameAllowed, label, TOTAL, MAX_TOTAL, MAX_LAP, NAME_MAX, CHASE5_LEN, BOSS_MIN, BOSS_INTRO, BOSS_HITS, DUEL_GAP, DUEL_INTRO, DUEL_CHARS, WIPE_WAIT,
+    MODES, RORY_LAP, RORY_LEAD, RORY_LEN, RORY_SECTIONS, rorySection };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = WegaShared;
 import * as THREE from 'three';
@@ -545,7 +595,7 @@ const CONFIG = {
   // ---- player movement ----
   WALK_SPEED: 3.3,            // m/s at the start of a run
   TOP_SPEED: 8.4,             // m/s after RAMP_TIME of continuous running (Lap 1)
-  LAP_SPEED: [1, 1, 1.08, 1.16, 1.25, 1.33],   // speed cap multiplier by lap: each lap you can go faster
+  LAP_SPEED: [1, 1, 1.08, 1.16, 1.25, 1.33, 1.36],   // speed cap multiplier by lap: each lap you can go faster (6: RORY'S CHALLENGE)
   RAMP_TIME: 2.2,             // seconds to reach top speed
   RAMP_RESET: 0.6,            // ramp fraction kept after a >100 deg heading change
   HEADING_RESET_DEG: 100,
@@ -596,10 +646,15 @@ const CONFIG = {
   UV_TILE: 2,                 // lap 2 tile texture repeats every 2 m
 
   // ---- collectibles ----
-  COLLECT_TOTAL: 207, COLLECT_MAX: 330, COLLECT_SPACING: 1.7, COLLECT_HOVER: 1.1, COLLECT_SIZE: 0.72,
+  COLLECT_TOTAL: 207, COLLECT_MAX: 720, COLLECT_SPACING: 1.7, COLLECT_HOVER: 1.1, COLLECT_SIZE: 0.72,
   PICKUP_BODY: 1.1, PICKUP_HAND: 0.35, COMBO_WINDOW: 1.2,
   JUMP_OVER_REACH: 2.2,       // jumping over a Lil' Guy collects it if it's up to this far below your feet
   GOLD_FLASH_AT: [100, 50, 25, 10],
+
+  // ---- RORY'S CHALLENGE (a game mode: one huge map, the whole run on its song's clock) ----
+  // N x N platforms (182 m across), Lil' Guys in double rows of ROW on the walkways plus JACKPOTS rings of 6 on
+  // platforms. The counts are tuned so a good route takes ~200-230 s of the 278 s song (then the enemies...).
+  RORY: { N: 14, SEED: 6006, LG_SEED: 6100, ROW: 6, JACKPOTS: 8, LILGUYS: { chill: 500, normal: 550, hard: 600, wega: 650 } },
 
   // ---- Shoebench (chases you once a lap timer hits 0:00) ----
   SHOE_SPEED: 5.6, SHOE_MAX: 8.0, SHOE_ACCEL: 0.1, SHOE_RADIUS: 1.0, SHOE_SPAWN_DIST: 45,
@@ -644,6 +699,8 @@ const CONFIG = {
     hpGreen: '#2ee86a', hpYellow: '#ffd21f', hpRed: '#ff2a2a',
   },
 };
+
+const RORY_LAP = WegaShared.RORY_LAP;     // RORY'S CHALLENGE runs as "lap 6" (its own map, speed cap, level code)
 
 // =====================================================================================
 // UTIL — RNG, noise, easing, temp objects, geometry helpers
@@ -784,12 +841,14 @@ const Save = {
         edgeGuardV: 1,      // settings saved before the walls came out get the new default once
         mods: 0,            // offline run modifiers (bit per MODS entry)
         maxLap: 4,          // solo: the lap portals go up to this lap
+        gameMode: 'classic',  // solo: 'classic' or 'rory' (RORY'S CHALLENGE)
       },
       nameIdx: 0,
       customName: '',       // your own name ('' = use the preset name)
       ach: {},              // achievement id -> unlock time
       stats: { jumps: 0, collected: 0, deaths: 0, pads: 0, meters: 0, guide: 0 },
       best: null,
+      bestRory: null,       // RORY'S CHALLENGE: fastest clear (seconds into the song)
       coins: 0,             // the Lil' Guy wallet (shop money)
       owned: {},            // shop items bought: 'hat:22' -> time
       chal: {},             // challenges cleared: id -> time
@@ -815,6 +874,7 @@ const Save = {
           if (d.ach && typeof d.ach === 'object') for (const k of Object.keys(d.ach)) if (typeof d.ach[k] === 'number') this.data.ach[k] = d.ach[k];
           if (d.stats && typeof d.stats === 'object') for (const k of Object.keys(this.data.stats)) if (Number.isFinite(d.stats[k])) this.data.stats[k] = d.stats[k];
           if (typeof d.best === 'number') this.data.best = d.best;
+          if (typeof d.bestRory === 'number') this.data.bestRory = d.bestRory;
           // the wallet started in round 5: older saves get every Lil' Guy they ever collected
           this.data.coins = Number.isFinite(d.coins) ? Math.max(0, d.coins) : (Number.isFinite(d.stats && d.stats.collected) ? d.stats.collected : 0);
           for (const k of ['owned', 'chal']) if (d[k] && typeof d[k] === 'object') for (const x of Object.keys(d[k])) if (typeof d[k][x] === 'number') this.data[k][x] = d[k][x];
@@ -826,6 +886,7 @@ const Save = {
       }
     } catch (e) { /* storage unavailable: defaults are fine */ }
     if (!CONFIG.DIFF[this.data.settings.difficulty]) this.data.settings.difficulty = 'normal';
+    if (!WegaShared.MODES.includes(this.data.settings.gameMode)) this.data.settings.gameMode = 'classic';
   },
   save() { try { if (window.localStorage) localStorage.setItem(this.key, JSON.stringify(this.data)); } catch (e) { /* ignore */ } },
   get s() { return this.data.settings; },
@@ -989,7 +1050,8 @@ const Music = {
     if (!this.baseGains) return;
     const silent = Save.s.musicVol <= 0.001;
     for (const k of Object.keys(this.baseGains)) window.WegaMusic.data[k].gain = silent ? 0 : this.baseGains[k];
-    if (silent !== this.wasSilent && this.ok() && window.WegaMusic.currentTrack()) window.WegaMusic.play(window.WegaMusic.currentTrack(), 0.2);
+    // (picks up where it was: a boss part or RORY'S CHALLENGE keeps its spot and its loop)
+    if (silent !== this.wasSilent && this.ok() && window.WegaMusic.currentTrack()) { const W = window.WegaMusic; W.play(W.currentTrack(), 0.2, W.position(), W.currentLoop()); }
     this.wasSilent = silent;
   },
   onVolumeSetting() {
@@ -1016,15 +1078,27 @@ const Music = {
     if (this.ok() && !AudioSys.muted) window.WegaMusic.setVolume(level * this.mvEff(), secs);
   },
   setMuffled(on, secs) { this.desired.muffled = on; if (this.ok()) window.WegaMusic.setMuffled(on, secs); },
-  setRate(r, secs) { this.desired.rate = r; if (this.ok()) window.WegaMusic.setRate(r, secs); },
+  // syncLock: while a song is the game's clock (RORY'S CHALLENGE) its speed never changes (it would drift off the beat)
+  syncLock: false,
+  setRate(r, secs) { if (this.syncLock) r = 1; this.desired.rate = r; if (this.ok()) window.WegaMusic.setRate(r, secs); },
   play(track, fadeIn, offset) {
     this.desired.track = track;
     if (this.ok()) { window.WegaMusic.setRate(this.desired.rate, 0.01); window.WegaMusic.play(track, fadeIn, offset); }
   },
+  // part of a track: from `offset`, looping `loop` ({ start, end }; false = once), crossfading over `xf` s (0 = a cut)
+  section(track, offset, loop, xf) {
+    this.desired.track = track;
+    if (!this.ok()) return;
+    const W = window.WegaMusic;
+    W.setRate(this.desired.rate, 0.01);
+    if (xf > 0.06 && W.currentTrack()) W.crossfadeTo(track, xf, offset, loop); else W.play(track, Math.max(0.03, xf || 0), offset, loop);
+  },
+  // where the current track is right now (seconds, its loop wrapped in); -1 when nothing plays
+  pos() { return this.ok() && window.WegaMusic.currentTrack() ? window.WegaMusic.position() : -1; },
   stop(secs) { this.desired.track = null; if (this.ok()) window.WegaMusic.stop(secs); },
   hasTrack(t) { return !!(window.WegaMusic && window.WegaMusic.data && window.WegaMusic.data[t]); },
   toast(track) {
-    let title = track === 'lap1' ? 'WEXECUTION' : track === 'lap3' ? "PILLAR JOHN'S REVENGE" : track === 'lap4' ? 'DIVE' : track === 'lap5' ? 'I MADE IT BETTER' : track === 'boss' ? 'UNEXPECTANCY' : track === 'chase5' ? 'FORGET ME NOT' : 'WEGAFADENCE';
+    let title = track === 'lap1' ? 'WEXECUTION' : track === 'lap3' ? "PILLAR JOHN'S REVENGE" : track === 'lap4' ? 'DIVE' : track === 'lap5' ? 'I MADE IT BETTER' : track === 'boss' ? 'UNEXPECTANCY' : track === 'chase5' ? 'FORGET ME NOT' : track === 'rory' ? "RORY'S CHALLENGE" : 'WEGAFADENCE';
     try { if (window.WegaMusic && window.WegaMusic.data[track]) title = window.WegaMusic.data[track].title.split('(')[0].trim(); } catch (e) { /* ignore */ }
     UI.toast('♪ ' + title.toUpperCase());
   },
@@ -1032,7 +1106,7 @@ const Music = {
 
   // --- cue sheet rows ---
   cueLobby() {
-    this.deathTok++;
+    this.deathTok++; this.roryStop(); this.bossPart = 0;
     this.desired.rate = 1; this.setRate(1, 0.05);
     this.setMuffled(true, 0.4);
     this.setLevel(0.45, 0.6);
@@ -1086,10 +1160,67 @@ const Music = {
   cueBoss() {
     this.setMuffled(false, 0.2); this.setLevel(0.95, 0.3);
     const t = this.hasTrack('boss') ? 'boss' : this.hasTrack('lap5') ? 'lap5' : 'lap2';
+    // the layered theme: syncBoss puts on the phase's own part
+    if (t === 'boss' && this.bossParts()) { this.bossPart = 0; this.desired.rate = 1; this.setRate(1, 0.05); const S = FaceBoss.state(); if (S) this.syncBoss(S.p, S.phaseAge); return; }
     this.setRate(t === 'boss' ? 1 : 1.12, 0.3);
     if (!this.ok() || window.WegaMusic.currentTrack() !== t) this.play(t, 0.1);
     this.desired.track = t; this.toast(t);
   },
+  // ---- WEGA FACE's theme in layers: every phase loops its own part (Part 1 for the flying face, Part 2 for WEGA MAN,
+  // Part 3 for the gauntlet) until the next phase begins, and the finale plays once it's down (`parts` in
+  // wega-music-boss.js). Where you are in a part follows the phase's own clock (the authority's in a shared run), so
+  // everyone hears the same bar, and anyone who comes back in (a rejoin, a respawn) lands on it. ----
+  bossPart: 0,
+  bossParts() { const b = this.hasTrack('boss') && window.WegaMusic.data.boss; return b && Array.isArray(b.parts) && b.parts.length ? b.parts : null; },
+  partAt(P, age) {
+    const at = P.start + Math.max(0, age), L = P.loop[1] - P.loop[0];
+    return at < P.loop[1] || L <= 0 ? at : P.loop[0] + (at - P.loop[0]) % L;
+  },
+  // every frame of the fight (p: the phase, 4 = down; age: seconds into it)
+  syncBoss(p, age) {
+    const parts = this.bossParts(); if (!parts || !this.ok()) return;
+    const P = parts[clamp(p, 1, parts.length) - 1], want = this.partAt(P, age), loop = { start: P.loop[0], end: P.loop[1] };
+    const W = window.WegaMusic, cur = W.currentTrack() === 'boss' ? W.position() : -1;
+    if (this.bossPart !== p || cur < 0) {
+      const next = this.bossPart > 0 && this.bossPart !== p;
+      if (this.bossPart !== p && SM.curName === 'ESCAPE') UI.toast('♪ UNEXPECTANCY · ' + P.name);
+      this.bossPart = p; this.desired.rate = 1; this.desired.track = 'boss';
+      this.section('boss', want, loop, next ? 1.2 : 0.35);       // the next phase: a crossfade into its part
+      return;
+    }
+    // off the phase's clock (it started over, or the tab stalled): back onto it
+    const L = P.loop[1] - P.loop[0]; let d = cur - want;
+    if (cur >= P.loop[0] && want >= P.loop[0] && L > 0) d = ((d % L) + L * 1.5) % L - L / 2;
+    if (Math.abs(d) > 2.5) this.section('boss', want, loop, 0.5);
+  },
+  // ---- RORY'S CHALLENGE: the song is the run's clock. t = seconds into it (below 0: the count-in, no music); after
+  // its last bar comes OVERTIME: 16 bars of the drop loop while Shoebench comes for you. Called every frame of the mode:
+  // the music is kept within a quarter of a second of the shared clock (late join, a stalled tab, pause). ----
+  roryMode: 0, roryLag: 0,
+  roryAt(t) {
+    const D = window.WegaMusic.data.rory, end = D.end || 278.28, ot = D.overtime || [178.97, 205.45];
+    if (t < end) return { at: t, loop: false, mode: 1 };
+    return { at: ot[0] + (t - end) % (ot[1] - ot[0]), loop: { start: ot[0], end: ot[1] }, mode: 2 };
+  },
+  syncRory(t) {
+    this.syncLock = true;
+    if (!this.hasTrack('rory') || !this.ok()) { this.roryLag = 0; return; }
+    const W = window.WegaMusic;
+    if (t < 0) { this.roryLag = 0; if (W.currentTrack()) { W.stop(0.4); this.desired.track = null; } this.roryMode = 0; return; }
+    const R = this.roryAt(t), cur = W.currentTrack() === 'rory' ? W.position() : -1;
+    if (cur < 0 || R.mode !== this.roryMode) {
+      const first = !this.roryMode;
+      this.roryMode = R.mode; this.roryLag = 0; this.desired.rate = 1; W.setRate(1, 0.01);
+      this.section('rory', R.at, R.loop, 0.05);
+      if (first && t < 1.5) this.toast('rory');
+      return;
+    }
+    let d = cur - R.at;
+    if (R.mode === 2) { const L = R.loop.end - R.loop.start; d = ((d % L) + L * 1.5) % L - L / 2; }
+    if (Math.abs(d) > 0.25) { this.section('rory', R.at, R.loop, 0.08); d = 0; }
+    this.roryLag = d;                // how far the music is ahead of the clock (the beat visuals follow what you hear)
+  },
+  roryStop() { this.roryMode = 0; this.roryLag = 0; this.syncLock = false; },
   lapRate: 1,
   cueLap2Tension() { this.setRate(this.lapRate * 1.04, 2); },
   cueShoebench() { this.setRate(this.lapRate * 1.1, 1.5); },
@@ -1100,6 +1231,8 @@ const Music = {
     return 'lap2';
   },
   cueRun(tier = 1) {
+    // back on WEGA FACE's arena (a rejoin / retry): the boss's part of its theme, not the chase song
+    if (tier >= 5 && FaceBoss.started() && this.bossParts()) { this.setMuffled(false, 0.2); this.setLevel(0.95, 0.3); this.bossPart = 0; this.desired.rate = 1; this.setRate(1, 0.05); return; }
     // the Lap 5 chase: FORGET ME NOT at its own speed, from wherever the chase clock is (it ends as the song ends)
     if (tier >= 5 && this.hasTrack('chase5')) {
       this.setMuffled(false, 0.2); this.setLevel(0.95, 0.3); this.desired.rate = 1; this.setRate(1, 0.05);
@@ -1117,6 +1250,7 @@ const Music = {
   cueWinText() { this.stop(2.5); },
   cueDeath() {
     const tok = ++this.deathTok;
+    this.roryStop(); this.bossPart = 0;          // (whatever comes next picks its own song up again)
     this.setRate(0.6, 0.8);
     wait(0.8).then(() => { if (tok === this.deathTok) this.stop(0.8); });
   },
@@ -1137,6 +1271,7 @@ const Music = {
   },
   // Wega Glitch Head "tape warble"
   warble() {
+    if (this.syncLock) return;                   // RORY'S CHALLENGE: the song never wobbles off the beat
     const tok = ++this.warbleTok, base = this.desired.rate;
     if (this.ok()) window.WegaMusic.setRate(0.85, 0.15);
     wait(0.8).then(() => { if (tok === this.warbleTok && this.ok()) window.WegaMusic.setRate(this.desired.rate || base, 0.3); });
@@ -1893,7 +2028,7 @@ const Input = {
         this.lookedT = Clock.real;
       }
       if (DEBUG_URL) {
-        const map = { Digit1: 'LAP1', Digit2: 'LAP2', Digit3: 'IDOL', Digit4: 'ESCAPE', Digit5: 'WIN', Digit6: 'LAP3', Digit7: 'LAP4', Digit8: 'LAP5' };
+        const map = { Digit1: 'LAP1', Digit2: 'LAP2', Digit3: 'IDOL', Digit4: 'ESCAPE', Digit5: 'WIN', Digit6: 'LAP3', Digit7: 'LAP4', Digit8: 'LAP5', Digit9: 'RORY' };
         for (const code in map) if (this.keysPressed[code]) Debug.jump(map[code]);
       }
     }
@@ -2967,6 +3102,7 @@ const HUD = {
       if (T.rgb) return '#' + _c2.setHSL(Math.floor(Clock.real * 4) / 24 % 1, 1, 0.6).getHexString();
       return T.color;
     }
+    if (st === 'RORY' || st === 'RORY_EXIT') return RORY_SONG.SECTIONS[Math.max(0, RoryWorld.si)].col;     // the song's section
     return HUD_LAP_COL[Game.lap] || '#c080ff';
   },
   // what the big counter shows: Lil' Guys left, or RUN! in a chase, or FIGHT! against WEGA FACE
@@ -2974,6 +3110,7 @@ const HUD = {
     const st = SM.curName;
     if (st === 'ESCAPE') return FaceBoss.hudInfo() ? 'fight' : 'run';
     if (st === 'IDOL_CHAMBER') return 'idol';
+    if (st === 'RORY_EXIT') return 'exit';
     return 'count';
   },
   drawMain() {
@@ -3020,8 +3157,8 @@ const HUD = {
       drawText(ctx, String(v.left), px + 178, py + 58, { size: 80, style: 'italic 900', font: FONT_IMPACT, fill: gold ? '#ffd84a' : '#ffffff', stroke: '#000', lw: 9, glow: gold ? '#ffb000' : acc, glowBlur: gold ? 28 : 12, maxWidth: 130 });
       drawText(ctx, 'LEFT', px + 266, py + 78, { size: 22, style: 'italic 900', font: FONT_IMPACT, fill: gold ? '#ffd84a' : acc, stroke: '#000', lw: 4, spacing: 0.1 });
     } else {
-      const word = m === 'run' ? 'RUN!' : m === 'fight' ? 'FIGHT!' : 'THE IDOL';
-      drawText(ctx, word, px + pw / 2 - 4, py + 58, { size: m === 'idol' ? 54 : 72, style: 'italic 900', font: FONT_IMPACT, fill: m === 'idol' ? '#ffd84a' : '#ffffff', stroke: '#000', lw: 9, skew: 0.18, glow: m === 'idol' ? '#ffb000' : acc, glowBlur: 24, spacing: 0.06, maxWidth: pw - 40 });
+      const word = m === 'run' ? 'RUN!' : m === 'fight' ? 'FIGHT!' : m === 'exit' ? 'THE EXIT!' : 'THE IDOL';
+      drawText(ctx, word, px + pw / 2 - 4, py + 58, { size: m === 'idol' || m === 'exit' ? 54 : 72, style: 'italic 900', font: FONT_IMPACT, fill: m === 'idol' ? '#ffd84a' : '#ffffff', stroke: '#000', lw: 9, skew: 0.18, glow: m === 'idol' ? '#ffb000' : acc, glowBlur: 24, spacing: 0.06, maxWidth: pw - 40 });
     }
     drawHpSegs(ctx, px + 14, py + 112, pw - 50, 30, this.hpDisp, this.hpGhost, acc);
     this.main.tex.needsUpdate = true;
@@ -3038,10 +3175,16 @@ const HUD = {
       if (T.rgb && Chamber.arena && !FaceBoss.started()) o.secs = Math.max(0, WegaShared.CHASE5_LEN - Chamber.chaseAge());
       return o;
     }
+    // RORY'S CHALLENGE: the whole song as a timeline (its sections), where it is now, and how much of it is left
+    if (st === 'RORY' || st === 'RORY_EXIT') {
+      const t = RoryRun.songT(), E = RORY_SONG.END, si = RORY_SONG.sectionIndex(Math.max(0, t)), S = RORY_SONG.SECTIONS[si];
+      return { kind: 'rory', secs: Math.max(0, E - Math.max(0, t)), frac: clamp(t / E, 0, 1), si, name: S.name, col: S.col, over: t >= E, ot: Math.max(0, t - E), exit: st === 'RORY_EXIT', count: t < 0 };
+    }
     if (this.showBoss) return { kind: 'timer', secs: Math.max(0, LapTimer.timeLeft), frac: clamp(LapTimer.timeLeft / LapTimer.timeMax, 0, 1), expired: LapTimer.expired, lap: Game.lap };
     return null;
   },
   barKey(b) {
+    if (b.kind === 'rory') return 'r' + Math.ceil(b.secs) + '|' + Math.round(b.frac * 300) + '|' + b.si + '|' + (b.over ? Math.floor(Clock.real * 3) % 2 + ':' + Math.floor(b.ot) : 'n') + '|' + b.exit + '|' + b.count + '|' + this.vals.acc;
     if (b.kind === 'timer') return 't' + Math.ceil(b.secs) + '|' + Math.round(b.frac * 200) + '|' + (b.expired ? Math.floor(Clock.real * 3) % 2 : 'n') + '|' + this.vals.acc;
     if (b.kind === 'chase') return 'c' + Math.round(b.you * 300) + '|' + Math.round(b.front * 300) + '|' + Math.round(b.urio * 150) + '|' + (b.secs != null ? Math.ceil(b.secs) : '') + '|' + Math.round(b.exitM) + '|' + Math.round(b.behind) + '|' + this.vals.acc;
     return 'b' + b.name + '|' + b.frac.toFixed(3) + '|' + b.sub + '|' + b.shielded + '|' + b.phase + '|' + (b.segs || 0);
@@ -3077,6 +3220,36 @@ const HUD = {
         drawText(ctx, fmtClock(b.secs), 256, 96, { size: 38, style: 'italic 900', font: FONT_IMPACT, fill: warn ? '#ff3a2a' : '#ffffff', stroke: '#000', lw: 7, glow: col, glowBlur: 14, spacing: 0.05 });
         drawText(ctx, warn ? 'HURRY!' : 'UNTIL SHOEBENCH', 420, 96, { size: warn ? 22 : 15, style: 'italic 900', font: FONT_IMPACT, fill: warn ? '#ff3a2a' : 'rgba(255,255,255,0.75)', stroke: '#000', lw: 4, spacing: 0.08, maxWidth: 150 });
       }
+    } else if (b.kind === 'rory') {
+      const E = RORY_SONG.END, y = 34, h = 26, L = X1 - X0, xAt = (k) => X0 + L * clamp(k, 0, 1), SS = RORY_SONG.SECTIONS, blink = Math.floor(Clock.real * 3) % 2 === 0;
+      drawText(ctx, b.over ? 'OVERTIME' : b.count ? "RORY'S CHALLENGE" : b.name, 256, 15, { size: 23, style: 'italic 900', font: FONT_IMPACT, fill: b.over ? '#ff5a7a' : b.col, stroke: '#000', lw: 6, spacing: 0.12, glow: b.over ? '#ff2040' : b.col, glowBlur: 12, maxWidth: 470 });
+      track(y, h); ctx.fillStyle = 'rgba(2,4,14,0.86)'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#000'; ctx.stroke();
+      ctx.save(); track(y, h); ctx.clip();
+      // the song's sections, each in its own colour (the part already played lit up)
+      for (let i = 0; i < SS.length - 1; i++) {
+        const a = RORY_SONG.barT(SS[i].bar) / E, z = i + 1 < SS.length - 1 ? RORY_SONG.barT(SS[i + 1].bar) / E : 1;
+        const xa = xAt(a), xz = xAt(z), lit = b.frac >= z ? 0.75 : b.frac > a ? 0.75 : 0.22;
+        ctx.fillStyle = uiRgba(SS[i].col, lit); ctx.fillRect(xa, y, Math.min(xz, Math.max(xa, xAt(b.frac))) - xa, h);
+        if (b.frac < z) { ctx.fillStyle = uiRgba(SS[i].col, 0.2); ctx.fillRect(Math.max(xa, xAt(b.frac)), y, xz - Math.max(xa, xAt(b.frac)), h); }
+        ctx.fillStyle = 'rgba(0,0,0,0.75)'; ctx.fillRect(xz - 1, y, 2, h);
+        if (i === b.si && !b.over) { ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.strokeRect(xa + 1, y + 1, xz - xa - 2, h - 2); }
+      }
+      ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(X0 - sk, y + 3, L + sk * 2, 4);
+      if (b.over) { ctx.fillStyle = blink ? 'rgba(255,40,80,0.45)' : 'rgba(255,40,80,0.15)'; ctx.fillRect(X0 - sk, y, L + sk * 2, h); }
+      ctx.restore();
+      track(y, h); ctx.lineWidth = 2; ctx.strokeStyle = b.over ? '#ff5a7a' : acc; ctx.stroke();
+      // the playhead
+      if (!b.over) {
+        const px = xAt(b.frac);
+        ctx.fillStyle = '#ffffff'; ctx.shadowColor = acc; ctx.shadowBlur = 12; ctx.fillRect(px - 1.5, y - 4, 3, h + 8);
+        ctx.beginPath(); ctx.moveTo(px, y + h + 4); ctx.lineTo(px - 8, y + h + 16); ctx.lineTo(px + 8, y + h + 16); ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0;
+      }
+      // the time left in the song (overtime: how far past it you are)
+      if (b.over) drawText(ctx, '+' + fmtClock(b.ot), 256, 102, { size: 36, style: 'italic 900', font: FONT_IMPACT, fill: blink ? '#ff3a5a' : '#ffffff', stroke: '#000', lw: 7, glow: '#ff0030', glowBlur: 16 });
+      else drawText(ctx, fmtClock(b.secs), 256, 102, { size: 36, style: 'italic 900', font: FONT_IMPACT, fill: b.secs < 30 ? '#ff6a7a' : '#ffffff', stroke: '#000', lw: 7, glow: acc, glowBlur: 14, spacing: 0.05 });
+      drawText(ctx, b.over ? 'OVERTIME' : 'SONG LEFT', 92, 102, { size: 16, style: 'italic 900', font: FONT_IMPACT, fill: b.over ? '#ff5a7a' : acc, stroke: '#000', lw: 4, spacing: 0.12 });
+      const right = b.exit ? 'EXIT OPEN!' : b.over ? 'SHOEBENCH!' : b.secs < 30 ? 'HURRY!' : 'UNTIL SHOEBENCH';
+      drawText(ctx, right, 420, 102, { size: b.exit || b.over || b.secs < 30 ? 20 : 15, style: 'italic 900', font: FONT_IMPACT, fill: b.exit ? '#6ad8ff' : b.over || b.secs < 30 ? '#ff3a4a' : 'rgba(255,255,255,0.75)', stroke: '#000', lw: 4, spacing: 0.08, maxWidth: 150 });
     } else if (b.kind === 'chase') {
       const off = (Clock.real * 90) % 360;
       drawText(ctx, b.name, 256, 16, { size: 24, style: 'italic 900', font: FONT_IMPACT, fill: b.rgb ? rgbGrad(0, 0, off) : acc, stroke: '#000', lw: 6, spacing: 0.12, glow: acc, glowBlur: 12, maxWidth: 470 });
@@ -3260,8 +3433,8 @@ const Wrist = {
     else drawText(ctx, v.mode === 'run' ? 'RUN!' : v.mode === 'fight' ? 'FIGHT!' : 'IDOL', 168, 36, { size: 34, style: 'italic 900', font: FONT_IMPACT, fill: '#fff', stroke: '#000', lw: 5, glow: acc, glowBlur: 12, skew: 0.15 });
     drawHpSegs(ctx, 14, 78, b ? 150 : 228, 20, HUD.hpDisp, HUD.hpGhost, acc);
     if (b) {
-      const t = b.kind === 'timer' ? fmtClock(b.secs) : b.kind === 'boss' ? Math.round(b.frac * (b.segs || 1)) + '/' + (b.segs || 1) : b.secs != null ? fmtClock(b.secs) : Math.round(b.exitM) + 'm';
-      drawText(ctx, t, 210, 88, { size: 24, style: 'italic 900', font: FONT_IMPACT, fill: b.kind === 'boss' ? '#d080ff' : b.kind === 'timer' && b.secs < CONFIG.LAP2_TENSION_AT ? '#ff3a2a' : '#fff', stroke: '#000', lw: 5, maxWidth: 80 });
+      const t = b.kind === 'timer' ? fmtClock(b.secs) : b.kind === 'rory' ? (b.over ? '+' + fmtClock(b.ot) : fmtClock(b.secs)) : b.kind === 'boss' ? Math.round(b.frac * (b.segs || 1)) + '/' + (b.segs || 1) : b.secs != null ? fmtClock(b.secs) : Math.round(b.exitM) + 'm';
+      drawText(ctx, t, 210, 88, { size: 24, style: 'italic 900', font: FONT_IMPACT, fill: b.kind === 'boss' ? '#d080ff' : (b.kind === 'timer' || b.kind === 'rory') && (b.over || b.secs < CONFIG.LAP2_TENSION_AT) ? '#ff3a2a' : '#fff', stroke: '#000', lw: 5, maxWidth: 80 });
     }
     if (Save.s.fps) drawText(ctx, this.fps + ' FPS', 128, 114, { size: 14, fill: '#9f9', stroke: '#000', lw: 3 });
     this.tex.needsUpdate = true;
@@ -3760,6 +3933,9 @@ const Player = {
     await Fade.to(1, 0.2, 0x000000);
     if (tok !== SM.seq) { this.respawning = false; return; }
     if (!Game.respawnAllowed(this.lastSafe)) { this.respawning = false; Game.playerDied('collapse'); return; }
+    // the last safe spot may have gone (RORY'S CHALLENGE takes walkways away): the nearest platform instead
+    const ls = this.lastSafe;
+    if (World.groundAt(ls.x, ls.z, ls.y + 0.5) < ls.y - 0.5 && Nav.g) { const n = Nav.g.nodes[Nav.nearestNode(ls)]; if (n) ls.set(n.x, n.y, n.z); }
     this.spawn(this.lastSafe.x, this.lastSafe.y, this.lastSafe.z, null);
     Hazards.onPlayerRespawn();
     await wait(0.1);
@@ -3985,8 +4161,9 @@ function graphConnected(nodeCount, edges, start) {
   while (q.length) { const x = q.pop(); for (const y of adj[x]) if (!seen[y]) { seen[y] = 1; c++; q.push(y); } }
   return c === nodeCount;
 }
-function genGraph(seed) {
-  const rng = mulberry32(seed), N = CONFIG.GRID_N, S = CONFIG.GRID_SPACING;
+// N x N platforms (the laps are 8 x 8; RORY'S CHALLENGE is bigger), `ringLoops` square loops on one tier
+function genGraph(seed, N = CONFIG.GRID_N, ringLoops = CONFIG.RING_LOOPS) {
+  const rng = mulberry32(seed), S = CONFIG.GRID_SPACING;
   const noise = makeValueNoise(seed * 7 + 1);
   const nodes = [];
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
@@ -4022,7 +4199,7 @@ function genGraph(seed) {
   for (let k = 0; k < extra && k < cand.length; k++) add(cand[k][0], cand[k][1], 'extra');
   // square "ring" loops on a single tier
   const used = new Set(); let rings = 0, tries = 0;
-  while (rings < CONFIG.RING_LOOPS && tries++ < 300) {
+  while (rings < ringLoops && tries++ < 300) {
     const i = rint(rng, 1, N - 2), j = rint(rng, 1, N - 2);
     const b = [idx(i, j), idx(i + 1, j), idx(i, j + 1), idx(i + 1, j + 1)];
     if (b.some((x) => used.has(x))) continue;
@@ -4198,8 +4375,27 @@ const Maze = {
         #include <fog_fragment>`);
     };
     this.mats.walk5.customProgramCacheKey = () => 'walk5hellfire';
+    // RORY'S CHALLENGE: dark blue walkways with a neon tile grid that flashes on the kick, and a ring of light that
+    // rolls out across the whole map on every bar (colours from the song's section: RoryWorld)
+    this.g6 = RoryMap.graph();
+    this.mats.walk6 = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x02040c });
+    this.mats.walk6.onBeforeCompile = (sh) => {
+      Object.assign(sh.uniforms, RoryWorld.uni);
+      sh.vertexShader = 'varying vec3 vRw; varying float vRup;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vRw = (modelMatrix * vec4(transformed, 1.0)).xyz; vRup = normal.y;');
+      sh.fragmentShader = 'uniform float uKick; uniform float uWave; uniform float uBright; uniform float uTime; uniform vec3 uRoryA; uniform vec3 uRoryB; varying vec3 vRw; varying float vRup;\n' + sh.fragmentShader.replace('#include <fog_fragment>', `
+        float rUp = smoothstep(0.5, 0.9, vRup);
+        vec2 gq = abs(fract(vRw.xz * 0.5) - 0.5);
+        float grid = smoothstep(0.44, 0.5, max(gq.x, gq.y));
+        float rd = length(vRw.xz), ring = exp(-pow((rd - uWave) * 0.22, 2.0));
+        float shimmer = 0.5 + 0.5 * sin(rd * 0.35 - uTime * 2.0);
+        gl_FragColor.rgb += uRoryA * grid * (0.18 + uKick * 0.85 + shimmer * 0.08) * rUp * uBright;
+        gl_FragColor.rgb += mix(uRoryA, uRoryB, 0.5) * ring * rUp * 0.75 * uBright;
+        gl_FragColor.rgb += uRoryB * (1.0 - rUp) * (0.05 + 0.08 * uKick) * uBright;
+        #include <fog_fragment>`);
+    };
+    this.mats.walk6.customProgramCacheKey = () => 'walk6rory';
     this.edgeBase = new THREE.Color(CONFIG.COLORS.edgeGlow);
-    Silhouettes.build(); DeepDeco.build(); Lap5Deco.build(); Lap1Deco.build(); Lap2Deco.build(); Lap3Deco.build();
+    Silhouettes.build(); DeepDeco.build(); Lap5Deco.build(); Lap1Deco.build(); Lap2Deco.build(); Lap3Deco.build(); RoryDeco.build();
   },
   dispose() {
     for (const m of this.meshes) { m.parent && m.parent.remove(m); m.geometry.dispose(); }
@@ -4217,10 +4413,10 @@ const Maze = {
   },
   build(lap) {
     this.dispose();
-    const g = [this.g1, this.g1, this.g2, this.g3, this.g4, this.g5][lap] || this.g1; this.cur = g; this.lap = lap;
+    const g = [this.g1, this.g1, this.g2, this.g3, this.g4, this.g5, this.g6][lap] || this.g1; this.cur = g; this.lap = lap;
     World.clear();
-    const C = CONFIG.COLORS, W = CONFIG.WALK_W, P = CONFIG.PLATFORM;
-    const top = new THREE.Color(lap === 1 ? C.walkTop : lap === 5 ? 0x2a1824 : 0xffffff), side = new THREE.Color(lap === 1 ? C.walkSide : lap === 2 ? 0x58609a : lap === 3 ? 0x5a2a2e : lap === 4 ? 0x1e4a5a : 0x140812);
+    const C = CONFIG.COLORS, W = CONFIG.WALK_W, P = CONFIG.PLATFORM, rory = lap === RORY_LAP;
+    const top = new THREE.Color(lap === 1 ? C.walkTop : lap === 5 ? 0x2a1824 : rory ? 0x101a3c : 0xffffff), side = new THREE.Color(lap === 1 ? C.walkSide : lap === 2 ? 0x58609a : lap === 3 ? 0x5a2a2e : lap === 4 ? 0x1e4a5a : rory ? 0x070c22 : 0x140812);
     const walk = new BoxBatch(), glow = new BoxBatch(), dirt = new BoxBatch();
     const rng = mulberry32(7206 + lap);
     const segs = [];
@@ -4231,6 +4427,7 @@ const Maze = {
     const white = new THREE.Color(1, 1, 1);
     for (const e of g.edges) {
       const I = e.info;
+      if (rory && RoryMap.fragile.has(e)) continue;           // walkways the song takes away are built on their own (RoryMap)
       const A = g.nodes[e.a], B = g.nodes[e.b];
       segs.push({ ax: A.x, ay: A.y, az: A.z, bx: B.x, by: B.y, bz: B.z });
       const mid = (I.c0 + I.c1) / 2;
@@ -4246,8 +4443,8 @@ const Maze = {
         }
         World.addRamp(X(I.c0, I.other - W / 2), Z(I.c0, I.other - W / 2), X(I.c1, I.other + W / 2), Z(I.c1, I.other + W / 2), I.axis, I.y0, I.y1, 'stairs');
       }
-      // neon edge strips: purple on ~40% of walkways (lap 1), blood red (lap 3) / cyan (lap 4) on ~60%
-      if ((lap === 1 && rng() < 0.4) || (lap >= 3 && (lap === 5 || rng() < 0.6))) {
+      // neon edge strips: purple on ~40% of walkways (lap 1), blood red (lap 3) / cyan (lap 4) on ~60%, all of them in RORY'S CHALLENGE
+      if ((lap === 1 && rng() < 0.4) || (lap >= 3 && (lap === 5 || rory || rng() < 0.6))) {
         for (const s of [-1, 1]) {
           const o = I.other + s * (W / 2 - 0.04);
           if (!I.stairs) glow.box(X(mid, o), I.y0 + 0.012, Z(mid, o), I.axis === 0 ? I.len : 0.08, 0.08, I.axis === 0 ? 0.08 : I.len, white);
@@ -4270,7 +4467,7 @@ const Maze = {
     Nav.set(g, segs);
     const wm = this.addMesh(walk.build(this.mats['walk' + lap] || this.mats.walk1));
     wm.userData.isWalk = true;
-    this.edgeBase.set(lap === 3 ? CONFIG.COLORS.edgeGlow3 : lap === 4 ? CONFIG.COLORS.edgeGlow4 : CONFIG.COLORS.edgeGlow);
+    this.edgeBase.set(lap === 3 ? CONFIG.COLORS.edgeGlow3 : lap === 4 ? CONFIG.COLORS.edgeGlow4 : rory ? 0x3a7aff : CONFIG.COLORS.edgeGlow);
     if (lap !== 2) this.glowMesh = this.addMesh(glow.build(this.mats.edge)); else this.glowMesh = null;
     if (lap === 2) this.addMesh(dirt.build(this.mats.dirt));
     // start marker ring
@@ -4279,7 +4476,8 @@ const Maze = {
     ring.rotation.x = -Math.PI / 2; ring.position.set(sn.x, sn.y + 0.05, sn.z);
     this.addMesh(ring);
     if (lap === 2) this.buildLap2Decor(g, rng);
-    Silhouettes.setLap(lap); DeepDeco.show(lap === 4); Lap5Deco.show(lap === 5); Lap1Deco.show(lap === 1); Lap2Deco.show(lap === 2); Lap3Deco.show(lap === 3);
+    if (rory) RoryMap.build(top, side);                      // the walkways that fall away + the sky bridges
+    Silhouettes.setLap(lap); DeepDeco.show(lap === 4); Lap5Deco.show(lap === 5); Lap1Deco.show(lap === 1); Lap2Deco.show(lap === 2); Lap3Deco.show(lap === 3); RoryDeco.show(rory);
   },
   buildDecals(positions) {
     if (this.lap !== 1) return;
@@ -4315,6 +4513,8 @@ const Maze = {
     if (this.lap === 1 && G.maze.visible) Lap1Deco.update(lvl);
     if (this.lap === 2 && G.maze.visible) Lap2Deco.update(lvl);
     if (this.lap === 3 && G.maze.visible) Lap3Deco.update(lvl);
+    // RORY'S CHALLENGE: the whole world follows the song (its colours, the beat, the map coming and going)
+    if (this.lap === RORY_LAP && G.maze.visible) { RoryWorld.update(lvl); return; }
     // lap 5: the edges burn like embers (flickering red-orange)
     if (this.lap === 5) { const fl = 0.5 + 0.5 * Math.sin(Clock.real * 9) * Math.sin(Clock.real * 5.3); this.mats.edge.color.setRGB(1, 0.18 + 0.3 * fl, 0.02).multiplyScalar(0.55 + lvl * 1.2 + fl * 0.2); }
     else if (this.lap !== 2) this.mats.edge.color.copy(this.edgeBase).multiplyScalar(0.4 + lvl * 1.2);
@@ -4645,13 +4845,14 @@ const Silhouettes = {
     geos.forEach((g) => g.dispose());
     G.mazeDeco.add(this.mesh);
   },
-  setLap(lap) { this.mat.color.set(lap === 1 ? 0x12081e : lap === 2 ? 0x2a0600 : lap === 3 ? 0x050002 : lap === 4 ? 0x01121a : 0x1a0300); },
+  setLap(lap) { this.mat.color.set(lap === 1 ? 0x12081e : lap === 2 ? 0x2a0600 : lap === 3 ? 0x050002 : lap === 4 ? 0x01121a : lap === RORY_LAP ? 0x030a24 : 0x1a0300); },
 };
 
 // ---------------- sky dome (enraged purple / lava) + lava sea + embers ----------------
 const SKY_VS = `varying vec3 vDir; void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
 const SKY_FS = `
 uniform sampler2D uNoise; uniform float uTime; uniform float uMode; uniform float uLevel; uniform float uBright; uniform float uFlash;
+uniform vec3 uSkyA; uniform vec3 uSkyB; uniform vec3 uSkyC; uniform float uStorm; uniform float uKick;
 varying vec3 vDir;
 vec3 lavaRamp(float t){
   vec3 a = vec3(0.227, 0.0, 0.0), b = vec3(0.784, 0.078, 0.0), c = vec3(1.0, 0.416, 0.0), d = vec3(1.0, 0.824, 0.227);
@@ -4732,6 +4933,26 @@ void main(){
     col += vec3(1.0) * pow(max(d.y, 0.0), 18.0) * (1.5 + uLevel * 2.0);
     col += pal * pow(1.0 - abs(n2 - 0.5) * 2.0, 24.0) * uFlash;
     col = mix(col, pal * 0.22, haze * 0.5);
+  } else if (uMode > 7.5) {
+    // RORY'S CHALLENGE: a blue sky that changes with the song (three colours and a storm amount from RoryWorld): a
+    // drifting nebula, stars in the calm parts, lightning ridges in the storm, an equalizer of light round the horizon
+    // that jumps on every kick
+    float n1 = texture2D(uNoise, uv * 0.85 + vec2(uTime * 0.012, -uTime * 0.02 * (1.0 + uStorm * 2.0))).r;
+    float n2 = texture2D(uNoise, uv * 2.3 + vec2(-uTime * 0.03, uTime * 0.05 * (1.0 + uStorm * 2.0))).r;
+    float n = n1 * 0.6 + n2 * 0.4;
+    col = mix(uSkyA, uSkyB, smoothstep(0.25, 0.85, n));
+    float ridge = pow(1.0 - abs(n2 - 0.5) * 2.0, 18.0);
+    col += uSkyC * ridge * (0.15 + uStorm * 0.9 + uFlash * 0.8);
+    vec3 sc = d * 240.0, sg = floor(sc);
+    float sh = fract(sin(dot(sg, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+    col += mix(vec3(0.6, 0.8, 1.0), vec3(1.0), fract(sh * 7.0)) * step(0.993, sh) * smoothstep(0.45, 0.0, length(fract(sc) - 0.5)) * (1.0 - uStorm * 0.8) * smoothstep(-0.05, 0.25, d.y) * (1.2 + uKick);
+    float ang = atan(d.z, d.x), cell = floor(ang * 56.0 / 6.2832);
+    float bh = 0.03 + (0.05 + 0.12 * uKick) * (0.5 + 0.5 * sin(cell * 1.7 + uTime * 2.2)) * (0.6 + uLevel);
+    float bar = step(0.18, fract(ang * 56.0 / 6.2832)) * step(-0.01, d.y) * (1.0 - smoothstep(bh - 0.012, bh, d.y));
+    col += uSkyC * bar * (0.5 + uKick * 0.8);
+    col += uSkyC * exp(-abs(d.y + 0.01) * 40.0) * (0.35 + uKick * 0.5);
+    col *= 0.85 + uKick * 0.3;
+    col = mix(col, uSkyB * 0.45, haze * 0.4);
   } else if (uMode > 6.5) {
     // lap 1: a neon synth void - stars, a purple nebula, a striped retro sun sinking into a glowing horizon
     float n1 = texture2D(uNoise, uv * 0.7 + vec2(uTime * 0.004, 0.0)).r;
@@ -4756,15 +4977,15 @@ void main(){
 }`;
 const LAVA_VS = `varying vec2 vW; varying vec2 vL; void main(){ vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xz; vL = position.xy; gl_Position = projectionMatrix * viewMatrix * w; }`;
 const LAVA_FS = `
-uniform sampler2D uNoise; uniform float uTime; uniform float uLevel; uniform vec3 uTint; uniform float uWater;
+uniform sampler2D uNoise; uniform float uTime; uniform float uLevel; uniform vec3 uTint; uniform float uWater; uniform vec3 uGrid;
 varying vec2 vW; varying vec2 vL;
 void main(){
   if (uWater > 1.5) {
-    // a glowing grid far below: neon purple (lap 1) or every colour (the Lap 5 chase)
+    // a glowing grid far below: neon purple (lap 1), every colour (the Lap 5 chase) or the song's blue (RORY'S CHALLENGE)
     vec2 g = abs(fract(vW * 0.1 + vec2(0.0, uTime * 0.12)) - 0.5);
     float line = smoothstep(0.46, 0.5, max(g.x, g.y));
     float fade = exp(-length(vL) * 0.006);
-    vec3 lc = uWater > 2.5 ? 0.5 + 0.5 * cos(6.2832 * (vec3(0.0, 0.33, 0.67) + vW.x * 0.004 + vW.y * 0.003 + uTime * 0.08)) : vec3(0.75, 0.2, 1.0);
+    vec3 lc = uWater > 3.5 ? uGrid : uWater > 2.5 ? 0.5 + 0.5 * cos(6.2832 * (vec3(0.0, 0.33, 0.67) + vW.x * 0.004 + vW.y * 0.003 + uTime * 0.08)) : vec3(0.75, 0.2, 1.0);
     gl_FragColor = vec4(vec3(0.015, 0.0, 0.035) + lc * line * fade * (0.55 + uLevel * 0.9), 1.0);
     return;
   }
@@ -4786,35 +5007,36 @@ void main(){
 }`;
 const Sky = {
   dome: null, lava: null, embers: null, mode: 0,
-  uni: { uNoise: { value: null }, uTime: { value: 0 }, uMode: { value: 1 }, uLevel: { value: 0 }, uBright: { value: 1 }, uFlash: { value: 0 } },
+  uni: { uNoise: { value: null }, uTime: { value: 0 }, uMode: { value: 1 }, uLevel: { value: 0 }, uBright: { value: 1 }, uFlash: { value: 0 },
+    uSkyA: { value: new THREE.Color(0x01030c) }, uSkyB: { value: new THREE.Color(0x0a2060) }, uSkyC: { value: new THREE.Color(0x3a8cff) }, uStorm: { value: 0 }, uKick: { value: 0 } },
   init() {
     this.uni.uNoise.value = TEX.noise;
     const mat = new THREE.ShaderMaterial({ vertexShader: SKY_VS, fragmentShader: SKY_FS, uniforms: this.uni, side: THREE.BackSide, depthWrite: false, fog: false });
     this.dome = new THREE.Mesh(new THREE.SphereGeometry(350, 32, 16), mat);
     this.dome.renderOrder = -10; this.dome.visible = false; this.dome.frustumCulled = false;
     scene.add(this.dome);
-    this.lavaUni = { uNoise: { value: TEX.noise }, uTime: this.uni.uTime, uLevel: this.uni.uLevel, uTint: { value: new THREE.Color(1, 1, 1) }, uWater: { value: 0 } };
+    this.lavaUni = { uNoise: { value: TEX.noise }, uTime: this.uni.uTime, uLevel: this.uni.uLevel, uTint: { value: new THREE.Color(1, 1, 1) }, uWater: { value: 0 }, uGrid: { value: new THREE.Color(0x3a8cff) } };
     this.lava = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), new THREE.ShaderMaterial({ vertexShader: LAVA_VS, fragmentShader: LAVA_FS, uniforms: this.lavaUni, fog: false }));
     this.lava.rotation.x = -Math.PI / 2; this.lava.position.y = CONFIG.LAVA_Y; this.lava.visible = false; this.lava.frustumCulled = false;
     scene.add(this.lava);
     this.embers = makeEmbers(600); this.embers.visible = false; scene.add(this.embers);
   },
   // 0 black void, 1 enraged purple, 2 lava, 3 lap-3 blood storm, 4 lap-4 deep sea, 5 lap-5 hellfire,
-  // 6 the Lap 5 chase's RGB vortex, 7 lap 1's neon synth void
+  // 6 the Lap 5 chase's RGB vortex, 7 lap 1's neon synth void, 8 RORY'S CHALLENGE (blue, changes with the song)
   set(mode) {
     this.mode = mode;
     this.dome.visible = mode > 0; this.uni.uMode.value = mode;
     this.lava.visible = mode >= 2; this.embers.visible = mode >= 2;
     this.lavaUni.uTint.value.set(mode === 3 ? 0xff2040 : mode === 5 ? 0xff6a30 : 0xffffff);
-    this.lavaUni.uWater.value = mode === 4 ? 1 : mode === 7 ? 2 : mode === 6 ? 3 : 0;
-    this.lava.position.y = mode === 7 || mode === 6 ? -34 : CONFIG.LAVA_Y;
-    // embers: sparks (lava laps), rising bubbles (the deep), neon dust (lap 1), prismatic glints (the RGB chase)
-    this.embers.material.uniforms.uBubble.value = mode === 4 ? 1 : mode === 7 ? 2 : mode === 6 ? 3 : 0;
+    this.lavaUni.uWater.value = mode === 4 ? 1 : mode === 7 ? 2 : mode === 6 ? 3 : mode === 8 ? 4 : 0;
+    this.lava.position.y = mode === 7 || mode === 6 || mode === 8 ? -34 : CONFIG.LAVA_Y;
+    // embers: sparks (lava laps), rising bubbles (the deep), neon dust (lap 1), prismatic glints (the RGB chase), blue sparks (RORY)
+    this.embers.material.uniforms.uBubble.value = mode === 4 ? 1 : mode === 7 ? 2 : mode === 6 ? 3 : mode === 8 ? 4 : 0;
   },
   update(dt, lvl) {
     this.uni.uTime.value += dt; this.uni.uLevel.value = lvl;
     if (this.mode && SM.curName !== 'LOBBY' && Mods.on('dark')) this.uni.uBright.value = Math.min(this.uni.uBright.value, 0.22);   // LIGHTS OUT
-    this.uni.uFlash.value = this.mode === 1 || this.mode === 3 || this.mode === 5 ? (Save.s.reduceFlash ? 0.35 + 0.25 * Math.sin(Clock.real * 2) : (Math.sin(Clock.real * (this.mode === 3 ? 5.3 : this.mode === 5 ? 7.1 : 9)) > 0.6 ? 1.6 : 0.4)) : 0;
+    this.uni.uFlash.value = this.mode === 1 || this.mode === 3 || this.mode === 5 ? (Save.s.reduceFlash ? 0.35 + 0.25 * Math.sin(Clock.real * 2) : (Math.sin(Clock.real * (this.mode === 3 ? 5.3 : this.mode === 5 ? 7.1 : 9)) > 0.6 ? 1.6 : 0.4)) : this.mode === 8 ? RoryWorld.flash : 0;
     camera.getWorldPosition(_v1);
     this.dome.position.copy(_v1);
     this.lava.position.x = _v1.x; this.lava.position.z = _v1.z;
@@ -4848,7 +5070,7 @@ function makeEmbers(count) {
       uniform sampler2D uMap; uniform float uBubble; uniform float uTime; varying float vA; varying float vH;
       void main(){
         float a = texture2D(uMap, gl_PointCoord).a * min(1.0, vA * 2.0);
-        vec3 c = uBubble < 0.5 ? vec3(1.0, 0.55 + 0.3 * vA, 0.15) : uBubble < 1.5 ? vec3(0.45, 0.9, 1.0) : uBubble < 2.5 ? mix(vec3(1.0, 0.3, 0.9), vec3(0.3, 0.9, 1.0), vH) : 0.5 + 0.5 * cos(6.2832 * (vec3(0.0, 0.33, 0.67) + vH + uTime * 0.2));
+        vec3 c = uBubble < 0.5 ? vec3(1.0, 0.55 + 0.3 * vA, 0.15) : uBubble < 1.5 ? vec3(0.45, 0.9, 1.0) : uBubble < 2.5 ? mix(vec3(1.0, 0.3, 0.9), vec3(0.3, 0.9, 1.0), vH) : uBubble < 3.5 ? 0.5 + 0.5 * cos(6.2832 * (vec3(0.0, 0.33, 0.67) + vH + uTime * 0.2)) : mix(vec3(0.2, 0.45, 1.0), vec3(0.75, 0.95, 1.0), vH);
         gl_FragColor = vec4(c * a * (0.5 + 0.5 * vA), a); }`,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   });
@@ -5020,7 +5242,7 @@ const Lobby = {
     Avatar.setConfig(a); FPBody.applyConfig(a); Net.heartbeat();
   },
   update(dt) {
-    if (this.netVer !== Net.version && ['online', 'main', 'lobby', 'mods', 'settings'].includes(this.menu.page)) { this.netVer = Net.version; this.menu.redraw(); }
+    if (this.netVer !== Net.version && ['online', 'main', 'lobby', 'mods', 'settings', 'modes'].includes(this.menu.page)) { this.netVer = Net.version; this.menu.redraw(); }
     if (this.preview && this.preview.root.visible !== (this.menu.page === 'avatar')) this.showPreview(this.menu.page === 'avatar');
     if (this.menu.page !== 'name') NameEdit.closeInput();
     if (this.preview && this.preview.root.visible) this.preview.pose({ x: -1.35, y: 0.25, z: -2.5, yaw: Clock.real * 0.8, speed: 0, grounded: true }, dt);
@@ -5062,6 +5284,7 @@ const GUIDE = [
   { name: 'THE DIVER', where: 'LAP 4 + LAP 5', icon: 'diver', lines: ['LEAPS INTO THE SKY: A RED RING MARKS', 'WHERE HE LANDS (WHERE YOU ARE HEADING)', 'GET OUT OF THE RING (40 DAMAGE)', 'THEN JUMP HIS SHOCKWAVE (15 DAMAGE)', "DON'T BUMP INTO HIM AFTERWARDS"] },
   { name: 'JELLYFISH', where: 'LAP 4', icon: 'jelly', lines: ['GLOWING JELLIES DRIFT OVER THE WALKWAYS', 'TOUCH ONE AND IT ZAPS YOU (12 DAMAGE)', 'GO AROUND, WAIT, OR DUCK UNDER... JUMP!'] },
   { name: 'THE CHASE', where: 'AFTER YOU GRAB THE IDOL', icon: 'collapse', lines: ['THE PATH FALLS AWAY BEHIND YOU: RUN!', 'THE LAP YOU CAME FROM DECIDES THE CHASE:', 'LATER LAPS = LONGER, THEMED, WAY HARDER', 'AFTER LAP 5: FORGET ME NOT, THEN WEGA FACE'] },
+  { name: "RORY'S CHALLENGE", where: 'A GAME MODE (LOBBY > GAME MODE)', icon: 'rory', lines: ["500+ LIL' GUYS ON ONE HUGE BLUE MAP", 'THE TIMER IS THE SONG: EVERY PART OF IT', 'BRINGS ITS OWN ENEMIES (ON THE BEAT!)', 'WALKWAYS FALL, SKY BRIDGES RISE WITH IT', 'SONG OVER = SHOEBENCH. THEN FIND THE EXIT'] },
 ];
 function drawGuideIcon(ctx, kind, x, y, s) {
   ctx.save();
@@ -5434,12 +5657,61 @@ const LOBBY_PAGES = {
     p.button('online', 261, 220, 205, 50, Net.status === 'online' && Net.server ? Net.server + ' (' + Net.count(Net.server) + ')' : 'ONLINE', () => p.setPage('online'), { size: 21 });
     p.button('name', 46, 280, 280, 50, 'NAME: ' + playerName() + ' #' + Save.data.num + ' ✎', () => NameEdit.open(), { size: 20 });
     p.button('lobby', 336, 280, 130, 50, 'LOBBY', () => p.setPage('lobby'), { size: 21 });
-    drawText(ctx, 'BEST: ' + (Save.data.best != null ? fmtTime(Save.data.best) : '--:--') + "  ·  LIL' GUYS: " + Wallet.get(), 256, 354, { size: 22, fill: '#ffd21f', stroke: '#000', lw: 5, maxWidth: 480 });
+    // the game mode (the owner picks it for everyone): its own page
+    const rory = Session.gameMode() === 'rory';
+    p.button('modes', 46, 340, 420, 46, 'GAME MODE: ' + (rory ? "RORY'S CHALLENGE" : 'CLASSIC') + '  ▸', () => { Lobby.modesBack = 'main'; p.setPage('modes'); }, { size: 20, fill: rory ? '#0a2a6a' : undefined, hoverFill: rory ? '#1450b0' : undefined, border: rory ? '#40b0ff' : undefined, spacing: 0.08 });
+    const best = rory ? Save.data.bestRory : Save.data.best;
+    drawText(ctx, (rory ? 'RORY BEST: ' : 'BEST: ') + (best != null ? fmtTime(best) : '--:--') + "  ·  LIL' GUYS: " + Wallet.get(), 256, 408, { size: 20, fill: '#ffd21f', stroke: '#000', lw: 5, maxWidth: 480 });
     const nc = Mods.challenges(), nm = Mods.names().length - nc;
-    drawText(ctx, 'DIFFICULTY: ' + diff().label + (nc ? '  ·  ' + nc + (nc > 1 ? ' CHALLENGES' : ' CHALLENGE') : '') + (nm ? '  ·  ' + nm + (nm > 1 ? ' MODS' : ' MOD') : '') + (A ? '  ·  OWNER: ' + Session.ownerLabel() : ''), 256, 386, { size: 17, fill: '#e6d0ff', stroke: '#000', lw: 4, maxWidth: 480 });
-    if (A) drawText(ctx, going ? 'RUN IN PROGRESS · ' + Session.stageLabel() + ' · ' + A.nr + ' PLAYING' : own ? 'YOU OWN THIS LOBBY · START = EVERYONE ON ' + Net.server + ' PLAYS' : 'THE OWNER STARTS THE RUN FOR EVERYONE', 256, 416, { size: 15, fill: going ? '#ffe94a' : '#9dffb0', stroke: '#000', lw: 3, maxWidth: 480 });
-    drawText(ctx, Net.statusText(), 256, A ? 446 : 424, { size: 16, fill: Net.status === 'online' ? '#9dffb0' : '#ffb0b0', stroke: '#000', lw: 3, maxWidth: 470 });
-    drawText(ctx, XR.inVR ? 'POINT + TRIGGER TO CLICK' : IS_TOUCH ? 'TAP A BUTTON' : 'AIM CROSSHAIR + CLICK', 256, 478, { size: 15, fill: '#b9a0d0', stroke: '#000', lw: 3 });
+    drawText(ctx, 'DIFFICULTY: ' + diff().label + (nc ? '  ·  ' + nc + (nc > 1 ? ' CHALLENGES' : ' CHALLENGE') : '') + (nm ? '  ·  ' + nm + (nm > 1 ? ' MODS' : ' MOD') : '') + (A ? '  ·  OWNER: ' + Session.ownerLabel() : ''), 256, 434, { size: 16, fill: '#e6d0ff', stroke: '#000', lw: 4, maxWidth: 480 });
+    if (A) drawText(ctx, going ? 'RUN IN PROGRESS · ' + Session.stageLabel() + ' · ' + A.nr + ' PLAYING' : own ? 'YOU OWN THIS LOBBY · START = EVERYONE ON ' + Net.server + ' PLAYS' : 'THE OWNER STARTS THE RUN FOR EVERYONE', 256, 456, { size: 14, fill: going ? '#ffe94a' : '#9dffb0', stroke: '#000', lw: 3, maxWidth: 480 });
+    drawText(ctx, Net.statusText(), 256, A ? 478 : 458, { size: 14, fill: Net.status === 'online' ? '#9dffb0' : '#ffb0b0', stroke: '#000', lw: 3, maxWidth: 470 });
+    if (!A) drawText(ctx, XR.inVR ? 'POINT + TRIGGER TO CLICK' : IS_TOUCH ? 'TAP A BUTTON' : 'AIM CROSSHAIR + CLICK', 256, 482, { size: 14, fill: '#b9a0d0', stroke: '#000', lw: 3 });
+  },
+  // GAME MODES: the lobby owner picks one for everyone on the server (offline: it's your own pick)
+  modes(ctx, p) {
+    p.bg('rgba(6,8,28,0.94)', '#3a9cff');
+    drawText(ctx, 'GAME MODES', 256, 34, { size: 34, style: 'italic 900', font: FONT_IMPACT, fill: '#ffffff', stroke: '#000', lw: 6, spacing: 0.15, glow: '#3a8cff', glowBlur: 18 });
+    const A = Session.active(), own = Session.isOwner(), cur = Session.gameMode(), going = A && Session.auth.ph === 'run' && Session.auth.st !== 'done';
+    drawText(ctx, !A ? 'OFFLINE: THIS IS FOR YOUR OWN RUNS' : own ? 'YOU OWN THE LOBBY: YOU PICK FOR EVERYONE ON ' + Net.server : 'ONLY THE LOBBY OWNER (' + Session.ownerLabel() + ') CAN PICK', 256, 64, { size: 14, fill: own ? '#9dffb0' : '#ffb0b0', stroke: '#000', lw: 3, maxWidth: 480 });
+    const n = CONFIG.RORY.LILGUYS[Session.difficultyKey() || Save.s.difficulty] || CONFIG.RORY.LILGUYS.normal;
+    const song = Music.hasTrack('rory') ? fmtClock(WegaShared.RORY_LEN) : 'SONG FILE MISSING';
+    const cards = [
+      { id: 'classic', title: "WEGA'S CHALLENGE", tag: 'CLASSIC', col: '#b84dff', icon: 'wega', best: Save.data.best,
+        lines: ["COLLECT EVERY LIL' GUY, LAP AFTER LAP", 'UP TO 5 LAPS · THE IDOL · THE CHASE', 'WEGA FACE WAITS AT THE END OF LAP 5'] },
+      { id: 'rory', title: "RORY'S CHALLENGE", tag: 'ENDURANCE', col: '#3aa0ff', icon: 'rory', best: Save.data.bestRory,
+        lines: [n + " LIL' GUYS ON ONE HUGE MAP", 'THE WHOLE RUN IS SYNCED TO THE SONG (' + song + ')', 'BEAT IT BEFORE IT ENDS, OR SHOEBENCH COMES'] },
+    ];
+    cards.forEach((c, i) => {
+      const x = 22, y = 84 + i * 170, w = 468, h = 158, sel = cur === c.id, id = 'gm' + i, hov = p.hover === id;
+      p.buttons.push({ id, x, y, w, h, onClick: () => { if (cur !== c.id && Session.setGameMode(c.id)) { UI.toast(c.title + (A ? ' FOR EVERYONE ON ' + Net.server : ' SELECTED')); Sfx.lapPortal(); } p.redraw(); } });
+      ctx.save();
+      roundedRect(ctx, x, y, w, h, 18);
+      const g = ctx.createLinearGradient(x, y, x + w, y + h); g.addColorStop(0, uiRgba(uiShade(c.col, sel ? 0.55 : 0.3), 0.95)); g.addColorStop(0.6, 'rgba(6,6,20,0.92)'); g.addColorStop(1, uiRgba(uiShade(c.col, 0.2), 0.9));
+      if (sel || hov) { ctx.shadowColor = c.col; ctx.shadowBlur = sel ? 26 : 16; }
+      ctx.fillStyle = g; ctx.fill(); ctx.shadowBlur = 0;
+      ctx.clip();
+      ctx.globalAlpha = 0.07; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+      for (let k = -h; k < w; k += 14) { ctx.beginPath(); ctx.moveTo(x + k, y + h); ctx.lineTo(x + k + h, y); ctx.stroke(); }
+      ctx.globalAlpha = 1;
+      // the icon: Wega's face, or Rory's grin
+      ctx.shadowColor = c.col; ctx.shadowBlur = 22;
+      if (c.icon === 'rory') ctx.drawImage(CANVAS.rory, 62, 54, 132, 164, x + 18, y + 14, 106, 132);
+      else ctx.drawImage(CANVAS.wegaIcon, x + 16, y + 22, 112, 112);
+      ctx.restore();
+      roundedRect(ctx, x, y, w, h, 18); ctx.lineWidth = sel ? 4 : hov ? 3 : 2; ctx.strokeStyle = sel ? '#ffffff' : hov ? uiShade(c.col, 1.5) : c.col; ctx.stroke();
+      drawText(ctx, c.tag, x + 146, y + 22, { size: 14, align: 'left', style: 'bold', fill: uiShade(c.col, 1.6), stroke: '#000', lw: 3, spacing: 0.3 });
+      drawText(ctx, c.title, x + 144, y + 52, { size: 34, align: 'left', style: 'italic 900', font: FONT_IMPACT, fill: '#ffffff', stroke: '#000', lw: 6, glow: c.col, glowBlur: 14, maxWidth: w - 160 });
+      c.lines.forEach((t, k) => drawText(ctx, t, x + 146, y + 84 + k * 20, { size: 13, align: 'left', fill: '#e8f0ff', stroke: '#000', lw: 3, maxWidth: w - 160 }));
+      drawText(ctx, 'BEST: ' + (c.best != null ? fmtTime(c.best) : '--:--'), x + 146, y + 144, { size: 13, align: 'left', fill: '#ffd21f', stroke: '#000', lw: 3 });
+      if (sel) {
+        roundedRect(ctx, x + w - 128, y + 9, 116, 24, 12); ctx.fillStyle = c.col; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#ffffff'; ctx.stroke();
+        drawText(ctx, 'SELECTED ✓', x + w - 70, y + 22, { size: 14, style: 'bold', fill: '#ffffff', stroke: '#000', lw: 3 });
+      } else if (!own) drawText(ctx, 'OWNER ONLY', x + w - 70, y + 22, { size: 13, fill: '#a898b8', stroke: '#000', lw: 3 });
+      else if (hov) drawText(ctx, 'CLICK TO PICK', x + w - 70, y + 22, { size: 13, fill: '#ffffff', stroke: '#000', lw: 3 });
+    });
+    drawText(ctx, going ? 'A RUN IS GOING: THE NEW MODE STARTS WITH THE NEXT RUN' : 'DIFFICULTY + CHALLENGES (LOBBY PAGE) APPLY TO BOTH', 256, 438, { size: 13, fill: '#b9c8e0', stroke: '#000', lw: 3, maxWidth: 480 });
+    p.button('back', 176, 454, 160, 42, 'BACK', () => p.setPage(Lobby.modesBack || 'main'), { size: 22 });
   },
   // the lobby: who owns it, and the settings only the owner can change
   lobby(ctx, p) {
@@ -5448,10 +5720,10 @@ const LOBBY_PAGES = {
     const A = Session.active() ? Session.auth : null, own = Session.isOwner(), D = diff();
     drawText(ctx, A ? 'SERVER ' + Net.server + ' · ' + (A.hp ? A.hp.length : 1) + ' HERE' : 'OFFLINE · SOLO RUNS', 256, 68, { size: 16, fill: A ? '#9dffb0' : '#ffb0b0', stroke: '#000', lw: 3 });
     drawText(ctx, 'OWNER: ' + Session.ownerLabel(), 256, 100, { size: 24, fill: '#ffd21f', stroke: '#000', lw: 4, maxWidth: 470 });
-    const lock = own ? {} : { fill: '#1e1828', border: '#5a4a6a', hoverFill: '#2a2236' };
+    const lock = own ? {} : { fill: '#1e1828', border: '#5a4a6a', hoverFill: '#2a2236' }, rory = Session.gameMode() === 'rory';
     const rows = [
       ['DIFFICULTY', D.label, (d) => Session.stepDifficulty(d)],
-      ['LAPS', 'UP TO LAP ' + Session.maxLap(), (d) => Session.stepMaxLap(d)],
+      rory ? ['MODE', "RORY'S CHALLENGE", () => { Lobby.modesBack = 'lobby'; p.setPage('modes'); }] : ['LAPS', 'UP TO LAP ' + Session.maxLap(), (d) => Session.stepMaxLap(d)],
     ];
     rows.forEach(([label, val, step], i) => {
       const y = 120 + i * 52;
@@ -5462,9 +5734,10 @@ const LOBBY_PAGES = {
       p.button('lR' + i, 444, y + 2, 44, 40, '>', () => step(1), Object.assign({ size: 22, r: 8 }, lock));
     });
     const nm = Mods.names().length;
-    p.button('mods', 66, 226, 380, 46, 'CHALLENGES + MODS' + (nm ? ' (' + nm + ' ON)' : ''), () => p.setPage('mods'), { size: 21, fill: nm ? '#5a1a10' : undefined, border: nm ? '#ff7a50' : undefined });
+    p.button('gmode', 22, 226, 220, 46, 'GAME MODE ▸', () => { Lobby.modesBack = 'lobby'; p.setPage('modes'); }, { size: 20, fill: rory ? '#0a2a6a' : undefined, hoverFill: rory ? '#1450b0' : undefined, border: rory ? '#40b0ff' : undefined });
+    p.button('mods', 252, 226, 238, 46, 'CHALLENGES' + (nm ? ' (' + nm + ' ON)' : ' + MODS'), () => p.setPage('mods'), { size: 19, fill: nm ? '#5a1a10' : undefined, border: nm ? '#ff7a50' : undefined });
     const mood = D.hostile >= 1.5 ? 'RUTHLESS' : D.hostile >= 1.25 ? 'HOSTILE' : D.hostile >= 1 ? 'NORMAL' : 'CALM';
-    drawText(ctx, D.lilGuys + " LIL' GUYS A LAP · CHARACTERS: " + mood, 256, 292, { size: 15, fill: '#cbb6e0', stroke: '#000', lw: 3, maxWidth: 480 });
+    drawText(ctx, (rory ? (CONFIG.RORY.LILGUYS[Session.difficultyKey() || Save.s.difficulty] || 550) + " LIL' GUYS · ONE SONG" : D.lilGuys + " LIL' GUYS A LAP") + ' · CHARACTERS: ' + mood, 256, 292, { size: 15, fill: '#cbb6e0', stroke: '#000', lw: 3, maxWidth: 480 });
     const names = A && A.hp ? A.hp : [playerName() + ' #' + Save.data.num];
     drawText(ctx, 'PLAYERS (IN JOIN ORDER)', 256, 318, { size: 15, fill: '#b9a0d0', stroke: '#000', lw: 3 });
     names.slice(0, 8).forEach((n, i) => {
@@ -6597,6 +6870,19 @@ const Collect = {
     this.left = this.n; this.lapCount = 0; this.combo = 0; this.comboT = 0; this.popping.length = 0;
     if (this.mesh.parent !== G.maze) G.maze.add(this.mesh);
     this.mesh.visible = true;
+    // a huge map (RORY'S CHALLENGE, 500+): the far ones aren't drawn (specks in the fog out there; it halves the triangles)
+    this.cull = this.n > CONFIG.COLLECT_TOTAL * 1.6 ? 70 : 0; this.culled = new Uint8Array(this.n); this.cullF = 0;
+  },
+  CULL_EVERY: 8,
+  updateCull() {
+    if (!this.cull || ++this.cullF % this.CULL_EVERY) return;
+    const p = Player.pos, r2 = this.cull * this.cull; let dirty = false;
+    for (let i = 0; i < this.n; i++) {
+      if (!this.alive[i]) continue;
+      const b = this.base[i], far = (b.x - p.x) * (b.x - p.x) + (b.z - p.z) * (b.z - p.z) > r2 ? 1 : 0;
+      if (far !== this.culled[i]) { this.culled[i] = far; this.setScale(i, far ? 0 : 1); dirty = true; }
+    }
+    if (dirty) this.mesh.instanceMatrix.needsUpdate = true;
   },
   hide() { this.mesh.visible = false; },
   setScale(i, s) {
@@ -6644,6 +6930,7 @@ const Collect = {
   update(dt) {
     if (!this.mesh.visible) return;
     this.comboT = Math.max(0, this.comboT - dt);
+    this.updateCull();
     const p = Player.pos, q = Player.prevPos, r = CONFIG.PICKUP_BODY, hr = CONFIG.PICKUP_HAND;
     const hl = Hands.pos('left'), hlx = hl ? hl.x : 0, hly = hl ? hl.y : 0, hlz = hl ? hl.z : 0;
     const hrp = Hands.pos('right'), hrx = hrp ? hrp.x : 0, hry = hrp ? hrp.y : 0, hrz = hrp ? hrp.z : 0;
@@ -6872,7 +7159,8 @@ const Rory = {
     // positional audio: thumps + creepy whistle
     setPannerPos(this.panner, this.pos.x, this.pos.y + 1.5, this.pos.z);
     this.stepT -= dt; this.whistleT -= dt;
-    if (this.stepT <= 0) { this.stepT = 0.3; if (this.panner) Sfx.roryThump(this.panner); }
+    // (RORY'S CHALLENGE: his feet land on the song's beat instead - RoryDirector.onBeat)
+    if (!this.syncSteps && this.stepT <= 0) { this.stepT = 0.3; if (this.panner) Sfx.roryThump(this.panner); }
     if (this.whistleT <= 0) { this.whistleT = 0.45; if (this.panner) Sfx.roryWhistle(this.panner, this.whistleIdx++); }
     const pd = this.pos.distanceTo(Player.pos);
     if (pd < 30) Cue.cap('roryFeet', 0.5);
@@ -7006,8 +7294,9 @@ class Laser {
       const len = (c.anchor.y - (-16)) / Math.max(0.05, -this.b.y);
       this.b.multiplyScalar(len).add(c.anchor);
     } else if (c.mode === 'hsweep') {
-      const off = c.from + (c.to - c.from) * clamp(time / c.dur, 0, 1);
-      if (c.axis === 0) { this.a.set(-70, c.y, off); this.b.set(70, c.y, off); } else { this.a.set(off, c.y, -70); this.b.set(off, c.y, 70); }
+      // 140 m long, across where you were when it started (the laps' maze fits in it whole; RORY'S map is bigger)
+      const off = c.from + (c.to - c.from) * clamp(time / c.dur, 0, 1), cx = c.cx || 0, cz = c.cz || 0;
+      if (c.axis === 0) { this.a.set(cx - 70, c.y, off); this.b.set(cx + 70, c.y, off); } else { this.a.set(off, c.y, cz - 70); this.b.set(off, c.y, cz + 70); }
     } else {
       // fixed escape beams with optional vertical sweep
       this.a.copy(c.a0); this.b.copy(c.b0);
@@ -7287,8 +7576,8 @@ const Flood = {
   // from far outside the maze, or from a point (Wega's roar)
   start(cx, cz) {
     if (!this.samples) this.prepare();
-    const a = Math.random() * Math.PI * 2;
-    this.cx = cx != null ? cx : Math.cos(a) * 85; this.cz = cz != null ? cz : Math.sin(a) * 85;
+    const a = Math.random() * Math.PI * 2, far = Maze.lap === RORY_LAP ? 125 : 85;      // just outside the maze (RORY'S is bigger)
+    this.cx = cx != null ? cx : Math.cos(a) * far; this.cz = cz != null ? cz : Math.sin(a) * far;
     let minD = Infinity, maxD = 0;
     for (let i = 0; i < this.count; i++) { const d = Math.hypot(this.samples[i * 3] - this.cx, this.samples[i * 3 + 2] - this.cz); if (d < minD) minD = d; if (d > maxD) maxD = d; }
     this.R = minD - 2; this.maxR = maxD + 2; this.active = true; this.hitDone = false; this.whooshDone = false;
@@ -7433,8 +7722,9 @@ const WegaBoss = {
     for (let i = 0; i < 2; i++) { this.beams.push(makeBeam(0xff2030)); this.stripes.push(makeStripe(0xff1a1a)); }
   },
   // chase = the lap-3 escape: he follows you down the route with glares and barrages only
-  start(chase = false) {
-    this.chase = chase;
+  // synced (RORY'S CHALLENGE): he attacks when the song says so (RoryDirector calls attackNow on a downbeat)
+  start(chase = false, synced = false) {
+    this.chase = chase; this.synced = synced;
     this.active = true; this.state = 'intro'; this.st = 0; this.t = 0; this.atkT = chase ? 2 : 5; this.phase = chase ? 2 : 1; this.lastKind = ''; this.roarT = 0; this.said = 1;
     this.sweeps.length = 0; this.shots.length = 0;
     Rig.headForward(_v1); this.orbit = Math.atan2(_v1.z, _v1.x);
@@ -7449,6 +7739,8 @@ const WegaBoss = {
     this.sweeps.length = 0; this.shots.length = 0;
   },
   hostile() { return diff().hostile; },
+  // an attack right now, if he's ready for one (RORY'S CHALLENGE: on the song's downbeats)
+  attackNow() { if (this.active && this.state === 'idle' && !Player.respawning) this.attack(); },
   eyeWorld(i, out) { this.group.updateMatrixWorld(true); return this.eyes[i].getWorldPosition(out); },
   // where the player is heading (unit XZ), along their walkway if they're on one
   heading(out) {
@@ -7572,6 +7864,7 @@ const WegaBoss = {
       if (f && g > -Infinity && g > p.y - 8) f.launch(_v1.set(sh.x, g, sh.z), _v2.copy(this.pos).addScaledVector(UP, -CONFIG.WEGA_SIZE * 0.25));
     }
     if (this.state === 'idle') {
+      if (this.synced) return;
       this.atkT -= dt;
       if (this.atkT <= 0 && !Player.respawning) this.attack();
       if (this.state === 'idle' && this.atkT <= 0) this.atkT = CONFIG.WEGA_GAP[this.phase - 1] / Hazards.tr();
@@ -7663,9 +7956,10 @@ const Diver = {
   },
   hostile() { return diff().hostile; },
   // chase = the lap-4 escape: he dives onto the walkway ahead, then leaps straight off again
-  start(chase = false) {
-    this.chase = chase;
-    this.state = 'wait'; this.cycle = (chase ? 3 : 6) / Hazards.tr(); this.t = 0; this.combo = 0; this.comboArmed = false;
+  // synced (RORY'S CHALLENGE): he only dives when the song says so (RoryDirector sets cycle = 0 so he lands on a downbeat)
+  start(chase = false, synced = false) {
+    this.chase = chase; this.synced = synced;
+    this.state = 'wait'; this.cycle = synced ? Infinity : (chase ? 3 : 6) / Hazards.tr(); this.t = 0; this.combo = 0; this.comboArmed = false;
     this.group.visible = false; this.ring.visible = this.disc.visible = this.wave.visible = false; this.line.show(false);
     if (!this.panner) this.panner = Sfx.panner(Player.pos.x, Player.pos.y, Player.pos.z, 6);
   },
@@ -7737,7 +8031,7 @@ const Diver = {
       if (k >= 1) this.impact();
     } else if (this.state === 'stand') {
       this.pos.copy(this.tgt);
-      if (this.st >= (this.combo ? 0.5 : this.chase ? 0.45 : CONFIG.DIVER_STAND / Math.sqrt(H))) { this.state = 'wait'; this.cycle = this.combo || this.chase ? 0 : CONFIG.DIVER_GAP / Hazards.tr(); }
+      if (this.st >= (this.combo ? 0.5 : this.chase ? 0.45 : CONFIG.DIVER_STAND / Math.sqrt(H))) { this.state = 'wait'; this.cycle = this.synced ? Infinity : this.combo || this.chase ? 0 : CONFIG.DIVER_GAP / Hazards.tr(); }
     }
     // the shockwave rolls outward along the floor: jump over it
     if (this.wave.visible) {
@@ -7784,8 +8078,8 @@ const Diver = {
     }
     this.waveR = 0.6; this.waveHit = d < CONFIG.DIVER_RADIUS + CONFIG.RADIUS;    // no double hit
     this.wave.position.set(T.x, T.y + 0.15, T.z); this.wave.visible = true;
-    // late in the lap he chains a second dive right away
-    if (this.comboArmed && !this.combo) { this.combo = 1; this.comboArmed = false; }
+    // late in the lap he chains a second dive right away (not when the song decides his dives)
+    if (this.comboArmed && !this.combo && !this.synced) { this.combo = 1; this.comboArmed = false; }
     else this.combo = 0;
   },
 };
@@ -7811,6 +8105,7 @@ const Jellies = {
   count() { return Math.min(this.MAX, Math.round(6 * diff().hostile)); },
   start() {
     this.active = true;
+    this.glow.material.color.set(Maze.lap === RORY_LAP ? 0x40c8ff : 0xff70ff);      // (blue in RORY'S CHALLENGE)
     for (const o of [this.domes, this.tent, this.glow]) o.visible = true;
     for (let i = 0; i < this.MAX; i++) { const j = this.list[i]; j.on = i < this.count(); if (j.on) this.place(j, true); }
   },
@@ -7833,7 +8128,7 @@ const Jellies = {
       j.pos.set(_v1.x, _v1.y + 1.55, _v1.z); j.base = _v1.y + 1.55;
       const across = Math.random() < 0.5, s = (Math.random() < 0.5 ? -1 : 1) * rr(0.35, 0.8);
       j.vel.set(I.axis === 0 ? (across ? 0 : s) : (across ? s : 0), 0, I.axis === 0 ? (across ? s : 0) : (across ? 0 : s));
-      j.col.setHSL(rr(0.75, 0.95), 1, 0.65); this.domes.setColorAt(this.list.indexOf(j), j.col); this.tent.setColorAt(this.list.indexOf(j), j.col);
+      j.col.setHSL(Maze.lap === RORY_LAP ? rr(0.5, 0.62) : rr(0.75, 0.95), 1, 0.65); this.domes.setColorAt(this.list.indexOf(j), j.col); this.tent.setColorAt(this.list.indexOf(j), j.col);   // (blue in RORY'S CHALLENGE)
       if (this.domes.instanceColor) this.domes.instanceColor.needsUpdate = true;
       if (this.tent.instanceColor) this.tent.instanceColor.needsUpdate = true;
       return;
@@ -8536,6 +8831,7 @@ const Hazards = {
     for (const l of this.lasers) l.stop();
     for (const f of this.fireballs) f.stop();
     Decals.clear(); FX.clear(); Lights.releaseAll();
+    RoryDirector.clear();
     this.mode = 'off';
   },
   reset(mode) {
@@ -8562,13 +8858,13 @@ const Hazards = {
       if (mode === 'lap5') Shadow.start();
     } else if (mode === 'escape') {
       this.setupEscape();
-    }
+    } else if (mode === 'rory') RoryDirector.reset();         // RORY'S CHALLENGE: everyone comes in on the song
     Enraged.set(mode === 'lap5' || (mode === 'escape' && Chamber.tier >= 5));
   },
-  tr() { return diff().threat * (this.mode === 'lap3' ? CONFIG.LAP3_THREAT : this.mode === 'lap4' ? CONFIG.LAP4_THREAT : this.mode === 'lap5' ? CONFIG.LAP5_THREAT : this.mode === 'escape' ? CHASE_THREAT[Chamber.tier] || 1 : 1); },
+  tr() { return diff().threat * (this.mode === 'lap3' ? CONFIG.LAP3_THREAT : this.mode === 'lap4' ? CONFIG.LAP4_THREAT : this.mode === 'lap5' || this.mode === 'rory' ? CONFIG.LAP5_THREAT : this.mode === 'escape' ? CHASE_THREAT[Chamber.tier] || 1 : 1); },
   // RORY RAMPAGE: he's back almost as soon as he's gone, and quicker
   roryGap(lap2) { const g = lap2 ? CONFIG.RORY_GAP2 : CONFIG.RORY_GAP; return rr(g[0], g[1]) / this.tr() / (Mods.on('rory') ? 4 : 1); },
-  roryEventSpeed(lap2) { return ((lap2 ? CONFIG.RORY_SPEED2 : CONFIG.RORY_SPEED) + diff().roryBonus + (this.mode === 'lap3' ? 0.4 : this.mode === 'lap4' ? 0.6 : this.mode === 'lap5' ? 0.8 : 0) + (Mods.on('rory') ? 0.5 : 0)) * Mods.foeK(); },
+  roryEventSpeed(lap2) { return ((lap2 ? CONFIG.RORY_SPEED2 : CONFIG.RORY_SPEED) + diff().roryBonus + (this.mode === 'lap3' ? 0.4 : this.mode === 'lap4' ? 0.6 : this.mode === 'lap5' || this.mode === 'rory' ? 0.8 : 0) + (Mods.on('rory') ? 0.5 : 0)) * Mods.foeK(); },
   makeLaserCfg(lap2) {
     const p = Player.pos, color = lap2 ? CONFIG.COLORS.laser2 : CONFIG.COLORS.laser;
     if (Math.random() < 0.55) {
@@ -8585,7 +8881,7 @@ const Hazards = {
     const dirS = Math.random() < 0.5 ? -1 : 1, cur = axis === 0 ? p.z : p.x;
     const from = cur - dirS * rr(25, 35), to = cur + dirS * rr(25, 35);
     const speed = lap2 ? rr(3.5, 5) : rr(2.2, 3.2);
-    return { mode: 'hsweep', axis, y, from, to, dur: Math.abs(to - from) / speed, life: Math.abs(to - from) / speed + CONFIG.LASER_TELEGRAPH, color };
+    return { mode: 'hsweep', axis, y, from, to, dur: Math.abs(to - from) / speed, life: Math.abs(to - from) / speed + CONFIG.LASER_TELEGRAPH, color, cx: p.x, cz: p.z };
   },
   // escape route: fixed laser gates, Rory ambushes, Screamer dashes (triggered by progress s);
   // later laps' chases add their own stretches of all three, plus that lap's boss
@@ -8674,6 +8970,7 @@ const Hazards = {
         if (m === 'lap2' || m === 'lap5') for (const at of CONFIG.FLOOD_AT) if (left <= at && !this.floodsDone.has(at) && !Flood.active) { this.floodsDone.add(at); Flood.start(); }
       }
     } else if (m === 'escape') this.updateEscape(dt);
+    else if (m === 'rory') RoryDirector.update(dt);
     if (m === 'off') return;
     Rory.update(dt); Screamer.update(dt); GlitchGuy.update(dt); WegaHead.update(dt); Flood.update(dt); Shoebench.update(dt);
     WegaBoss.update(dt); Diver.update(dt); Jellies.update(dt); Shadow.update(dt); Urio.update(dt); Destroyer.update(dt); Hearts.update(dt);
@@ -8696,6 +8993,581 @@ const Hazards = {
   },
   onPlayerRespawn() { if (Rory.active) Rory.stunT = Math.max(Rory.stunT, 1.5); },
 };
+
+// =====================================================================================
+// RORY'S CHALLENGE — a game mode: an endurance run on one huge map, synced to its song from the first beat to the last
+// =====================================================================================
+// The song (wega-music-rory.js, 145 BPM) is the clock. The timer is the song; each of its sections brings in its own
+// enemies (they land on its downbeats and beats), its own colours (blue, mostly) and its own map: walkways crack and fall
+// away in the breakdown, sky bridges rise for the drop, more walkways go for the final stretch. When the song is over:
+// OVERTIME - the drop loops and Shoebench comes for you. In a shared run the authority holds the song's clock
+// (Session.roryAge), so everyone hears the same bar and sees the same section and the same map; each player has their
+// own enemies, but they come at the same moments for everyone.
+const RORY_SONG = {
+  BEAT: 60 / 145, BAR: 240 / 145, BEAT0: 0.208, END: WegaShared.RORY_LEN, LEAD: WegaShared.RORY_LEAD,
+  bar(t) { return Math.floor((t - this.BEAT0) / this.BAR); },
+  barT(k) { return this.BEAT0 + k * this.BAR; },
+  beat(t) { return Math.floor((t - this.BEAT0) / this.BEAT); },
+  beatT(k) { return this.BEAT0 + k * this.BEAT; },
+  // where the song's sections start (bars; they match WegaShared.RORY_SECTIONS) and how each one looks:
+  // pal = [sky low, sky high, sky glow, walkway neon, fog], fog density, storm (sky + lightning), kick (beat pulse), light
+  SECTIONS: [
+    { bar: 0, id: 'intro', name: 'THE BLUE HOUR', sub: "COLLECT EVERY LIL' GUY BEFORE THE SONG ENDS", col: '#5a8cff', pal: [0x01030c, 0x0a1a4a, 0x2a6aff, 0x2a5aff, 0x020616], fog: 0.010, storm: 0, kick: 1, light: 0.9 },
+    { bar: 8, id: 'lights', name: 'SEARCHLIGHTS', sub: 'THE LASERS SWITCH ON WITH THE HI-HATS', col: '#4aa8ff', pal: [0x020818, 0x0a2a6a, 0x3a8cff, 0x3a9cff, 0x04102a], fog: 0.011, storm: 0.1, kick: 1, light: 1 },
+    { bar: 16, id: 'bass', name: 'THE BASS DROPS', sub: 'AND RORY COMES WITH IT', col: '#7a8cff', pal: [0x02020e, 0x14207a, 0x6a7aff, 0x5a6aff, 0x050620], fog: 0.012, storm: 0.25, kick: 1, light: 1 },
+    { bar: 32, id: 'glitch', name: 'THE GLITCH', sub: 'THE GLITCH GUY JOINS IN', col: '#40e8ff', pal: [0x00101a, 0x004a6a, 0x40e8ff, 0x40e0ff, 0x011420], fog: 0.012, storm: 0.2, kick: 1, light: 1 },
+    { bar: 48, id: 'fire', name: 'FIREFALL', sub: 'FIRE LANDS ON THE BEAT', col: '#5ab0ff', pal: [0x000818, 0x0a3a8a, 0x5ab0ff, 0x4aa0ff, 0x020c22], fog: 0.012, storm: 0.3, kick: 1, light: 1 },
+    { bar: 64, id: 'deep', name: 'THE DEEP END', sub: 'THE DIVER LANDS ON THE DOWNBEAT', col: '#20d0ff', pal: [0x000a14, 0x003a5a, 0x20c8ff, 0x20d0ff, 0x011a26], fog: 0.014, storm: 0.15, kick: 1, light: 1 },
+    { bar: 80, id: 'breakdown', name: 'BREAKDOWN', sub: 'THE MAP IS FALLING APART', col: '#3a64e0', pal: [0x000004, 0x02081a, 0x1a3a90, 0x1a40a0, 0x000208], fog: 0.024, storm: 0, kick: 0, light: 0.45 },
+    { bar: 87, id: 'build', name: 'SOMETHING IS COMING', sub: 'THE SKY BRIDGES ARE RISING', col: '#8aa0ff', pal: [0x00020a, 0x0a1a5a, 0x8aa8ff, 0x6a8aff, 0x020418], fog: 0.017, storm: 0.4, kick: 0.6, light: 0.7 },
+    { bar: 96, id: 'drop', name: 'THE DROP', sub: 'EVERYONE IS HERE', col: '#a0f0ff', pal: [0x020a2a, 0x1060ff, 0xa0f0ff, 0x80e8ff, 0x061440], fog: 0.009, storm: 0.85, kick: 1.3, light: 1.25 },
+    { bar: 128, id: 'storm', name: 'THE STORM', sub: 'A PIXEL FLOOD ON EVERY PHRASE', col: '#7a8aff', pal: [0x02021a, 0x1a1a7a, 0x6a7aff, 0x7a8aff, 0x04041e], fog: 0.013, storm: 1, kick: 1, light: 0.95 },
+    { bar: 152, id: 'stripped', name: 'THE FINAL STRETCH', sub: 'JUMP THE LASER GATES ON THE BEAT', col: '#8ac0f0', pal: [0x020610, 0x1a3050, 0x7ab0e0, 0x8ac0f0, 0x040a14], fog: 0.012, storm: 0.3, kick: 1, light: 0.9 },
+    { bar: 160, id: 'last', name: 'THE LAST 8 BARS', sub: 'SHOEBENCH IS WAKING UP', col: '#e0f0ff', pal: [0x04081a, 0x2a4aaa, 0xe0f0ff, 0xc0e0ff, 0x081024], fog: 0.011, storm: 0.6, kick: 1.2, light: 1.15 },
+    { bar: 168, id: 'overtime', name: 'OVERTIME', sub: 'SHOEBENCH IS COMING FOR YOU', col: '#ff6a8a', pal: [0x03030e, 0x16186a, 0x5a8cff, 0x6a8aff, 0x060a20], fog: 0.012, storm: 0.7, kick: 1.2, light: 1, alarm: true },
+  ],
+  sectionOfBar(b) { let i = 0; while (i + 1 < this.SECTIONS.length && b >= this.SECTIONS[i + 1].bar) i++; return i; },
+  sectionIndex(t) { return t < this.BEAT0 ? 0 : this.sectionOfBar(this.bar(t)); },
+};
+
+// RORY'S CHALLENGE's Lil' Guys: JACKPOTS rings of 6 on a few platforms, then double rows (two lanes of ROW) on walkways
+// until there are `total` (500+). Returns the positions and the walkways they're on (those never fall away).
+function placeRoryLilGuys(g, seed, total) {
+  const rng = mulberry32(seed), R = CONFIG.RORY, sp = CONFIG.COLLECT_SPACING, hov = CONFIG.COLLECT_HOVER, out = [], used = new Set();
+  for (const n of shuffle(g.nodes.filter((x) => x.id !== g.start), rng).slice(0, R.JACKPOTS)) {
+    const a0 = rng() * 6.283;
+    for (let i = 0; i < 6 && out.length < total; i++) { const a = a0 + i / 6 * Math.PI * 2; out.push(new THREE.Vector3(n.x + Math.cos(a) * 1.25, n.y + hov, n.z + Math.sin(a) * 1.25)); }
+  }
+  for (const e of shuffle(g.edges.slice(), rng)) {
+    if (out.length >= total) break;
+    const I = e.info, L = I.len3, per = Math.min(R.ROW, Math.floor((L - 1.2) / sp) + 1);
+    used.add(e);
+    for (const lane of [-0.55, 0.55]) for (let i = 0; i < per && out.length < total; i++) {
+      edgePoint(I, 0.5 + ((i - (per - 1) / 2) * sp) / L, _v1); _v1.y += hov;
+      if (I.axis === 0) _v1.z += lane; else _v1.x += lane;
+      out.push(_v1.clone());
+    }
+  }
+  if (out.length !== total) console.warn("[Wega] RORY'S CHALLENGE: Lil' Guy count mismatch", out.length, total);
+  return { positions: out, edges: used };
+}
+
+// ---------------- RORY'S CHALLENGE: the map (14 x 14 platforms; parts of it come and go with the song) ----------------
+// Groups of walkways that the song changes (bars of the song: warn = cracks flash, gone = fallen away, rise = coming
+// back up, back = solid again). Fragile groups are empty walkways whose loss never cuts a platform off; bridge groups are
+// sky bridges of hard light between platforms that had no way across. Everything follows the song's clock, so it's the
+// same map for everyone at every moment.
+const RoryMap = {
+  g: null, total: -1, positions: null, fragile: new Set(), groups: [],
+  GROUPS: [
+    { id: 'breakdown', kind: 'fragile', n: 10, warn: 80, gone: 82, rise: 94, back: 96 },
+    { id: 'drop', kind: 'bridge', n: 12, rise: 94, back: 96, warn: 126, gone: 128 },
+    { id: 'final', kind: 'fragile', n: 9, warn: 150, gone: 152, rise: 1e9, back: 1e9 },
+    { id: 'last8', kind: 'bridge', n: 10, rise: 158, back: 160, warn: 1e9, gone: 1e9 },
+  ],
+  graph() {
+    if (!this.g) { const R = CONFIG.RORY; this.g = genGraph(R.SEED, R.N, 8); this.g.edges.forEach((e) => { e.info = edgeInfo(this.g, e); }); }
+    return this.g;
+  },
+  // everything that depends on how many Lil' Guys there are (the difficulty): where they go, which walkways can fall
+  prepare(total) {
+    const g = this.graph();
+    if (total === this.total) return;
+    this.total = total;
+    const P = placeRoryLilGuys(g, CONFIG.RORY.LG_SEED, total);
+    this.positions = P.positions;
+    const rng = mulberry32(CONFIG.RORY.SEED + total), cand = shuffle(g.edges.filter((e) => !P.edges.has(e) && !e.info.stairs && e.a !== g.start && e.b !== g.start), rng);
+    const gone = new Set(); this.fragile = new Set();
+    // free spots for the sky bridges: neighbouring platforms with no walkway between them
+    const N = CONFIG.RORY.N, have = new Set(g.edges.map((e) => edgeKey(e.a, e.b))), pairs = [];
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      const a = j * N + i;
+      if (i < N - 1 && !have.has(edgeKey(a, a + 1))) pairs.push([a, a + 1]);
+      if (j < N - 1 && !have.has(edgeKey(a, a + N))) pairs.push([a, a + N]);
+    }
+    shuffle(pairs, mulberry32(CONFIG.RORY.SEED * 3 + 1));
+    this.groups = this.GROUPS.map((d) => Object.assign({ edges: [], colliders: [], mesh: null, glow: null, cracks: null, state: null, since: 0 }, d));
+    for (const G of this.groups) {
+      if (G.kind === 'fragile') {
+        for (const e of cand) {
+          if (G.edges.length >= G.n) break;
+          if (this.fragile.has(e)) continue;
+          gone.add(e);
+          if (graphConnected(g.nodes.length, g.edges.filter((x) => !gone.has(x)), g.start)) { G.edges.push(e); this.fragile.add(e); } else gone.delete(e);
+        }
+      } else {
+        while (G.edges.length < G.n && pairs.length) { const [a, b] = pairs.shift(); const e = { a, b, kind: 'bridge' }; e.info = edgeInfo(g, e); G.edges.push(e); }
+      }
+    }
+  },
+  mats() {
+    if (this.M) return this.M;
+    const c = makeCanvas(64, 256), ctx = c.getContext('2d');
+    ctx.fillStyle = 'rgba(40,120,255,0.35)'; ctx.fillRect(0, 0, 64, 256);
+    for (let k = 0; k < 4; k++) { ctx.fillStyle = 'rgba(160,230,255,0.9)'; ctx.beginPath(); const y = k * 64; ctx.moveTo(4, y + 44); ctx.lineTo(32, y + 14); ctx.lineTo(60, y + 44); ctx.lineTo(60, y + 58); ctx.lineTo(32, y + 28); ctx.lineTo(4, y + 58); ctx.fill(); }
+    ctx.fillStyle = 'rgba(220,250,255,1)'; ctx.fillRect(0, 0, 4, 256); ctx.fillRect(60, 0, 4, 256);
+    const tex = canvasTex(c); tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    this.M = {
+      bridge: new THREE.MeshBasicMaterial({ map: tex, color: 0x9ad8ff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }),
+      cracks: new THREE.MeshBasicMaterial({ map: TEX.shatter || TEX.glow, color: 0xff4070, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, fog: false }),
+      edge: new THREE.MeshBasicMaterial({ color: 0xbfeaff, fog: false }),
+    };
+    return this.M;
+  },
+  // (Maze.build of the Rory map calls this after the fixed walkways are in)
+  build(top, side) {
+    const M = this.mats(), W = CONFIG.WALK_W, white = new THREE.Color(1, 1, 1);
+    for (const G of this.groups) {
+      const walk = new BoxBatch(), glow = new BoxBatch(); G.colliders = []; G.state = null;
+      for (const e of G.edges) {
+        const I = e.info, mid = (I.c0 + I.c1) / 2, A = this.g.nodes[e.a], B = this.g.nodes[e.b];
+        const X = (c, o) => (I.axis === 0 ? c : o), Z = (c, o) => (I.axis === 0 ? o : c);
+        Nav.segs.push({ ax: A.x, ay: A.y, az: A.z, bx: B.x, by: B.y, bz: B.z });
+        if (!I.stairs) {
+          walk.box(X(mid, I.other), I.y0 - (G.kind === 'bridge' ? 0.08 : 0.5), Z(mid, I.other), I.axis === 0 ? I.len + 0.02 : W, G.kind === 'bridge' ? 0.16 : CONFIG.WALK_T, I.axis === 0 ? W : I.len + 0.02, top, side);
+          G.colliders.push(World.addBox(X(I.c0, I.other - W / 2), I.y0 - 1, Z(I.c0, I.other - W / 2), X(I.c1, I.other + W / 2), I.y0, Z(I.c1, I.other + W / 2), G.kind));
+        } else {
+          const steps = Math.max(1, Math.round(Math.abs(I.rise) / CONFIG.STEP_RISE)), d = I.len / steps;
+          for (let k = 0; k < steps; k++) {
+            const cc = I.c0 + (k + 0.5) * d, ty = I.y0 + (k + 0.5) * (I.rise / steps);
+            walk.box(X(cc, I.other), ty - (G.kind === 'bridge' ? 0.08 : 0.5), Z(cc, I.other), I.axis === 0 ? d + 0.01 : W, G.kind === 'bridge' ? 0.16 : CONFIG.WALK_T, I.axis === 0 ? W : d + 0.01, top, side);
+          }
+          G.colliders.push(World.addRamp(X(I.c0, I.other - W / 2), Z(I.c0, I.other - W / 2), X(I.c1, I.other + W / 2), Z(I.c1, I.other + W / 2), I.axis, I.y0, I.y1, G.kind));
+        }
+        for (const s of [-1, 1]) {
+          const o = I.other + s * (W / 2 - 0.04);
+          if (!I.stairs) glow.box(X(mid, o), I.y0 + 0.012, Z(mid, o), I.axis === 0 ? I.len : 0.08, 0.08, I.axis === 0 ? 0.08 : I.len, white);
+          else { _m1.identity(); if (I.axis === 0) _m1.makeRotationZ(Math.atan2(I.rise, I.len)); else _m1.makeRotationX(-Math.atan2(I.rise, I.len)); _m1.setPosition(X(mid, o), (I.y0 + I.y1) / 2 + 0.1, Z(mid, o)); glow.boxM(I.axis === 0 ? I.len3 : 0.08, 0.08, I.axis === 0 ? 0.08 : I.len3, _m1, white); }
+        }
+      }
+      G.mesh = Maze.addMesh(walk.build(G.kind === 'bridge' ? M.bridge : Maze.mats.walk6));
+      G.glow = Maze.addMesh(glow.build(G.kind === 'bridge' ? M.edge : Maze.mats.edge));
+      if (G.kind === 'fragile' && G.mesh) { G.cracks = new THREE.Mesh(G.mesh.geometry, M.cracks); G.mesh.add(G.cracks); }
+      for (const m of [G.mesh, G.glow]) if (m) m.matrixAutoUpdate = true;
+    }
+  },
+  // which state a group is in at song time t ('solid' | 'warn' | 'gone' | 'rise'; 'off' = a bridge that isn't up yet)
+  stateAt(G, t) {
+    const B = (k) => RORY_SONG.barT(k);
+    if (G.kind === 'fragile') return t < B(G.warn) ? 'solid' : t < B(G.gone) ? 'warn' : t < B(G.rise) ? 'gone' : t < B(G.back) ? 'rise' : 'solid';
+    return t < B(G.rise) ? 'off' : t < B(G.back) ? 'rise' : t < B(G.warn) ? 'solid' : t < B(G.gone) ? 'warn' : 'gone';
+  },
+  update(t, kick) {
+    let nav = false;
+    for (const G of this.groups) {
+      if (!G.mesh) continue;
+      const st = this.stateAt(G, t);
+      if (st !== G.state) {
+        const prev = G.state; G.state = st; G.since = st === 'rise' ? RORY_SONG.barT(G.rise) : st === 'gone' ? RORY_SONG.barT(G.gone) : t; nav = true;
+        if (prev && st === 'warn') { Sfx.crumble(); Hands.pulse('both', 0.3, 120); }
+        else if (prev && st === 'gone') { Sfx.boom(null, true); Sfx.crumble(); }
+        else if (prev && st === 'rise') { Sfx.portal(); }
+        else if (prev && st === 'solid' && prev === 'rise') { Sfx.lapPortal(); }
+      }
+      const solid = st === 'solid' || st === 'warn';
+      for (const c of G.colliders) c.active = solid;
+      const k = clamp((t - G.since) / RORY_SONG.BAR, 0, 1), bridge = G.kind === 'bridge';
+      let y = 0, vis = true, op = 1;
+      if (st === 'warn') { y = Math.sin(Clock.real * 47) * 0.025; if (G.cracks) G.cracks.material.opacity = Save.s.reduceFlash ? 0.5 : (Math.sin(Clock.real * 18) > 0 ? 0.95 : 0.35); }
+      else if (st === 'gone') { y = -k * k * 26; op = 1 - k; vis = k < 1; }
+      else if (st === 'rise') { const kr = clamp((t - G.since) / (RORY_SONG.barT(G.back) - RORY_SONG.barT(G.rise)), 0, 1); y = -16 * (1 - easeOutQuad(kr)); op = 0.25 + 0.75 * kr; }
+      else if (st === 'off') vis = false;
+      else if (G.cracks) G.cracks.material.opacity = 0;
+      G.mesh.visible = vis; G.mesh.position.y = y;
+      if (G.glow) { G.glow.visible = vis; G.glow.position.y = y; }
+      if (bridge) { this.M.bridge.opacity = 0.55 + 0.35 * op + kick * 0.1; this.M.bridge.map.offset.y = -Clock.real * 0.8; }
+    }
+    if (nav) this.syncNav();
+  },
+  // the paths Rory & co take: only over walkways that are there right now
+  syncNav() {
+    const g = this.g, live = [];
+    const down = new Set(); for (const G of this.groups) if (G.kind === 'fragile' && !(G.state === 'solid' || G.state === 'warn')) for (const e of G.edges) down.add(e);
+    for (const e of g.edges) if (!down.has(e)) live.push(e);
+    for (const G of this.groups) if (G.kind === 'bridge' && (G.state === 'solid' || G.state === 'warn')) live.push(...G.edges);
+    for (const n of g.nodes) n.adj = [];
+    for (const e of live) { const A = g.nodes[e.a], B = g.nodes[e.b], cost = Math.hypot(A.x - B.x, A.y - B.y, A.z - B.z); A.adj.push({ to: e.b, cost }); B.adj.push({ to: e.a, cost }); }
+  },
+};
+
+// ---------------- RORY'S CHALLENGE: the world follows the song (colours per section, every kick, every bar) ----------------
+const RoryWorld = {
+  uni: { uKick: { value: 0 }, uWave: { value: 0 }, uBright: { value: 1 }, uTime: Sky.uni.uTime, uRoryA: { value: new THREE.Color(0x2a5aff) }, uRoryB: { value: new THREE.Color(0x2a6aff) } },
+  cur: null, tgt: null, glow: new THREE.Color(), fog: 0.01, storm: 0, light: 1, kick: 0, flash: 0, si: -1, last: 0,
+  init() {
+    const mk = () => [0, 1, 2, 3, 4].map(() => new THREE.Color());
+    this.cur = mk(); this.tgt = mk(); this.snap(0);
+  },
+  snap(si) { const S = RORY_SONG.SECTIONS[si]; S.pal.forEach((c, i) => { this.tgt[i].set(c); this.cur[i].set(c); }); this.fog = S.fog; this.storm = S.storm; this.light = S.light; },
+  // a new section: its colours (the drop and overtime snap in with a flash; the rest ease in over a bar or so)
+  onSection(si, fresh) {
+    const S = RORY_SONG.SECTIONS[si];
+    S.pal.forEach((c, i) => this.tgt[i].set(c));
+    if (!this.cur) this.init();
+    if (!fresh) { this.snap(si); return; }
+    if (S.id === 'drop' || S.id === 'overtime' || S.id === 'last') { this.snap(si); this.flash = 2.2; Effects.doFlash(S.id === 'overtime' ? 0xff4060 : 0xc8f0ff, 0.6); }   // (overtime: one red alarm flash, then blue with red pulses)
+    else if (S.id === 'breakdown') { this.flash = 0; Effects.doFlash(0x000000, 0.4); }
+    else this.flash = 1;
+  },
+  update(lvl) {
+    if (!this.cur) this.init();
+    const now = performance.now(), dt = Math.min(0.1, (now - (this.last || now)) / 1000); this.last = now;
+    const songT = RoryRun.songT(), t = RoryRun.beatT();
+    Music.syncRory(songT);                                   // the song itself, on the run's clock
+    const si = RORY_SONG.sectionIndex(Math.max(0, t)), S = RORY_SONG.SECTIONS[si];
+    if (si !== this.si) { const fresh = this.si >= 0 && si === this.si + 1; this.si = si; this.onSection(si, fresh); }
+    // ease the colours towards the section's
+    const k = 1 - Math.exp(-2.2 * dt);
+    for (let i = 0; i < 5; i++) this.cur[i].lerp(this.tgt[i], k);
+    // the glow colour (overtime: still blue, but on every downbeat it flares alarm-red and dies away inside the bar)
+    const glow = this.glow.copy(this.cur[2]);
+    if (S.alarm && t >= 0) { const ph = (((t - RORY_SONG.BEAT0) / RORY_SONG.BAR) % 1 + 1) % 1; glow.lerp(_c1.set(0xff2a50), Math.exp(-ph * 7) * 0.5); }
+    this.fog = lerp(this.fog, S.fog, k); this.storm = lerp(this.storm, S.storm, k); this.light = lerp(this.light, S.light, k);
+    // the kick: every beat (the build-up doubles it, then doubles it again; the breakdown has none)
+    let kick = 0;
+    if (t >= 0) {
+      const sub = S.id === 'build' ? (RORY_SONG.bar(t) >= 93 ? 4 : RORY_SONG.bar(t) >= 91 ? 2 : 1) : 1;
+      const ph = (((t - RORY_SONG.BEAT0) / (RORY_SONG.BEAT / sub)) % 1 + 1) % 1;
+      kick = Math.exp(-ph * 7) * S.kick + lvl * 0.35;
+    }
+    this.kick = kick; this.flash = Math.max(0, this.flash - dt * 2.5);
+    const barPh = t >= 0 ? (((t - RORY_SONG.BEAT0) / RORY_SONG.BAR) % 1 + 1) % 1 : 1;
+    const U = this.uni, dark = Mods.on('dark') ? 0.4 : 1;
+    U.uKick.value = kick; U.uWave.value = barPh * 140; U.uBright.value = (0.75 + this.flash * 0.3) * dark;
+    U.uRoryA.value.copy(this.cur[3]); U.uRoryB.value.copy(glow);
+    // fog, lights, sky, the floor grid, the neon edges
+    const L = CONFIG.LIGHT_SCALE, f = scene.fog;
+    f.color.copy(this.cur[4]); f.density = this.fog * (Mods.on('dark') ? 2.6 : 1) + (Mods.on('dark') ? 0.012 : 0);
+    hemi.color.copy(glow).lerp(_c1.set(0xffffff), 0.35); hemi.groundColor.copy(this.cur[0]); hemi.intensity = (1.0 + kick * 0.25) * this.light * L * dark;
+    dirLight.color.copy(this.cur[3]).lerp(_c1.set(0xffffff), 0.5); dirLight.intensity = 0.7 * this.light * L * dark;
+    const su = Sky.uni; su.uSkyA.value.copy(this.cur[0]); su.uSkyB.value.copy(this.cur[1]); su.uSkyC.value.copy(glow); su.uStorm.value = this.storm; su.uKick.value = kick;
+    su.uBright.value = (S.id === 'breakdown' ? 0.55 : 1) * (Mods.on('dark') ? 0.3 : 1);
+    Sky.lavaUni.uGrid.value.copy(this.cur[3]).multiplyScalar(0.6 + kick * 0.7);
+    Maze.mats.edge.color.copy(this.cur[3]).multiplyScalar((0.45 + kick * 1.0 + this.flash * 0.4) * dark);
+    if (RoryMap.M) RoryMap.M.edge.color.copy(glow).lerp(_c1.set(0xffffff), 0.4).multiplyScalar(0.8 + kick * 0.6);
+    Maze.mats.startRing.color.copy(glow);
+    RoryMap.update(songT, kick);
+    RoryDeco.update(dt, t, kick, S, lvl);
+  },
+};
+
+// ---------------- RORY'S CHALLENGE: the scenery (a spectrum round the world, neon rings, pillars, crystals, giant Rory) ----------------
+const RoryDeco = {
+  group: null, eq: null, rings: [], pillars: null, crystals: [], giant: null, giantGlow: null, bolts: [], boltT: 2, t: 0, spec: null, op: 0,
+  build() {
+    const g = this.group = new THREE.Group(); g.visible = false; G.mazeDeco.add(g);
+    // a spectrum analyser of light round the whole world: every column is a band of the song
+    const NE = 84, eg = new THREE.BoxGeometry(5.2, 1, 5.2); eg.translate(0, 0.5, 0);
+    this.eq = new THREE.InstancedMesh(eg, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }), NE);
+    this.eq.frustumCulled = false; this.eqN = NE; g.add(this.eq);
+    for (let i = 0; i < NE; i++) this.eq.setColorAt(i, _c1.setHSL(0.55 + 0.12 * Math.sin(i / NE * Math.PI * 2), 1, 0.55));
+    // three huge neon rings, tilted, turning
+    const ringMat = (c) => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+    [[200, 0.9, 0x3a8cff, 0.45], [228, 1.1, 0x40e8ff, -0.3], [258, 1.4, 0x6a7aff, 0.18]].forEach(([r, tube, c, tilt], i) => {
+      const m = new THREE.Mesh(new THREE.TorusGeometry(r, tube, 6, 160), ringMat(c));
+      m.position.y = 14 + i * 9; m.rotation.set(Math.PI / 2 + tilt, 0, 0); m.frustumCulled = false; g.add(m); this.rings.push(m);
+    });
+    // pillars of light at the corners of the map: they flash on every bar
+    const pg = [], half = (CONFIG.RORY.N - 1) * CONFIG.GRID_SPACING / 2 + 12;
+    for (const [x, z] of [[-half, -half], [half, -half], [-half, half], [half, half], [0, -half - 14], [0, half + 14], [-half - 14, 0], [half + 14, 0]]) pg.push(new THREE.CylinderGeometry(1.6, 3.4, 220, 12, 1, true).translate(x, 60, z));
+    this.pillars = new THREE.Mesh(mergeGeometries(pg), new THREE.MeshBasicMaterial({ color: 0x6ab8ff, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+    pg.forEach((x) => x.dispose()); this.pillars.frustumCulled = false; g.add(this.pillars);
+    // crystals drifting round the map (wireframe + a faint core)
+    const rng = mulberry32(6601), geos = [new THREE.OctahedronGeometry(1, 0), new THREE.IcosahedronGeometry(1, 0), new THREE.TetrahedronGeometry(1.2, 0)];
+    for (let i = 0; i < 22; i++) {
+      const geo = geos[i % geos.length], a = rng() * 6.283, r = rrng(rng, 160, 230), s = rrng(rng, 3, 10);
+      const wire = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: [0x5ab0ff, 0x40e8ff, 0x8aa0ff][i % 3], fog: false }));
+      const core = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x3a8cff, transparent: true, opacity: 0.15, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+      const grp = new THREE.Group(); grp.add(wire, core); grp.scale.setScalar(s);
+      grp.position.set(Math.cos(a) * r, rrng(rng, -20, 50), Math.sin(a) * r); grp.userData = { spin: rrng(rng, -0.5, 0.5), bob: rng() * 6, y: grp.position.y };
+      g.add(grp); this.crystals.push(grp);
+    }
+    // giant RORY, watching from the sky (the bass, the drop, the last bars, overtime)
+    this.giant = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.rory, color: 0x9ad0ff, transparent: true, opacity: 0, depthWrite: false, fog: false }));
+    this.giant.center.set(0.5, 0); this.giant.scale.set(56, 112, 1); this.giant.renderOrder = -4; g.add(this.giant);
+    this.giantGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0x3a8cff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    this.giantGlow.scale.set(140, 140, 1); this.giantGlow.renderOrder = -5; g.add(this.giantGlow);
+    // blue lightning in the storm
+    for (let i = 0; i < 3; i++) {
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(40 * 3), 3));
+      const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xd0e8ff, transparent: true, fog: false, blending: THREE.AdditiveBlending }));
+      line.frustumCulled = false; line.visible = false; g.add(line);
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0x3a8cff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); glow.visible = false; g.add(glow);
+      this.bolts.push({ line, glow, t: 9 });
+    }
+  },
+  show(on) { if (this.group) this.group.visible = on; },
+  strike(b) {
+    camera.getWorldPosition(_v1);
+    const a = Math.random() * 6.283, r = rr(60, 160), x0 = _v1.x + Math.cos(a) * r, z0 = _v1.z + Math.sin(a) * r, arr = b.line.geometry.attributes.position.array;
+    let x = x0, y = 120, z = z0;
+    for (let i = 0; i < 40; i++) { arr[i * 3] = x; arr[i * 3 + 1] = y; arr[i * 3 + 2] = z; x += rr(-5, 5); z += rr(-5, 5); y -= 160 / 40; }
+    b.line.geometry.attributes.position.needsUpdate = true;
+    b.line.visible = b.glow.visible = true; b.glow.position.set(x0, 40, z0); b.glow.scale.set(170, 170, 1); b.t = 0;
+    if (Math.random() < 0.5) Sfx.thunder();
+  },
+  update(dt, t, kick, S, lvl) {
+    if (!this.group || !this.group.visible) return;
+    this.t += dt;
+    const W = RoryWorld, c2 = W.glow, c3 = W.cur[3];
+    // the spectrum: the song's own frequency bands (the analyser), or the kick if there's no music
+    const an = Music.ok() && window.WegaMusic.getAnalyser ? window.WegaMusic.getAnalyser() : null;
+    if (an) { if (!this.spec) this.spec = new Uint8Array(an.frequencyBinCount); an.getByteFrequencyData(this.spec); }
+    const N = this.eqN, R = 172;                     // (outside the map's corners, ~129 m from the middle)
+    for (let i = 0; i < N; i++) {
+      const band = this.spec ? this.spec[Math.min(this.spec.length - 1, 1 + Math.floor((i % (N / 2)) / (N / 2) * 70))] / 255 : kick * (0.5 + 0.5 * Math.sin(i * 1.3 + this.t * 3));
+      const a = i / N * Math.PI * 2, h = 2 + band * band * 52 + (t < 0 ? 0 : kick * 3);
+      _m1.makeScale(1.6, h, 1.6); _m1.setPosition(Math.cos(a) * R, -42, Math.sin(a) * R); this.eq.setMatrixAt(i, _m1);
+    }
+    this.eq.instanceMatrix.needsUpdate = true; this.eq.material.color.copy(c3).lerp(_c1.set(0xffffff), 0.25);
+    this.rings.forEach((r, i) => { r.rotation.z += dt * (0.04 + i * 0.025) * (i % 2 ? -1 : 1); r.scale.setScalar(1 + kick * 0.03); r.material.color.copy(i === 1 ? c2 : c3); r.material.opacity = 0.35 + kick * 0.4 + W.flash * 0.2; });
+    const barPh = t >= 0 ? (((t - RORY_SONG.BEAT0) / RORY_SONG.BAR) % 1 + 1) % 1 : 1;
+    this.pillars.material.color.copy(c2); this.pillars.material.opacity = (0.06 + Math.exp(-barPh * 5) * 0.45 * S.kick) * (S.id === 'breakdown' ? 0.3 : 1);
+    for (const s of this.crystals) { const u = s.userData; s.rotation.y += dt * u.spin; s.rotation.x += dt * u.spin * 0.5; s.position.y = u.y + Math.sin(this.t * 0.5 + u.bob) * 2.5; s.children[0].material.color.copy(c2); s.children[1].material.opacity = 0.08 + kick * 0.3; }
+    // giant Rory walks slowly round the horizon, bobbing to the beat
+    const want = { bass: 0.35, glitch: 0.2, drop: 0.95, storm: 0.55, last: 1, overtime: 1 }[S.id] || 0;
+    this.op = damp(this.op, want, 1.2, dt);
+    const ga = this.t * 0.018, gx = Math.cos(ga) * 235, gz = Math.sin(ga) * 235, bob = t >= 0 ? Math.abs(Math.sin((t - RORY_SONG.BEAT0) / RORY_SONG.BEAT * Math.PI)) : 0;
+    this.giant.position.set(gx, -40 + bob * 2.5, gz); this.giant.scale.set(56 * (1 + kick * 0.03), 112 * (1 - bob * 0.03), 1);
+    this.giant.material.opacity = this.op * 0.9; this.giant.visible = this.op > 0.01;
+    this.giantGlow.position.set(gx, 20, gz); this.giantGlow.material.opacity = this.op * (0.35 + kick * 0.35); this.giantGlow.material.color.copy(c2); this.giantGlow.visible = this.giant.visible;
+    // lightning when the sky storms
+    this.boltT -= dt;
+    if (this.boltT <= 0 && W.storm > 0.55 && !Save.s.reduceFlash) { this.boltT = rr(1.6, 4.5) / W.storm; this.strike(this.bolts.find((b) => b.t > 0.5) || this.bolts[0]); }
+    for (const b of this.bolts) {
+      b.t += dt; const kk = b.t < 0.06 ? 1 : b.t < 0.12 ? 0.3 : b.t < 0.2 ? 1 : Math.max(0, 1 - (b.t - 0.2) * 4);
+      b.line.material.opacity = kk; b.glow.material.opacity = kk * 0.7;
+      if (kk <= 0) b.line.visible = b.glow.visible = false;
+    }
+    void lvl;
+  },
+};
+
+// ---------------- RORY'S CHALLENGE: the beat card (count-ins, the drop's countdown, the last 8 bars) ----------------
+const RoryCard = {
+  p: null, t: 9, hold: 0.4, text: '',
+  init() { this.p = headPlane(512, 256, 0.5, 0.25, 0, 0.27, -1.25, 2400); },        // above the announcements
+  show(text, color, o = {}) {
+    const { ctx, c, tex, mesh } = this.p; ctx.clearRect(0, 0, c.width, c.height);
+    drawText(ctx, text, 256, o.sub ? 112 : 132, { size: o.size || 150, style: 'italic 900', font: FONT_IMPACT, fill: '#ffffff', stroke: '#000', lw: 12, glow: color || '#3a8cff', glowBlur: 30, maxWidth: 500, skew: 0.1 });
+    if (o.sub) drawText(ctx, o.sub, 256, 214, { size: 30, style: 'italic 900', font: FONT_IMPACT, fill: color || '#9ad0ff', stroke: '#000', lw: 6, spacing: 0.12, maxWidth: 500 });
+    tex.needsUpdate = true; mesh.visible = true; this.t = 0; this.hold = o.hold || 0.32; this.text = text;
+  },
+  hide() { if (this.p) { this.p.mesh.visible = false; this.t = 9; } },
+  update(dt) {
+    if (!this.p || !this.p.mesh.visible) return;
+    this.t += dt;
+    const pop = this.t < 0.12 ? 1.45 - this.t / 0.12 * 0.45 : 1, fade = this.t < this.hold ? 1 : Math.max(0, 1 - (this.t - this.hold) / 0.25);
+    this.p.mesh.scale.set(pop, pop, 1); this.p.mesh.material.opacity = fade;
+    if (fade <= 0) this.p.mesh.visible = false;
+  },
+};
+
+// ---------------- RORY'S CHALLENGE: who comes in when (Hazards mode 'rory') ----------------
+// Each section of the song has its rules; everything is planned two bars ahead so it lands ON the music: a Screamer's
+// dash, the Diver's impact, a laser switching on and a laser gate hit a downbeat, fireballs land on beats, Rory's feet
+// hit every beat. Bars decide what happens (the same for everyone in a shared run); where is up to each player's own run.
+const RoryDirector = {
+  on: false, sec: -1, q: [], planned: -1e9, lastBeat: null, gates: new Map(),        // gates: laser gate -> when it was set
+  // lasers: beams up at once; rory: [start bar, bars, ...]; screamer / diver / wega: every N bars into the section
+  // (wega -1: there, watching); fire: every N beats; flood / head: on those bars; gates: a laser gate every bar
+  RULES: {
+    intro: {},
+    lights: { lasers: 2 },
+    bass: { lasers: 2, rory: [16, 12], screamer: 4 },
+    glitch: { lasers: 3, glitch: true, rory: [40, 8], screamer: 4 },
+    fire: { lasers: 3, glitch: true, fire: 2, rory: [56, 8], head: [52, 60] },
+    deep: { lasers: 2, diver: 2, rory: [66, 8], flood: [72], screamer: 8 },
+    breakdown: { shadow: true, jellies: true },
+    build: { shadow: true, wega: -1 },
+    drop: { lasers: 4, wega: 2, screamer: 2, diver: 4, fire: 4, rory: [96, 16, 116, 12] },
+    storm: { lasers: 3, wega: 4, glitch: true, flood: [128, 136, 144], fire: 4, rory: [136, 8] },
+    stripped: { gates: 1, screamer: 2, rory: [152, 8] },
+    last: { lasers: 3, diver: 2, fire: 2, rory: [160, 8] },
+    overtime: { lasers: 2, screamer: 4, roryEvery: 16 },
+  },
+  reset() { this.clear(); this.on = true; Rory.syncSteps = true; },
+  clear() {
+    for (const l of this.gates.keys()) l.stop();
+    this.on = false; this.q.length = 0; this.sec = -1; this.planned = -1e9; this.lastBeat = null; this.gates.clear();
+    Rory.syncSteps = false; Diver.synced = false; WegaBoss.synced = false;
+  },
+  // every-N rules get stretched on CHILL and tightened on HARD / WEGA MODE
+  per(n) { const k = diff().threat; return Math.max(1, Math.round(n * (k < 0.8 ? 2 : k > 1.5 ? 0.5 : k > 1.2 ? 0.75 : 1))); },
+  laserCount(n) { return clamp(n + (diff().hostile >= 1.3 ? 1 : 0) + (Mods.on('lasers') ? 2 : 0) - (diff().threat < 0.8 ? 1 : 0), 1, 7); },
+  at(t, fn) { this.q.push({ t, fn }); },
+  update() {
+    if (!this.on) return;
+    const t = RoryRun.beatT(), bar = RORY_SONG.bar(t);
+    // a new section: who's in it (joining late or coming back: whatever it has right now)
+    if (t >= 0) { const si = RORY_SONG.sectionOfBar(bar); if (si !== this.sec) { const was = this.sec; this.sec = si; this.enter(si, was >= 0 && si === was + 1); } }
+    if (this.planned < bar) this.planned = bar;                  // (never plan the past)
+    while (this.planned < bar + 2) { this.planned++; if (this.planned >= 0) this.plan(this.planned); }
+    const b = RORY_SONG.beat(t);
+    if (this.lastBeat == null || b < this.lastBeat) this.lastBeat = b;
+    else if (b > this.lastBeat) { this.lastBeat = b; if (t >= 0) this.onBeat(b); }
+    // laser gates are only up for a moment (a beat and a half, on the downbeat)
+    for (const [l, t0] of this.gates) if (t - t0 > CONFIG.LASER_TELEGRAPH + RORY_SONG.BEAT * 2 || t < t0 - 1 || !l.active) { l.stop(); this.gates.delete(l); }
+    // whatever is due (anything more than half a second late - a stall, a jump - is dropped)
+    for (let i = this.q.length - 1; i >= 0; i--) {
+      const e = this.q[i];
+      if (t < e.t) continue;
+      this.q.splice(i, 1);
+      if (t - e.t < 0.5 && SM.isGameplay()) { try { e.fn(); } catch (err) { console.error('[Wega] rory director', err); } }
+    }
+  },
+  roryWindow(R, bar) {
+    if (!R.rory) return 0;
+    for (let i = 0; i < R.rory.length; i += 2) if (bar >= R.rory[i] && bar < R.rory[i] + R.rory[i + 1]) return R.rory[i] + R.rory[i + 1] - bar;
+    return 0;
+  },
+  enter(si, fresh) {
+    const S = RORY_SONG.SECTIONS[si], R = this.RULES[S.id] || {}, bar = RORY_SONG.bar(RoryRun.beatT());
+    if (R.glitch) { if (GlitchGuy.state === 'off') GlitchGuy.reset(1.5); } else GlitchGuy.stop();
+    if (R.shadow) { if (!Shadow.active) Shadow.start(); } else Shadow.stop();
+    if (R.jellies) { if (!Jellies.active) Jellies.start(); } else Jellies.stop();
+    if (R.wega) { if (!WegaBoss.active) WegaBoss.start(false, true); WegaBoss.synced = true; } else if (WegaBoss.active) WegaBoss.stop();
+    if (R.diver) { if (Diver.state === 'off') Diver.start(false, true); Diver.synced = true; } else Diver.stop();
+    // the breakdown: the lights go out and everyone's gone... except your shadow
+    if (S.id === 'breakdown') { Rory.despawn(true); Screamer.clear(); Flood.stop(); WegaHead.stop(); for (const l of Hazards.lasers) l.stop(); for (const f of Hazards.fireballs) f.stop(); this.gates.clear(); }
+    // inside one of the section's Rory windows (a late join, a comeback): he comes now, for what's left of it
+    if (!fresh) { const w = this.roryWindow(R, bar); if (w > 0) this.rory(w); }
+    Announce.queue.length = 0;                 // (the song has moved on: whatever was still waiting to be said is old news)
+    UI.announce(S.name, { color: S.col });
+    if (S.sub) UI.announce(S.sub, { color: '#ffffff', short: true });
+    if (fresh && S.id === 'drop') { Sfx.boom(null, true); Cue.play('wegaRoar'); Hands.pulse('both', 0.8, 400); }
+    if (fresh && S.id === 'breakdown') Sfx.crumble();
+  },
+  // what bar `bar` brings (scheduled so it lands on the music)
+  plan(bar) {
+    const si = RORY_SONG.sectionOfBar(bar), S = RORY_SONG.SECTIONS[si], R = this.RULES[S.id] || {}, bt = RORY_SONG.barT(bar), rel = bar - S.bar, H = Math.sqrt(diff().hostile);
+    const every = (n) => n > 0 && rel > 0 && rel % this.per(n) === 0;
+    if (R.rory) for (let i = 0; i < R.rory.length; i += 2) if (bar === R.rory[i]) { const len = R.rory[i + 1]; this.at(bt, () => this.rory(len)); }
+    if (R.roryEvery && rel % R.roryEvery === 8) this.at(bt, () => this.rory(8));
+    // RORY RAMPAGE: he's back every 8 bars wherever the song doesn't already send him
+    if (Mods.on('rory') && !['intro', 'breakdown', 'build'].includes(S.id) && bar % 8 === 4 && !this.roryWindow(R, bar)) this.at(bt, () => this.rory(6));
+    if (R.lasers && rel % 2 === 0) { const n = this.laserCount(R.lasers); this.at(bt - CONFIG.LASER_TELEGRAPH, () => this.laser(n)); }
+    if (every(R.screamer)) this.at(bt - CONFIG.SCREAMER_TELEGRAPH / H, () => { if (Screamer.state === 'idle' && !Player.respawning) Screamer.trigger(); });
+    if (R.fire) { const n = this.per(R.fire); for (let q = 0; q < 4; q++) { const b = bar * 4 + q; if (b % n === 0) this.at(RORY_SONG.beatT(b) - CONFIG.FIREBALL_TELEGRAPH, () => { if (!Player.respawning) Hazards.spawnFireball(); }); } }
+    if (every(R.diver)) this.at(bt - (0.55 + CONFIG.DIVER_TELE / H + 0.3), () => this.dive());
+    if (R.wega > 0 && every(R.wega)) this.at(bt, () => WegaBoss.attackNow());
+    if (R.flood && R.flood.includes(bar)) this.at(bt, () => { if (!Flood.active) Flood.start(); });
+    if (R.head && R.head.includes(bar)) this.at(bt, () => { if (!WegaHead.active) WegaHead.spawn(); });
+    if (R.gates) this.at(bt - CONFIG.LASER_TELEGRAPH, () => this.gate());
+    // the beat card: the drop's countdown (the build's last bar), DROP!, the last 8 bars counting down
+    if (bar === 95) for (let q = 0; q < 4; q++) this.at(RORY_SONG.beatT(bar * 4 + q), () => { RoryCard.show(String(4 - q), '#a0f0ff', { sub: 'THE DROP' }); Sfx.tone({ type: 'square', f0: 440 * Math.pow(2, q / 4), dur: 0.12, vol: 0.08, lp: 2200 }); });
+    if (bar === 96) this.at(bt, () => RoryCard.show('DROP!', '#a0f0ff', { size: 130, hold: 0.6 }));
+    if (S.id === 'last') this.at(bt, () => RoryCard.show(String(168 - bar), '#e0f0ff', { sub: bar === 167 ? 'LAST BAR!' : 'BARS LEFT', hold: 0.7 }));
+    if (bar === 164) this.at(bt, () => { UI.announce('SHOEBENCH IS WAKING UP...', { color: '#ff5a5a' }); Cue.play('squeak'); });
+  },
+  onBeat() { if (Rory.active && Rory.panner) Sfx.roryThump(Rory.panner); },       // his feet land on the beat
+  rory(bars) {
+    if (Rory.active) { Rory.duration = Math.max(Rory.duration, Rory.t + bars * RORY_SONG.BAR); return; }
+    const S = RORY_SONG.SECTIONS[this.sec] || {}, extra = S.id === 'drop' || S.id === 'last' || S.id === 'overtime' ? 0.5 : 0;
+    if (Rory.event(Hazards.roryEventSpeed(true) + extra)) Rory.duration = bars * RORY_SONG.BAR;
+  },
+  // a searchlight / a sweeping beam switching on on the downbeat (keeps n of them up)
+  laser(n) {
+    let on = 0; for (const l of Hazards.lasers) if (l.active && !this.gates.has(l)) on++;
+    if (on >= n || Player.respawning) return;
+    const l = Hazards.lasers.find((x) => !x.active); if (!l) return;
+    const cfg = Hazards.makeLaserCfg(true); cfg.color = 0xff3a8a;
+    if (cfg.mode === 'sky') cfg.life = RORY_SONG.BAR * 6;
+    this.gates.delete(l); l.start(cfg);
+  },
+  // the Diver: he leaps now so he lands on the planned downbeat (standing: he rises first; not up yet: he waits for it)
+  dive() {
+    if (Diver.state !== 'wait' || Player.respawning) return;
+    if (Diver.group.visible) Diver.cycle = 0;
+    else this.at(RoryRun.beatT() + 0.55, () => { if (Diver.state === 'wait') Diver.cycle = 0; });
+  },
+  // a laser gate: a low beam across your walkway right where you'll be on the downbeat. It's on for a beat and a half:
+  // jump on the beat
+  gate() {
+    const l = Hazards.lasers.find((x) => !x.active); if (!l || Player.respawning) return;
+    const p = Player.pos, f = _v4, ax = Nav.walkAxisAt(p);
+    if (Math.hypot(Player.vel.x, Player.vel.z) > 1) f.set(Player.vel.x, 0, Player.vel.z).normalize(); else Rig.headForward(f);
+    if (ax) { const s = Math.sign(ax.x * f.x + ax.z * f.z) || 1; f.set(ax.x * s, 0, ax.z * s); }
+    const d = clamp(Player.hspeed * CONFIG.LASER_TELEGRAPH, 2.5, 12), cx = p.x + f.x * d, cz = p.z + f.z * d;
+    const g = World.groundAt(cx, cz, p.y + 2), y = (g > -Infinity && g > p.y - 3 ? g : Player.grounded ? p.y : Player.groundY) + 0.45;
+    const rx = -f.z, rz = f.x, w = CONFIG.WALK_W / 2 + 0.8;
+    l.start({ mode: 'fixed', a0: new THREE.Vector3(cx - rx * w, y, cz - rz * w), b0: new THREE.Vector3(cx + rx * w, y, cz + rz * w), color: 0xff3a8a, cycle: { on: RORY_SONG.BEAT * 1.5, off: 60 } });
+    this.gates.set(l, RoryRun.beatT());
+  },
+};
+
+// ---------------- RORY'S CHALLENGE: the run (its clock, the count-in, the timer, Shoebench, the exit) ----------------
+const RoryRun = {
+  t0: 0, paused: 0, pauseAt: 0, shoe: false, total: 0, finishT: 0, card: -99,
+  // offline: the song's clock starts now (the count-in comes first: RORY_LEAD seconds)
+  begin() { this.t0 = performance.now() / 1000; this.paused = 0; this.pauseAt = 0; this.card = -99; },
+  online() { return Session.inRun() && Session.auth.rgm === 'rory'; },
+  // seconds into the song (below 0: the count-in): the authority's clock in a shared run, else this one (real time, paused with you)
+  songT() {
+    if (this.online()) return Session.roryAge() - RORY_SONG.LEAD;
+    return (this.pauseAt || performance.now() / 1000) - this.t0 - this.paused - RORY_SONG.LEAD;
+  },
+  // ...and as you hear it (what the beat visuals and the enemies follow)
+  beatT() { const t = this.songT(); return t >= 0 ? t + clamp(Music.roryLag, -0.3, 0.3) : t; },
+  seek(t) { if (!this.online()) this.t0 = performance.now() / 1000 - this.paused - RORY_SONG.LEAD - t; },
+  active() { return SM.curName === 'RORY' || SM.curName === 'RORY_EXIT'; },
+  // offline pause: the song (and its clock) stops with you
+  onPause(on) {
+    if (this.online()) return;
+    const now = performance.now() / 1000;
+    if (on) { if (!this.pauseAt) { this.pauseAt = now; Music.stop(0.15); } }
+    else if (this.pauseAt) { this.paused += now - this.pauseAt; this.pauseAt = 0; }
+  },
+  enter() { Game.lap = RORY_LAP; Music.syncLock = true; Music.desired.rate = 1; Music.setMuffled(false, 0.3); Music.setLevel(0.9, 0.3); },
+  update() {
+    const t = this.beatT();
+    // the count-in: 3, 2, 1 on the song's tempo, GO! on its first downbeat (nobody moves before GO)
+    const cb = RORY_SONG.beat(t);
+    if (t < RORY_SONG.BEAT0 + 0.3 && cb >= -3 && cb <= 0 && cb !== this.card) {
+      this.card = cb;
+      if (cb < 0) { RoryCard.show(String(-cb), '#5ab0ff', { sub: cb === -3 ? "RORY'S CHALLENGE" : '' }); Sfx.tone({ type: 'square', f0: 660, dur: 0.12, vol: 0.1, lp: 2400 }); }
+      else { RoryCard.show('GO!', '#9ad0ff', { size: 140, hold: 0.6 }); Sfx.tone({ type: 'square', f0: 1320, dur: 0.3, vol: 0.12, lp: 3000 }); }
+    }
+    if (SM.curName === 'RORY' && !Game.transitioning && !Player.respawning) Player.locomotion = t < RORY_SONG.BEAT0 - 0.03 ? 'turn' : 'full';
+    // the timer is the song; once it's over (online: when the authority says), Shoebench
+    LapTimer.timeMax = RORY_SONG.END; LapTimer.timeLeft = clamp(RORY_SONG.END - Math.max(0, t), 0, RORY_SONG.END);
+    const over = this.online() ? !!Session.auth.shoe : t >= RORY_SONG.END;
+    if (over && !this.shoe) { this.shoe = true; LapTimer.expired = true; Shoebench.spawn(); }
+  },
+  onCleared() {
+    UI.announce("EVERY LIL' GUY!", { color: '#9ad0ff' }); UI.announce('RUN FOR THE EXIT!', { color: '#ffffff' });
+    Sfx.gold(); Sfx.beacon(); Hands.pulse('both', 0.5, 200);
+  },
+  // the exit: the far corner of the map (the same for everyone)
+  showExit() {
+    const g = RoryMap.graph(), N = CONFIG.RORY.N, n = g.nodes[N * N - 1];
+    Beacon.show(_v1.set(n.x, n.y, n.z), 0x6ad8ff);
+    UI.announce('GO TO THE EXIT', { color: '#6ad8ff' });
+  },
+};
+
+// RORY'S CHALLENGE's stage: the map, its Lil' Guys (the run's count online, your difficulty's offline), the look, the enemies
+function setupRory() {
+  hideWorld(); Stage.hideAll(); G.stage.visible = false; Chamber.dispose(); Idol.detach(); RoryCard.hide();
+  G.maze.visible = true; G.mazeDeco.visible = true;
+  const R = CONFIG.RORY, total = Session.inRun() ? Session.auth.tot || R.LILGUYS.normal : R.LILGUYS[Session.difficultyKey() || Save.s.difficulty] || R.LILGUYS.normal;
+  RoryMap.prepare(Math.min(total, CONFIG.COLLECT_MAX)); RoryRun.total = RoryMap.positions.length;
+  Maze.build(RORY_LAP);
+  Collect.setup(RoryMap.positions);
+  Game.lap = RORY_LAP;
+  setLook('rory'); Sky.set(8); Sky.uni.uBright.value = 1; RoryWorld.si = -1;
+  LapTimer.timeMax = LapTimer.timeLeft = RORY_SONG.END; LapTimer.tension = false; LapTimer.expired = false; RoryRun.shoe = false;
+  Flood.prepare();
+  Hazards.reset('rory');
+  Maze.startPos(_v1);
+  Player.spawn(_v1.x, _v1.y, _v1.z, Maze.startYaw());
+  Player.heal(); Player.rail = null; Player.fallY = CONFIG.FALL_Y; Player.lavaY = null;
+  HUD.setVisible(true); HUD.setBoss(true); HUD.follow.reset = true; HUD.vals.speed = -1;
+  Game.lapHits0 = Player.hits;
+  Player.setLapSpeed(RORY_LAP);
+  Session.onLapSetup(RORY_LAP);          // shared run: the Lil' Guys the others already got
+  Announce.clear();
+}
 
 // ---------------- 3D models: WEGA FACE (a giant flying head) and WEGA MAN (who bursts out of it) ----------------
 // Built from primitives with baked vertex colours (merged per material). Both are also used by the death cutscenes.
@@ -9028,6 +9900,9 @@ const FaceBoss = {
     if (!S) return;
     if (S.p !== this.seen.p) this.onPhase(S, this.seen.p);
     if (S.p === 3 && (S.round !== this.seen.round || S.di !== this.seen.di)) this.onDuel(S);
+    // the theme follows the fight: this phase's part, on this phase's clock (the finale from when it went down)
+    this.downAge = S.p >= 4 ? (this.downAge || 0) + dt : 0;
+    Music.syncBoss(S.p, S.p >= 4 ? this.downAge : S.phaseAge);
     this.barrier.visible = S.p < 4; this.barrier.material.opacity = 1;
     if (S.p === 1) this.updateFace(dt, S);
     else if (S.p === 2) this.updateMan(dt, S);
@@ -9723,7 +10598,8 @@ const Duel = {
 const AV = {
   COLORS: [['BLACK', 0x1c1c22], ['WHITE', 0xeeeeee], ['PURPLE', 0x7a2be2], ['RED', 0xd01e1e], ['BLUE', 0x1e5ad8], ['GREEN', 0x1f9a4a], ['GOLD', 0xe0a420], ['PINK', 0xff6fb5],
     ['NEON GREEN', 0x39ff14], ['CHROME', 0xc8d0dc], ['LAVA', 0xff4a00], ['ICE', 0x9fe8ff],
-    ['HOT PINK', 0xff1493], ['VOID', 0x0a0a10], ['MINT', 0x5affc8], ['SUNSET', 0xff7a3a]],
+    ['HOT PINK', 0xff1493], ['VOID', 0x0a0a10], ['MINT', 0x5affc8], ['SUNSET', 0xff7a3a],
+    ['RORY BLUE', 0xbfe6ff], ['ELECTRIC BLUE', 0x0a8cff]],
   STYLES: ['SUIT', 'TUXEDO', 'HOODIE', 'TRACKSUIT', 'KNIGHT', 'SPACESUIT', 'LAB COAT', 'OVERALLS', 'I HATE RORY', 'GOLDEN SUIT', 'INFERNO', 'DIVER SUIT', 'GLITCH SUIT', 'NEON SUIT',
     'SAMURAI ARMOUR', 'GALAXY SUIT', 'PIXEL SUIT', 'LAVA SUIT', 'ROYAL ROBE'],
   HEADS: ['FISHBOWL', 'BLOCKY', "LIL' GUY", 'ROBOT', 'PUMPKIN', 'TV', 'CAT', 'ALIEN', 'SKULL', 'GHOST', 'FROG', 'KURIMANJU', 'DIVER HELMET', "GOLDEN LIL' GUY",
@@ -9739,8 +10615,8 @@ const AV = {
   KEYS: ['suit', 'tie', 'head', 'hat', 'fish', 'style', 'anim', 'fx'],     // new keys go at the end (older saves / players still parse)
   // items earned with achievements (key -> index -> achievement id)
   LOCKS: {
-    suit: { 8: 'rampage', 9: 'speedrun', 10: 'chase2', 11: 'chase4' },
-    tie: { 8: 'rampage', 9: 'speedrun', 10: 'chase2', 11: 'chase4' },
+    suit: { 8: 'rampage', 9: 'speedrun', 10: 'chase2', 11: 'chase4', 16: 'rorych', 17: 'rorybeat' },
+    tie: { 8: 'rampage', 9: 'speedrun', 10: 'chase2', 11: 'chase4', 16: 'rorych', 17: 'rorybeat' },
     style: { 9: 'wegamaster', 10: 'lap2', 11: 'lap4', 12: 'modded', 13: 'lightsout' },
     head: { 12: 'lap4', 13: 'hoarder' },
     hat: { 8: 'wegamaster', 9: 'lap1', 10: 'escape', 11: 'lap3', 12: 'hard', 13: 'shoebench', 14: 'chase2', 15: 'chase3', 16: 'chase4', 17: 'flyer', 18: 'bookworm', 19: 'onehit', 20: 'completionist', 21: 'marathon', 31: 'lap5', 32: 'omniwega' },
@@ -10738,7 +11614,7 @@ class Remote {
     this.tag.scale.set(1.2, 0.375, 1); this.tag.renderOrder = 6;
   }
   label() { return this.name + ' #' + this.num; }
-  status() { return this.level === 1 ? 'IN THE LOBBY' : this.level >= 2 && this.level <= 5 ? `LAP ${this.level - 1} · ${this.left} LEFT` : this.level === 6 ? (this.st === 'ESCAPE' ? 'ESCAPING!' : 'IDOL CHAMBER') : this.st === 'WIN' ? 'ESCAPED!' : 'BETWEEN LIVES'; }
+  status() { return this.level === 1 ? 'IN THE LOBBY' : this.level >= 2 && this.level <= 5 ? `LAP ${this.level - 1} · ${this.left} LEFT` : this.level === 6 ? (this.st === 'ESCAPE' ? 'ESCAPING!' : 'IDOL CHAMBER') : this.level === 7 ? (this.st === 'RORY_EXIT' ? "RORY'S CHALLENGE · THE EXIT!" : `RORY'S CHALLENGE · ${this.left} LEFT`) : this.st === 'WIN' ? 'ESCAPED!' : 'BETWEEN LIVES'; }
   drawTag() {
     const key = this.label() + '|' + this.status(); if (key === this.tagKey) return; this.tagKey = key;
     const ctx = this.tagCanvas.getContext('2d'); ctx.clearRect(0, 0, 256, 80);
@@ -10753,7 +11629,7 @@ class Remote {
     if (Number.isInteger(p.k) && p.k >= 0 && p.k < 100) this.num = p.k;
     const av = AV.fromArr(p.a);
     if (!AV.same(av, this.av)) { this.av = av; if (this.rig) this.rig.setConfig(av); }
-    if (Number.isInteger(p.l) && p.l >= 0 && p.l <= 6) this.level = p.l;
+    if (Number.isInteger(p.l) && p.l >= 0 && p.l <= 7) this.level = p.l;
     if (Number.isInteger(p.left) && p.left >= 0 && p.left <= 999) this.left = p.left;
     this.st = typeof p.s === 'string' ? p.s.slice(0, 16) : '';
   }
@@ -10764,7 +11640,7 @@ class Remote {
     const t = this.tgt;
     t.x = a[0]; t.y = a[1]; t.z = a[2]; t.yaw = a[3]; t.hy = a[4]; t.pitch = a[5]; t.speed = clamp(a[6], 0, 30);
     const flags = a[7] | 0; t.grounded = !!(flags & 1); t.vr = !!(flags & 2);
-    if (Number.isInteger(a[8]) && a[8] >= 0 && a[8] <= 6) this.level = a[8];
+    if (Number.isInteger(a[8]) && a[8] >= 0 && a[8] <= 7) this.level = a[8];
     if (t.vr && a.length >= 15) { t.hands[0].set(a[9], a[10], a[11]); t.hands[1].set(a[12], a[13], a[14]); }
     const c = this.cur;
     if (!this.hasState || Math.hypot(c.x - t.x, c.y - t.y, c.z - t.z) > 8) { c.x = t.x; c.y = t.y; c.z = t.z; c.yaw = t.yaw; c.hy = t.hy; c.pitch = t.pitch; }
@@ -10892,7 +11768,7 @@ const Net = {
   clearRemotes() { for (const r of this.remotes.values()) r.dispose(); this.remotes.clear(); },
   levelCode() {
     if (G.lobby.visible) return 1;
-    if (G.maze.visible) return 1 + (Maze.lap || 1);
+    if (G.maze.visible) return 1 + (Maze.lap || 1);          // 2-6 the laps, 7 RORY'S CHALLENGE
     if (G.chamber.visible) return 6;
     return 0;
   },
@@ -11058,8 +11934,36 @@ const Session = {
     if (!this.isOwner()) { this.ownerOnly(); return; }
     this.auth.ml = step(this.auth.ml || CONFIG.MAX_LAP); this.request('cfg', { ml: this.auth.ml });
   },
+  // ---- the game mode: CLASSIC or RORY'S CHALLENGE (the run's once you're in one, else the lobby's; offline: yours) ----
+  gameMode() {
+    const A = this.auth;
+    if (A && Net.client && Net.server) {
+      if (this.inRun()) return A.rgm === 'rory' ? 'rory' : 'classic';
+      if (this.active()) return WegaShared.MODES.includes(A.gm) ? A.gm : 'classic';
+    }
+    return Save.s.gameMode === 'rory' ? 'rory' : 'classic';
+  },
+  // only the lobby owner picks it (for everyone on the server)
+  setGameMode(m) {
+    if (!WegaShared.MODES.includes(m)) return false;
+    if (!this.active()) { Save.s.gameMode = m; Save.save(); Net.version++; return true; }
+    if (!this.isOwner()) { this.ownerOnly(); return false; }
+    this.auth.gm = m; this.request('cfg', { gm: m }); Net.version++;
+    return true;
+  },
+  // RORY'S CHALLENGE: seconds since the run's song clock started (the authority's; smoothed, snapshots arrive with jitter)
+  roryBase: null,
+  onRoryClock(d, now) {
+    if (d.rgm !== 'rory' || !(d.ra >= 0)) { this.roryBase = null; return; }
+    const cand = now / 1000 - d.ra;
+    if (this.roryBase == null || Math.abs(cand - this.roryBase) > 0.6) this.roryBase = cand;     // first one, or it started over
+    else this.roryBase += (cand - this.roryBase) * 0.08;
+  },
+  roryAge() { return this.roryBase == null ? 0 : performance.now() / 1000 - this.roryBase; },
   stageLabel() {
     const A = this.auth; if (!A) return '';
+    if (A.st === 'rory') return "RORY'S CHALLENGE · " + A.left + ' LEFT';
+    if (A.st === 'roryexit') return "RORY'S CHALLENGE · THE EXIT";
     if (/^lap/.test(A.st)) return 'LAP ' + A.lap + ' · ' + A.left + ' LEFT';
     if (/^beacon/.test(A.st)) return 'LAP ' + A.lap + ' BEACON';
     return A.st === 'chamber' ? 'IDOL CHAMBER' : A.st === 'escape' ? 'ESCAPE!' : 'FINISHING';
@@ -11081,7 +11985,8 @@ const Session = {
     if (this.startWait) return;
     this.startWait = performance.now();
     const D = CONFIG.DIFF[A.ld] || CONFIG.DIFF.normal, tk = (A.lm | 0) & MOD.clock ? 0.6 : 1;
-    this.request('start', { tot: D.lilGuys, t2: D.lap2Time * tk, t3: D.lap3Time * tk, t4: D.lap4Time * tk, t5: D.lap5Time * tk });
+    if (A.gm === 'rory') this.request('start', { tot: CONFIG.RORY.LILGUYS[A.ld] || CONFIG.RORY.LILGUYS.normal });    // its timer is the song
+    else this.request('start', { tot: D.lilGuys, t2: D.lap2Time * tk, t3: D.lap3Time * tk, t4: D.lap4Time * tk, t5: D.lap5Time * tk });
     UI.toast('STARTING THE RUN FOR EVERYONE…');
   },
   join(A) {
@@ -11089,6 +11994,7 @@ const Session = {
     Game.beginRun(); Game.hadIdol = false;
     Net.heartbeat(); Net.version++;
     if (A.st === 'lap1' && A.ag < 10) { if (SM.curName !== 'INTRO') SM.go('INTRO'); }
+    else if (A.st === 'rory' && A.rgm === 'rory' && A.ra < WegaShared.RORY_LEAD - 1) { if (SM.curName !== 'RORY_INTRO') SM.go('RORY_INTRO'); }
     else this.enterStage(A.st);
   },
   leaveRun() {
@@ -11108,8 +12014,9 @@ const Session = {
     const prev = this.auth;
     if (prev && d.a === this.src && d.run === prev.run && d.sq < prev.sq) return;        // out of order
     this.auth = d; this.src = d.a; this.authT = now; this.recvT = now;
+    this.onRoryClock(d, now);
     if (d.run === this.myRun && d.ph === 'run' && d.nr >= 4 && !Game.debugRun) Achievements.unlock('party');
-    const key = [d.ph, d.run, d.st, d.left, d.nr, d.ow, d.ld, d.ml, d.lm, (d.hp || []).join(',')].join('|');
+    const key = [d.ph, d.run, d.st, d.left, d.nr, d.ow, d.ld, d.ml, d.lm, d.gm, (d.hp || []).join(',')].join('|');
     if (key !== this.key) { this.key = key; Net.version++; }
     // toasts for what the others did
     if (Array.isArray(d.e) && d.e[0]) {
@@ -11119,7 +12026,7 @@ const Session = {
     // a run just started on this server: everyone who isn't busy is pulled in
     if (d.ph === 'run' && d.st !== 'done' && d.run !== this.myRun && d.run !== this.seenRun) {
       this.seenRun = d.run;
-      if ((d.st === 'lap1' && d.ag < 10) || this.startWait) this.offer(d);
+      if ((d.st === 'lap1' && d.ag < 10) || (d.st === 'rory' && d.ra < 10) || this.startWait) this.offer(d);
     }
     if (this.inRun()) this.applyBits(false);
   },
@@ -11128,7 +12035,9 @@ const Session = {
     if (e[1] === 'start') UI.toast(who + ' STARTED A RUN!');
     else if (e[1] === 'owner') UI.toast(e[3] === Net.id ? 'YOU ARE NOW THE LOBBY OWNER' : who + ' IS NOW THE LOBBY OWNER');
     else if (!mine) return;
-    else if (e[1] === 'clear') UI.toast(who + " GOT THE LAST LIL' GUY!");
+    else if (e[1] === 'clear') UI.toast(who + " GOT THE LAST LIL' GUY!" + (this.auth && this.auth.rgm === 'rory' ? ' RUN FOR THE EXIT!' : ''));
+    else if (e[1] === 'section') UI.toast('THE SONG MOVED ON: EVERYONE WHO WAS DOWN IS BACK!');
+    else if (e[1] === 'shoe' && this.auth && this.auth.rgm === 'rory') UI.toast('THE SONG IS OVER: SHOEBENCH IS COMING FOR EVERYONE!');
     else if (e[1] === 'portal') UI.toast(who + ' TOOK THE LAP ' + (e[4] || '') + ' PORTAL!');
     else if (e[1] === 'beacon') UI.toast(who + ' REACHED THE BEACON!');
     else if (e[1] === 'grab') UI.toast(who + ' GRABBED THE IDOL! RUN!');
@@ -11151,9 +12060,9 @@ const Session = {
   // ---- collectibles: yours go to the authority, everyone's come back ----
   noteTake(i) { if (this.myRun) { if (this.pendingLap !== Game.lap) { this.pending.clear(); this.pendingLap = Game.lap; } this.pending.add(i); this.colDirty = true; } },
   applyBits(instant) {
-    const A = this.auth, loc = Spectate.active ? 'lap' + A.lap : this.localStage();
+    const A = this.auth, rory = A.rgm === 'rory', loc = Spectate.active ? (rory ? 'rory' : 'lap' + A.lap) : this.localStage();
     if (!Collect.mesh.visible || Game.lap !== A.lap || typeof A.c !== 'string') return;
-    if (!instant && loc !== 'lap' + A.lap && loc !== 'beacon' + A.lap) return;
+    if (!instant && loc !== 'lap' + A.lap && loc !== 'beacon' + A.lap && !(rory && (loc === 'rory' || loc === 'roryexit'))) return;
     const nb = Math.ceil(Collect.n / 8);
     for (let b = 0; b < nb; b++) {
       const v = parseInt(A.c.substr(b * 2, 2), 16) || 0;
@@ -11182,21 +12091,25 @@ const Session = {
     const s = SM.curName;
     if (/^LAP[1-5]$/.test(s)) return 'lap' + s[3];
     if (/^BEACON[1-5]$/.test(s)) return 'beacon' + s[6];
+    if (s === 'RORY') return 'rory';
+    if (s === 'RORY_EXIT') return 'roryexit';
     return s === 'IDOL_CHAMBER' ? 'chamber' : s === 'ESCAPE' ? 'escape' : '';
   },
   reconcile(dt) {
     const s = SM.curName;
-    if (Game.transitioning || Player.respawning || s === 'INTRO' || s === 'ENRAGED_CUTSCENE') { this.mismatchT = 0; return; }
+    if (Game.transitioning || Player.respawning || s === 'INTRO' || s === 'ENRAGED_CUTSCENE' || s === 'RORY_INTRO') { this.mismatchT = 0; return; }
     const loc = this.localStage(); if (!loc) return;          // lobby / dead / win screens don't follow the run
-    const want = ['done', 'boss', 'freed'].includes(this.auth.st) ? 'escape' : this.auth.st;
+    const rory = this.auth.rgm === 'rory';
+    const want = rory && this.auth.st === 'done' ? 'roryexit' : ['done', 'boss', 'freed'].includes(this.auth.st) ? 'escape' : this.auth.st;
     if (loc === want) { this.mismatchT = 0; return; }
     const ln = +loc.slice(-1), wn = +want.slice(-1);
     if (loc === 'lap' + ln && want === 'beacon' + ln) return;                     // the last Lil' Guys are on their way
+    if (loc === 'rory' && want === 'roryexit') return;                            // (the same in RORY'S CHALLENGE)
     if (/^lap[2-5]$/.test(want) && (loc === 'beacon' + (wn - 1) || loc === 'lap' + (wn - 1))) { SM.go('ENRAGED_CUTSCENE', { lap: wn }); return; }
     if (want === 'chamber' && /^(lap|beacon)/.test(loc)) { Game.toChamber(); return; }
     if (want === 'escape' && loc === 'chamber') { this.escapeNow(); return; }
     // we got there first locally (our last Lil' Guy / the idol): give the authority a moment
-    const ahead = (loc === 'beacon' + wn && want === 'lap' + wn) || (loc === 'escape' && want === 'chamber');
+    const ahead = (loc === 'beacon' + wn && want === 'lap' + wn) || (loc === 'escape' && want === 'chamber') || (loc === 'roryexit' && want === 'rory');
     if (ahead && this.pending.size) { this.mismatchT = 0; return; }          // our pickups are still on their way
     if ((this.mismatchT += dt) < (ahead ? 4 : 1.5)) return;
     this.mismatchT = 0;
@@ -11221,9 +12134,11 @@ const Session = {
     Game.timerOn = true; Player.heal();             // back in: full health (spectators sit at 0)
     const A = this.auth;
     if (A && A.run === this.myRun && A.st) st = A.st;          // the run may have moved on during the fade
+    if (A && A.rgm === 'rory' && st === 'done') st = 'roryexit';
     if (st === 'done' || st === 'boss' || st === 'freed' || !st) st = 'escape';
     const m = /^(lap|beacon)([1-5])$/.exec(st);
-    if (m) {
+    if (st === 'rory' || st === 'roryexit') { setupRory(); SM.go(st === 'rory' ? 'RORY' : 'RORY_EXIT', { retry: true }); }
+    else if (m) {
       const n = +m[2];
       setupLap(n);
       if (m[1] === 'lap') SM.go('LAP' + n, { retry: true });
@@ -11281,8 +12196,8 @@ const Session = {
 // =====================================================================================
 // STATES — state machine + every state's enter/update/exit, cutscene, screens, glue
 // =====================================================================================
-const GAMEPLAY = new Set(['LAP1', 'BEACON1', 'LAP2', 'BEACON2', 'LAP3', 'BEACON3', 'LAP4', 'BEACON4', 'LAP5', 'BEACON5', 'IDOL_CHAMBER', 'ESCAPE']);
-const TIMED = new Set(['LAP1', 'BEACON1', 'ENRAGED_CUTSCENE', 'LAP2', 'BEACON2', 'LAP3', 'BEACON3', 'LAP4', 'BEACON4', 'LAP5', 'BEACON5', 'IDOL_CHAMBER', 'ESCAPE']);
+const GAMEPLAY = new Set(['LAP1', 'BEACON1', 'LAP2', 'BEACON2', 'LAP3', 'BEACON3', 'LAP4', 'BEACON4', 'LAP5', 'BEACON5', 'IDOL_CHAMBER', 'ESCAPE', 'RORY', 'RORY_EXIT']);
+const TIMED = new Set(['LAP1', 'BEACON1', 'ENRAGED_CUTSCENE', 'LAP2', 'BEACON2', 'LAP3', 'BEACON3', 'LAP4', 'BEACON4', 'LAP5', 'BEACON5', 'IDOL_CHAMBER', 'ESCAPE', 'RORY', 'RORY_EXIT']);
 
 const SM = {
   states: {}, cur: null, curName: '', seq: 0, paused: false,
@@ -11299,10 +12214,12 @@ const SM = {
   pause() {
     if (this.paused || !GAMEPLAY.has(this.curName) || Game.transitioning || Player.respawning) return;
     this.paused = true; Music.cuePause(true); PauseMenu.show();
+    if (RoryRun.active()) RoryRun.onPause(true);        // solo RORY'S CHALLENGE: the song stops with you
   },
   resume() {
     if (!this.paused) return;
     this.paused = false; Music.cuePause(false); PauseMenu.hide();
+    RoryRun.onPause(false);
   },
   togglePause() { if (this.paused) this.resume(); else this.pause(); },
   update(dt) {
@@ -11323,6 +12240,7 @@ function setLook(kind) {
   else if (kind === 'lap3') { f.color.set(0x1a0004); f.density = 0.014; hemi.color.set(0xffb0b0); hemi.groundColor.set(0x200000); hemi.intensity = 1.3 * L; dirLight.color.set(0xff8080); dirLight.intensity = 0.9 * L; }
   else if (kind === 'lap5') { f.color.set(CONFIG.COLORS.fog5); f.density = 0.012; hemi.color.set(0xff7a40); hemi.groundColor.set(0x280400); hemi.intensity = 1.4 * L; dirLight.color.set(0xffa050); dirLight.intensity = 1.0 * L; }
   else if (kind === 'lap4') { f.color.set(CONFIG.COLORS.fog4); f.density = 0.016; hemi.color.set(0x60d8ff); hemi.groundColor.set(0x001018); hemi.intensity = 1.4 * L; dirLight.color.set(0x80e0ff); dirLight.intensity = 0.8 * L; }
+  else if (kind === 'rory') { f.color.set(0x020616); f.density = 0.01; hemi.color.set(0x6a9aff); hemi.groundColor.set(0x01030c); hemi.intensity = 1.0 * L; dirLight.color.set(0x9ac8ff); dirLight.intensity = 0.7 * L; }   // (RoryWorld takes it from here, section by section)
   else if (kind === 'dead') { scene.background.set(0x2a0000); f.color.set(0x2a0000); f.density = 0.01; }
   else { f.color.set(0x000000); f.density = 0.01; }
   if (kind !== 'lobby' && kind !== 'dead') lightsOut();
@@ -11448,7 +12366,7 @@ const Stage = {
     const info = DEATH_INFO[deathScene(this.reason)] || DEATH_INFO.wega;
     drawText(ctx, info[0], 256, 74, { size: 54, style: 'italic 900', font: FONT_IMPACT, fill: '#ffffff', stroke: '#000', lw: 8, spacing: 0.08, maxWidth: 480, glow: info[2], glowBlur: 18 });
     drawText(ctx, info[1], 256, 132, { size: 20, fill: '#ffb0b0', stroke: '#000', lw: 4, maxWidth: 470 });
-    p.button('retry', 46, 180, 200, 76, Session.inRun() ? 'REJOIN RUN' : 'RETRY LAP', () => Game.retry(), { size: 28, fill: '#5a0a0a', border: '#ff5050', hoverFill: '#a01818' });
+    p.button('retry', 46, 180, 200, 76, Session.inRun() ? 'REJOIN RUN' : Game.retryTarget === 'RORY' ? 'START OVER' : 'RETRY LAP', () => Game.retry(), { size: 28, fill: '#5a0a0a', border: '#ff5050', hoverFill: '#a01818' });
     p.button('lobby', 266, 180, 200, 76, 'LOBBY', () => Game.transition('LOBBY'), { size: 28, fill: '#2a0f40', hoverFill: '#6a2aa0' });
   },
   showDead(reason) {
@@ -11464,6 +12382,26 @@ const Stage = {
   },
   drawWin(ctx, p) {
     const s = this.stats || {};
+    if (s.rory) {
+      p.bg('rgba(2,6,18,0.93)', '#3aa0ff');
+      drawText(ctx, "RORY'S CHALLENGE", 256, 62, { size: 58, style: 'italic 900', font: FONT_IMPACT, fill: '#ffffff', stroke: '#000', lw: 10, skew: 0.12, maxWidth: 470, glow: '#2a8cff', glowBlur: 18 });
+      drawText(ctx, s.songLeft > 0 ? 'BEATEN BEFORE THE SONG ENDED!' : 'BEATEN IN OVERTIME!', 256, 132, { size: 28, style: 'italic 900', font: FONT_IMPACT, fill: '#bfe6ff', stroke: '#000', lw: 6, spacing: 0.04, maxWidth: 470 });
+      const rr2 = [
+        ['TIME', fmtTime(s.time)],
+        ['BEST', fmtTime(s.best) + (s.newBest ? '  NEW BEST!' : '')],
+        [s.songLeft > 0 ? 'SONG LEFT' : 'OVERTIME', s.songLeft > 0 ? fmtTime(s.songLeft) : '+' + fmtTime(-s.songLeft)],
+        ["LIL' GUYS (YOURS)", String(s.collected || 0) + ' / ' + (s.total || 0)],
+        ['HITS / FALLS', (s.hits || 0) + ' / ' + (s.falls || 0)],
+        ['SHOP MONEY', '+' + (s.earned || 0) + '  (' + (s.wallet || 0) + ')'],
+      ];
+      rr2.forEach((r, i) => {
+        const y = 186 + i * 36;
+        drawText(ctx, r[0], 70, y, { size: 23, align: 'left', fill: '#a8c8e8', stroke: '#000', lw: 4 });
+        drawText(ctx, r[1], 442, y, { size: 23, align: 'right', fill: r[1].includes('NEW') ? '#ffd21f' : '#ffffff', stroke: '#000', lw: 4 });
+      });
+      p.button('lobby', 136, 420, 240, 58, 'return to lobby', () => Game.transition('LOBBY'), { size: 26, style: 'bold', fill: '#0a2a5a', border: '#3aa0ff', hoverFill: '#1450b0', r: 29 });
+      return;
+    }
     p.bg('rgba(6,2,12,0.92)', '#b84dff');
     drawText(ctx, 'YOU WINGA!', 256, 80, { size: 86, style: 'italic 900', font: FONT_IMPACT, fill: '#ffffff', stroke: '#000', lw: 12, skew: 0.12, maxWidth: 470, glow: '#8a00ff', glowBlur: 16 });
     drawText(ctx, 'THANKS FOR PLAYING!', 256, 150, { size: 32, style: 'italic 900', font: FONT_IMPACT, fill: '#e6c8ff', stroke: '#000', lw: 6, spacing: 0.06, maxWidth: 470 });
@@ -11835,7 +12773,8 @@ const Spectate = {
     const t = this.target;
     const left = this.countdown();
     drawText(ctx, t ? 'SPECTATING  ' + t.label() : this.solo ? "YOU'RE DOWN" : 'EVERYONE IS DOWN...', 256, 34, { size: 30, style: 'italic 900', font: FONT_IMPACT, fill: '#ffffff', stroke: '#000', lw: 5, spacing: 0.06, maxWidth: 490 });
-    drawText(ctx, left > 0 ? (this.soloBoss && this.solo ? 'THE PHASE STARTS OVER IN ' : 'THE CHASE STARTS OVER IN ') + left : "YOU'RE BACK AT THE NEXT LAP, CHASE OR BOSS PHASE", 256, 70, { size: left > 0 ? 18 : 15, fill: left > 0 ? '#ffe080' : '#ffb0c0', stroke: '#000', lw: 3, maxWidth: 490 });
+    const back = this.worldKey === 'rory' ? "YOU'RE BACK WHEN THE SONG REACHES ITS NEXT SECTION" : "YOU'RE BACK AT THE NEXT LAP, CHASE OR BOSS PHASE";
+    drawText(ctx, left > 0 ? (this.soloBoss && this.solo ? 'THE PHASE STARTS OVER IN ' : 'THE CHASE STARTS OVER IN ') + left : back, 256, 70, { size: left > 0 ? 18 : 15, fill: left > 0 ? '#ffe080' : '#ffb0c0', stroke: '#000', lw: 3, maxWidth: 490 });
     if (!this.solo) p.button('prev', 14, 92, 110, 50, '<', () => this.step(-1), { size: 26 });
     p.button('lobby', 140, 92, 232, 50, 'QUIT TO LOBBY', () => Game.transition('LOBBY'), { size: 20, fill: '#3a0a1a', border: '#ff5070' });
     if (!this.solo) p.button('next', 388, 92, 110, 50, '>', () => this.step(1), { size: 26 });
@@ -11847,11 +12786,17 @@ const Spectate = {
   },
   step(d) { const T = this.targets(); if (!T.length) return; this.idx = (this.idx + d + T.length) % T.length; this.target = T[this.idx]; this.panel.redraw(); Sfx.hover(); },
   // which world the run is on: a lap's maze, or the chamber (+ the chase / boss)
-  wantWorld() { if (this.solo) return 'chase'; const st = Session.auth ? Session.auth.st : ''; const m = /^(lap|beacon)([1-5])$/.exec(st); return m ? 'lap' + m[2] : st === 'chamber' ? 'chamber' : 'chase'; },
+  wantWorld() {
+    if (this.solo) return 'chase';
+    const A = Session.auth, st = A ? A.st : '', m = /^(lap|beacon)([1-5])$/.exec(st);
+    if (A && A.rgm === 'rory') return 'rory';                 // RORY'S CHALLENGE: its map (the song plays on, muffled)
+    return m ? 'lap' + m[2] : st === 'chamber' ? 'chamber' : 'chase';
+  },
   loadWorld(key) {
     this.worldKey = key;
     Stage.hideAll(); G.stage.visible = false; DeathCam.stop();
-    if (key.startsWith('lap')) { setupLap(+key[3]); }
+    if (key === 'rory') setupRory();
+    else if (key.startsWith('lap')) { setupLap(+key[3]); }
     else {
       setupChamber();
       if (key === 'chase') {
@@ -11994,6 +12939,13 @@ const Wallet = {
     for (const m of Mods.list()) if (m.kind === 'chal' && !Save.data.chal[m.id]) { Save.data.chal[m.id] = Date.now(); this.add(500, m.name + ' CLEARED!'); }
     Save.save();
   },
+  // RORY'S CHALLENGE: a big payout (more for more Lil' Guys, more again before the song ends)
+  onRoryWin() {
+    if (Game.debugRun) return;
+    this.add(Math.round((300 + RoryRun.total * 0.5 + (RoryRun.finishT < RORY_SONG.END ? 200 : 0)) * Mods.payK()), "RORY'S CHALLENGE CLEARED");
+    for (const m of Mods.list()) if (m.kind === 'chal' && !Save.data.chal[m.id]) { Save.data.chal[m.id] = Date.now(); this.add(500, m.name + ' CLEARED!'); }
+    Save.save();
+  },
 };
 
 // ---------------- achievements (each one unlocks a cosmetic) ----------------
@@ -12032,6 +12984,9 @@ const Achievements = {
     // round 5
     { id: 'lap5', name: 'THE FINAL LAP', desc: 'Clear Lap 5', reward: [['hat', 31]] },
     { id: 'omniwega', name: 'WEGA FACE SLAYER', desc: 'Beat WEGA FACE and escape', reward: [['hat', 32]] },
+    // round 6: the RORY'S CHALLENGE game mode
+    { id: 'rorych', name: "RORY'S CHALLENGE", desc: "Beat RORY'S CHALLENGE (GAME MODE in the lobby)", reward: [['suit', 16]] },
+    { id: 'rorybeat', name: 'BEAT THE BEAT', desc: "Beat RORY'S CHALLENGE before its song ends", reward: [['suit', 17]] },
     { id: 'completionist', name: 'COMPLETIONIST', desc: 'Unlock every other achievement', reward: [['hat', 20]] },
   ],
   saveT: 0, dirty: false, version: 0,
@@ -12098,6 +13053,16 @@ const Achievements = {
     if (Mods.on('onehit')) this.unlock('onehit');
     if (Mods.on('dark')) this.unlock('lightsout');
   },
+  // through RORY'S CHALLENGE's exit (it's an escape too, for the challenge-style trophies)
+  onRoryWin() {
+    if (Game.debugRun) return;
+    this.unlock('rorych');
+    if (RoryRun.finishT < RORY_SONG.END) this.unlock('rorybeat');
+    if (Session.myRun && Session.auth && Session.auth.nr >= 2) this.unlock('team');
+    if (Mods.challenges() >= 3) this.unlock('modded');
+    if (Mods.on('onehit')) this.unlock('onehit');
+    if (Mods.on('dark')) this.unlock('lightsout');
+  },
 };
 
 // ---------------- game glue ----------------
@@ -12109,7 +13074,7 @@ const Game = {
     if (SM.curName !== 'LOBBY' || this.transitioning) return;
     if (!solo && Session.active()) { Session.start(); return; }
     this.beginRun();
-    SM.go('INTRO');
+    SM.go(Session.gameMode() === 'rory' ? 'RORY_INTRO' : 'INTRO');
   },
   // the chase after the Idol Chamber depends on the lap you took the beacon on
   chaseTier() { return clamp(Session.inRun() && Session.auth.lap ? Session.auth.lap : this.lap || 1, 1, CONFIG.MAX_LAP); },
@@ -12168,6 +13133,7 @@ const Game = {
     Stage.hideAll(); G.stage.visible = false; scene.background.set(0x000000);
     this.timerOn = true;
     if (/^LAP[1-5]$/.test(target)) { const n = +target[3]; setupLap(n); SM.go(target, { retry: true }); }
+    else if (target === 'RORY') { RoryRun.begin(); setupRory(); SM.go('RORY', { fresh: true }); }     // an endurance run: from the top
     else SM.go('ESCAPE', { retry: true });
     this.transitioning = false;
     await Fade.to(0, 0.6);
@@ -12202,6 +13168,21 @@ const Game = {
     for (let i = 1; i <= 12; i++) { await wait(0.05); Fade.mesh.material.color.setRGB(1 - i / 12, 1 - i / 12, 1 - i / 12); }
     if (tok !== this.transTok) return;
     SM.go('ESCAPED_TEXT');
+    this.transitioning = false;
+  },
+  // RORY'S CHALLENGE: through the exit (the song's clock says how fast)
+  async roryEscaped() {
+    if (this.transitioning) return;
+    const tok = ++this.transTok;
+    this.transitioning = true; this.timerOn = false; Player.locomotion = 'none';
+    RoryRun.finishT = Math.max(0, RoryRun.songT());
+    if (Session.inRun()) Session.request('win', { t: Math.round(RoryRun.finishT * 100) / 100 });
+    Sfx.portal(); Hands.pulse('both', 0.6, 400);
+    await Fade.to(1, 0.8, 0xbfe6ff);
+    if (tok !== this.transTok) return;
+    for (let i = 1; i <= 12; i++) { await wait(0.05); const k = 1 - i / 12; Fade.mesh.material.color.setRGB(0.75 * k, 0.9 * k, k); }
+    if (tok !== this.transTok) return;
+    SM.go('RORY_CLEARED');
     this.transitioning = false;
   },
 };
@@ -12247,7 +13228,7 @@ function gameplayTick(dt) { Player.update(dt); Collect.update(dt); Hazards.updat
 SM.states.LOADING = {};
 SM.states.LOBBY = {
   enter() {
-    hideWorld(); Stage.hideAll(); G.stage.visible = false; Confetti.stop();
+    hideWorld(); Stage.hideAll(); G.stage.visible = false; Confetti.stop(); RoryCard.hide();
     Hazards.clear(); Collect.hide(); Chamber.dispose(); Idol.detach(); Announce.clear();
     G.lobby.visible = true;
     setLook('lobby');
@@ -12427,10 +13408,91 @@ SM.states.ESCAPED_TEXT = {
   update(dt) { Player.update(dt); },
   exit() { Stage.typeMesh.visible = false; },
 };
-SM.states.WIN = {
+// ---- RORY'S CHALLENGE: fade in on the huge map, count in, collect everything before the song ends, reach the exit ----
+SM.states.RORY_INTRO = {
   enter() {
+    const tok = SM.seq;
+    UI.setActive([]); Player.locomotion = 'none'; Game.transitioning = true;
+    Music.stop(0.9);
+    (async () => {
+      await Fade.to(1, 1.0, 0x000000);
+      if (tok !== SM.seq) return;
+      if (!RoryRun.online()) RoryRun.begin();           // solo: the song's clock (and its count-in) starts now
+      setupRory();
+      SM.go('RORY', { fresh: true });
+      Game.transitioning = false;
+      await Fade.to(0, 0.8);
+    })();
+  },
+  update(dt) { Player.update(dt); Lobby.update(dt); },
+};
+SM.states.RORY = {
+  enter(arg) {
+    Game.retryTarget = 'RORY'; RoryRun.enter();
+    Player.locomotion = RoryRun.songT() < RORY_SONG.BEAT0 ? 'turn' : 'full';
+    if (arg.fresh) {
+      UI.announce("RORY'S CHALLENGE", { color: '#5ab0ff' });
+      UI.announce(Collect.n + " LIL' GUYS · BEAT THE SONG", { color: '#ffffff' });
+      if (Mods.bits()) { const nc = Mods.challenges(); UI.toast(Mods.names().join(' + ') + (nc ? " · LIL' GUYS x" + Mods.payK().toFixed(1) : '')); }
+    }
+  },
+  update(dt) {
+    RoryRun.update(dt); gameplayTick(dt);
+    if (SM.curName === 'RORY' && Collect.left <= 0 && !Game.transitioning) { RoryRun.onCleared(); SM.go('RORY_EXIT'); }
+  },
+};
+SM.states.RORY_EXIT = {
+  enter() { Game.retryTarget = 'RORY'; RoryRun.enter(); Player.locomotion = 'full'; RoryRun.showExit(); },
+  update(dt) {
+    RoryRun.update(dt); gameplayTick(dt);
+    if (SM.curName !== 'RORY_EXIT' || Game.transitioning) return;
+    if (Beacon.touched()) Game.roryEscaped();
+  },
+  exit() { Beacon.hide(); },
+};
+SM.states.RORY_CLEARED = {
+  enter() {
+    const tok = SM.seq;
+    Player.locomotion = 'none'; Hazards.clear(); HUD.setVisible(false); Announce.clear(); RoryCard.hide();
+    hideWorld(); setLook('void'); G.stage.visible = true;
+    Music.cueWinText();
+    Stage.setType(''); placeFront(Stage.typeMesh, 3, 0); Stage.typeMesh.visible = true;
+    Fade.set(1, 0x000000);
+    const left = RORY_SONG.END - RoryRun.finishT;
+    (async () => {
+      await Fade.to(0, 0.5);
+      const type = async (text) => {
+        for (let i = 1; i <= text.length; i++) { if (tok !== SM.seq) return false; Stage.setType(text.slice(0, i)); if (text[i - 1] !== ' ') Sfx.type(); await wait(0.045); }
+        return tok === SM.seq;
+      };
+      if (!(await type(playerName() + " BEAT RORY'S CHALLENGE,"))) return;
+      await wait(1.2); if (tok !== SM.seq) return;
+      Stage.setType(''); await wait(0.3);
+      if (!(await type(left > 0 ? 'WITH ' + fmtClock(left) + ' OF THE SONG LEFT.' : 'IN OVERTIME (+' + fmtClock(-left) + ').'))) return;
+      await wait(1.5); if (tok !== SM.seq) return;
+      await Fade.to(1, 0.5, 0x000000); if (tok !== SM.seq) return;
+      SM.go('WIN', { rory: true });
+      await Fade.to(0, 0.6);
+    })();
+  },
+  update(dt) { Player.update(dt); },
+  exit() { Stage.typeMesh.visible = false; },
+};
+SM.states.WIN = {
+  enter(arg) {
     hideWorld(); HUD.setVisible(false); setLook('void'); G.stage.visible = true;
     Player.locomotion = 'turn';
+    if (arg && arg.rory) {
+      // RORY'S CHALLENGE: the time is how far into the song you got out (its own best time)
+      const t = RoryRun.finishT, best = Save.data.bestRory, newBest = !Game.debugRun && Mods.ranked() && (best == null || t < best);
+      if (newBest) { Save.data.bestRory = t; Save.save(); }
+      if (!Game.debugRun) Net.event('win', { t: Math.round(t * 100) / 100 });
+      Achievements.onRoryWin(); Wallet.onRoryWin();
+      Stage.showWin({ rory: true, time: t, best: Save.data.bestRory, newBest, collected: Game.collectedTotal, total: RoryRun.total, songLeft: RORY_SONG.END - t, hits: Player.hits, falls: Player.falls, earned: Math.floor(Wallet.run), wallet: Wallet.get() });
+      UI.setActive([Stage.winPanel]);
+      camera.getWorldPosition(_v1); Confetti.start(_v1);
+      return;
+    }
     // runs with MODIFIERS (low gravity / speed rush) don't count for the best time; challenges do
     const t = Game.runTime, best = Save.data.best, newBest = !Game.debugRun && Mods.ranked() && (best == null || t < best);
     if (newBest) { Save.data.best = t; Save.save(); }
@@ -12519,6 +13581,7 @@ const Debug = {
       else if (target === 'LAP3') { setupLap(3); SM.go('LAP3', { retry: true }); }
       else if (target === 'LAP4') { setupLap(4); SM.go('LAP4', { retry: true }); }
       else if (target === 'LAP5') { setupLap(5); SM.go('LAP5', { retry: true }); }
+      else if (target === 'RORY') { RoryRun.begin(); setupRory(); SM.go('RORY', { fresh: true }); }
       else if (target === 'IDOL') SM.go('IDOL_CHAMBER');
       else if (target === 'ESCAPE') SM.go('ESCAPE', { retry: true });
       else if (target === 'WIN') { Chamber.dispose(); Idol.detach(); Collect.hide(); Game.timerOn = false; SM.go('WIN'); }
@@ -12534,7 +13597,7 @@ window.WEGA_DEBUG = {
   spawnShoebench: () => { if (SM.curName.startsWith('LAP') || SM.curName.startsWith('BEACON')) { LapTimer.timeLeft = 0; LapTimer.expired = true; Shoebench.spawn(); } return Shoebench.active; },
   skipToIdol: () => Debug.jump('IDOL'),
   // the Lap 5 chase (FORGET ME NOT); at = seconds into it
-  skipToChase5: async (at = 0) => { Game.lap = 5; await Debug.jump('ESCAPE'); if (at > 0) { Chamber.t0 = Clock.t - at; Chamber.respawnPoint(_v1); Player.spawn(_v1.x, _v1.y, _v1.z, Chamber.respawnYaw); Music.cueRun(5); Urio.start(); Destroyer.start(); } return SM.curName; },
+  skipToChase5: async (at = 0) => { Game.lap = 5; FaceBoss.resetLocal(); await Debug.jump('ESCAPE'); if (at > 0) { Chamber.t0 = Clock.t - at; Chamber.respawnPoint(_v1); Player.spawn(_v1.x, _v1.y, _v1.z, Chamber.respawnYaw); Music.cueRun(5); Urio.start(); Destroyer.start(); } return SM.curName; },
   // WEGA FACE: phase 1-3 (3 = the gauntlet), standing on the arena
   skipToBoss: async (phase = 1) => {
     Game.lap = 5; await Debug.jump('ESCAPE');
@@ -12549,6 +13612,10 @@ window.WEGA_DEBUG = {
   // go down to `src` (plays its death scene)
   die: (src = 'hp') => { Player.godMode = false; Game.debugRun = true; Game.playerDied(src); return SM.curName; },
   skipToEscape: () => Debug.jump('ESCAPE'),
+  // RORY'S CHALLENGE (solo), `at` seconds into its song (negative: the count-in)
+  skipToRory: async (at = -RORY_SONG.LEAD) => { await Debug.jump('RORY'); RoryRun.seek(at); RoryDirector.clear(); RoryDirector.reset(); return RoryRun.songT(); },
+  rorySeek: (at) => { RoryRun.seek(at); RoryDirector.clear(); RoryDirector.reset(); return RoryRun.songT(); },
+  roryTime: () => ({ song: +RoryRun.songT().toFixed(3), heard: +RoryRun.beatT().toFixed(3), music: +Music.pos().toFixed(3), lag: +Music.roryLag.toFixed(3), section: RORY_SONG.SECTIONS[Math.max(0, RoryWorld.si)].id, map: RoryMap.groups.map((g) => g.id + ':' + g.state).join(' ') }),
   win: () => Debug.jump('WIN'),
   lap1: () => Debug.jump('LAP1'),
   godMode: (on = true) => { Player.godMode = !!on; if (on) Game.debugRun = true; return Player.godMode; },
@@ -12558,7 +13625,7 @@ window.WEGA_DEBUG = {
   player: () => ({ pos: Player.pos.toArray().map((v) => +v.toFixed(2)), hp: Player.hp, speed: +(Player.hspeed * CONFIG.SPEED_MULT).toFixed(1), grounded: Player.grounded }),
 };
 // test/debug access to internals (only with ?debug in the URL)
-if (DEBUG_URL) window.WEGA_DEBUG.internals = { SM, Session, FaceBoss, Duel, Spectate, DeathCam, Clock, Destroyer, Urio, Cue, Sfx, Lap1Deco, Lap2Deco, Lap3Deco, Mods, MOD, MODS, Shop, SHOP, SHOP_CATS, Wallet, Shadow, Enraged, Lap5Deco, WegaShared, NameEdit, AvatarRig, WegaBoss, Diver, Jellies, DeepDeco, LobbyPlus, Achievements, Player, Collect, Beacon, Chamber, Hazards, Game, Rory, Screamer, LapTimer, Lap2: LapTimer, Flood, Shoebench, LapPortal, FPBody, Touch, Net, AV, Avatar, WegaHead, GlitchGuy, Idol, Music, HUD, Maze, Nav, World, Rig, Input, Fade, AudioSys, Save, Lobby, Stage, UI, get renderer() { return renderer; }, get scene() { return scene; }, get camera() { return camera; }, get perf() { return { upd: +Perf.upd.toFixed(2), ren: +Perf.ren.toFixed(2), calls: renderer.info.render.calls, tris: renderer.info.render.triangles }; } };
+if (DEBUG_URL) window.WEGA_DEBUG.internals = { SM, Session, FaceBoss, RoryRun, RoryDirector, RoryMap, RoryWorld, RoryDeco, RoryCard, RORY_SONG, Duel, Spectate, DeathCam, Clock, Destroyer, Urio, Cue, Sfx, Lap1Deco, Lap2Deco, Lap3Deco, Mods, MOD, MODS, Shop, SHOP, SHOP_CATS, Wallet, Shadow, Enraged, Lap5Deco, WegaShared, NameEdit, AvatarRig, WegaBoss, Diver, Jellies, DeepDeco, LobbyPlus, Achievements, Player, Collect, Beacon, Chamber, Hazards, Game, Rory, Screamer, LapTimer, Lap2: LapTimer, Flood, Shoebench, LapPortal, FPBody, Touch, Net, AV, Avatar, WegaHead, GlitchGuy, Idol, Music, HUD, Maze, Nav, World, Rig, Input, Fade, AudioSys, Save, Lobby, Stage, UI, get renderer() { return renderer; }, get scene() { return scene; }, get camera() { return camera; }, get perf() { return { upd: +Perf.upd.toFixed(2), ren: +Perf.ren.toFixed(2), calls: renderer.info.render.calls, tris: renderer.info.render.triangles }; } };
 
 // =====================================================================================
 // MAIN LOOP
@@ -12599,6 +13666,7 @@ function loop() {
   Announce.update(dt);
   Wrist.update(dt);
   Toast.update(dt);
+  RoryCard.update(dt);
   Captions.update(dt);
   Ouch.update(dt);
   UI.update();
@@ -12614,7 +13682,7 @@ const Perf = { upd: 0, ren: 0 };
 function warmup() {
   const groups = Object.values(G), vis = groups.map((g) => g.visible);
   groups.forEach((g) => { g.visible = true; });
-  const extra = [Sky.dome, Sky.lava, Sky.embers, Beacon.group, SkyFace.group, PauseMenu.panel.mesh, LapPortal.group, FaceBoss.face.root, FaceBoss.man.root, FaceBoss.core, FaceBoss.throne, Destroyer.group, Destroyer.maw, Urio.group];
+  const extra = [Sky.dome, Sky.lava, Sky.embers, Beacon.group, SkyFace.group, PauseMenu.panel.mesh, LapPortal.group, FaceBoss.face.root, FaceBoss.man.root, FaceBoss.core, FaceBoss.throne, Destroyer.group, Destroyer.maw, Urio.group, RoryDeco.group];
   const ev = extra.map((o) => o.visible); extra.forEach((o) => { o.visible = true; });
   const hidden = [];
   scene.traverse((o) => { if (!o.visible && (o.isMesh || o.isSprite || o.isPoints)) { hidden.push(o); o.visible = true; } });
@@ -12630,6 +13698,8 @@ function warmup() {
     Chamber.build(); Idol.placeOnPedestal(Chamber.pedestal);
     renderer.compile(scene, camera);
     Chamber.dispose(); Idol.detach();
+    RoryMap.prepare(CONFIG.RORY.LILGUYS.normal); Maze.build(RORY_LAP); Collect.setup(RoryMap.positions);
+    renderer.compile(scene, camera);
     Maze.build(1); Collect.setup(placeCollectibles(Maze.cur, CONFIG.LAP1_SEED));
     renderer.compile(scene, camera);
   } catch (e) { console.warn('[Wega] warmup failed', e); }
@@ -12643,7 +13713,7 @@ function init() {
   Save.load();
   initRenderer(); applyViewSettings();
   buildTextures();
-  Fade.init(); Effects.init(); HUD.init(); Announce.init(); Wrist.init(); Toast.init(); Captions.init(); Ouch.init();
+  Fade.init(); Effects.init(); HUD.init(); Announce.init(); Wrist.init(); Toast.init(); Captions.init(); Ouch.init(); RoryCard.init(); RoryWorld.init();
   Hands.init(); Input.initDesktop(); Touch.init();
   FX.init(); Decals.init();
   Sky.init(); Beacon.init(); LapPortal.init(); Maze.init(); Lobby.init(); FPBody.init();
@@ -12682,7 +13752,7 @@ function init() {
     DOM.btnVR.disabled = !ok;
     DOM.btnVR.textContent = ok ? 'ENTER VR' : (window.isSecureContext ? 'VR NOT AVAILABLE' : 'VR NEEDS HTTPS');
   });
-  if (DEBUG_URL) console.log('[Wega] debug: keys 1-5 jump to Lap 1 / Lap 2 / Idol / Escape / Win. window.WEGA_DEBUG is available.');
+  if (DEBUG_URL) console.log("[Wega] debug: keys 1-9 jump to Lap 1 / Lap 2 / Idol / Escape / Win / Lap 3 / Lap 4 / Lap 5 / RORY'S CHALLENGE. window.WEGA_DEBUG is available.");
 }
 
 try { init(); } catch (e) {
