@@ -191,23 +191,39 @@ blue) with **500+ Lil' Guys** to collect:
 **The whole run is synced to its song** (RORY'S CHALLENGE, 145 BPM, 4:38). A 3-2-1-GO count-in lands on the
 song's first beat, and from then on everything happens on the beat: the walkways pulse with the kick, a spectrum of
 light round the world dances to the song, and **each part of the song brings its own enemies** (they land on
-the beat, and each part is announced as it starts):
+the beat, and each part is announced as it starts).
+
+**RORY'S CHALLENGE has its own cast.** None of the laps' characters come here, except **Rory** (his footsteps land
+on the beat) and **Shoebench** when the song runs out. The others all live on the music:
+
+| Enemy | What it does | How to beat it |
+|---|---|---|
+| **THE NOTES** | A flock of glowing music notes (♪ ♫) that hop at you, one hop a beat, each aimed at where you'll be half a beat later (15 damage, the note pops) | Keep moving and they fall behind; don't run into the flock |
+| **THE SUBWOOFER** | A floating speaker that slams on the kick: a shockwave rolls out along the floor under it (15). It pulls its cone back the beat before | Jump the wave |
+| **THE BIG ONE** | In the storm the Subwoofer charges up for a bar (with a 3-2-1 countdown) and lets go on the downbeat: a wave through the whole map that meets you on whatever floor you're on (25) | Jump on the one! |
+| **THE EQUALIZER** | Walls of EQ bars across the walkways (they also dance to the song). On their beats they shoot up, far too high to jump (20 and a shove back) | Cross when they drop; they breathe in just before they jump |
+| **THE CONDUCTOR** | A giant in the sky with wild white hair, conducting the song (his baton traces the 4/4 pattern). Half a bar ahead he marks numbered circles where you're heading; the next bar lightning strikes them on beats 1, 2, 3, 4 (20) | Step round them, or brake and let the beat pass (jumping won't help) |
+| **THE RECORDS** | Spinning vinyl that grinds along the walkways after you at shin height, surging forward on every beat and scratching (20) | Jump over them |
+| **THE HUSH** | In the breakdown's dark: shadows with a finger to their lips that drift at you. The closer one gets, the more the music dies away and the dark closes in round your view (25) | If the music fades, run. The beat coming back chases them off |
 
 | Part | Bars | What comes |
 |---|---|---|
 | THE BLUE HOUR | 0-7 | nothing yet: start collecting |
-| SEARCHLIGHTS | 8-15 | sweeping lasers with the hi-hats |
-| THE BASS DROPS | 16-31 | Rory (his footsteps on the beat), the Screamer |
-| THE GLITCH | 32-47 | the Glitch Guy, more lasers |
-| FIREFALL | 48-63 | fire lands on the beat, Wega's head |
-| THE DEEP END | 64-79 | the Diver lands on the downbeat, a pixel flood |
-| BREAKDOWN | 80-86 | the lights die, your Shadow and the jellyfish, **walkways fall away** |
-| SOMETHING IS COMING | 87-95 | the build-up: **sky bridges rise**, Wega shows up and watches |
-| THE DROP | 96-127 | everyone at once: lasers, Wega, the Screamer, the Diver, fire, Rory |
-| THE STORM | 128-151 | a pixel flood on every phrase, Wega, the Glitch Guy, fire; **the drop's bridges fall** |
-| THE FINAL STRETCH | 152-159 | laser gates to jump on the beat; **more walkways fall** |
-| THE LAST 8 BARS | 160-167 | a bar countdown, **new bridges rise** |
-| OVERTIME | after the song | Shoebench, plus lasers, the Screamer and Rory |
+| THE NOTES | 8-15 | the first flocks of notes |
+| THE BASS DROPS | 16-31 | the Subwoofer (slamming on the one) and Rory |
+| THE EQUALIZER | 32-47 | EQ walls on the walkways round you, more notes, Rory |
+| THE CONDUCTOR | 48-63 | the Conductor rises and strikes every two bars; a few EQ walls; Rory |
+| SCRATCH | 64-79 | the Records drop onto the walkways; the Subwoofer comes back; Rory |
+| BREAKDOWN | 80-86 | the lights die and the band walks off: the Hush comes, **walkways fall away** |
+| SOMETHING IS COMING | 87-95 | the build-up: **sky bridges rise**, the Conductor returns, the notes gather |
+| THE DROP | 96-127 | everyone at once: the Subwoofer on 1 and 3, the Conductor, Records, Notes, EQ walls, Rory |
+| THE STORM | 128-151 | THE BIG ONE on every phrase (jump on the one!), the Conductor, Records, Notes; **the drop's bridges fall** |
+| THE FINAL STRETCH | 152-159 | EQ walls everywhere, all on 1 and 3 (cross on the off-beat); **more walkways fall** |
+| THE LAST 8 BARS | 160-167 | a bar countdown, the Conductor every bar, the Subwoofer, Records, Rory; **new bridges rise** |
+| OVERTIME | after the song | Shoebench, plus the Subwoofer, Notes, Records and Rory |
+
+CHILL spaces them out and sends fewer; HARD and WEGA MODE send more, more often, and quicker. Every one of them has
+its own sound (and caption), its own death scene and a page in the character guide.
 
 **The map changes with the song.** Every part has its own shade of blue (sky, fog, lights and the neon edges), the
 drop and the last 8 bars snap in with a flash, and whole groups of walkways **flash a warning for two bars, then
@@ -378,7 +394,10 @@ segment per hit), the phase, and when it's shielded.
 
 ## Going down
 
-Every character that can kill you has its **own death scene**: Rory sprints at you out of the dark and grabs you
+Every character that can kill you has its **own death scene** (RORY'S CHALLENGE's cast too: the notes close in a
+hop a beat and hit a sour chord, the Subwoofer pulls its cone back and blows you away, an EQ wall slams into you, the
+Conductor raises his baton and brings the lightning down, a record on its edge slices through, the Hush puts a finger
+to its lips and the music dies): Rory sprints at you out of the dark and grabs you
 with his gloves, the Screamer stops dead in your face and red cracks run across your view, Shoebench comes down on
 you, Urio walks into a spotlight, laughs and lunges, Wega rises and fires his eye lasers, the Diver plunges in front
 of you and the water rises, the jellyfish close in and all zap at once, your Shadow walks into you, the Glitch Guy
@@ -399,7 +418,8 @@ the death screen with **RETRY**.
 Every caption at the bottom of the screen has its own sound effect, made in the browser: **[ WEGA LAUGHS ]** is a
 deep, echoing, distorted laugh, **[ URIO LAUGHS ]** a warbling slowed-down cackle, **[ RORY'S FOOTSTEPS ]**,
 **[ THE SCREAMER SCREAMS ]**, **[ WEGA FACE CACKLES ]**, **[ CHOMP ]**, **[ THUNDER ]**, alarms, glitches, crowds and
-more, placed in 3D where they happen.
+more, placed in 3D where they happen. RORY'S CHALLENGE's cast has its own: **[ NOTES CHIME ]** (a tinkle on every
+hop), **[ BASS THUMPS ]**, **[ THE CONDUCTOR TAPS HIS BATON ]**, **[ RECORD SCRATCH ]**, **[ SHHHHH... ]** and more.
 
 ## The HUD
 

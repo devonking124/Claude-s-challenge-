@@ -200,6 +200,14 @@ var WegaMusic = {
   },
   isMuffled: function () { return muffled; },
 
+  /** Low-pass to any cutoff (Hz), e.g. the music dying away as something closes in. Ignored while muffled. */
+  setCutoff: function (hz, secs) {
+    if (!filter || muffled) return;
+    var now = ctx.currentTime, f = filter.frequency;
+    f.cancelScheduledValues(now); f.setValueAtTime(f.value, now);
+    f.exponentialRampToValueAtTime(Math.max(60, Math.min(22000, hz)), now + (secs || 0.1));
+  },
+
   /** Playback speed (also shifts pitch). 1 = normal. Good for "RUN FOR YOUR LIFE": 1.05-1.1 */
   setRate: function (r, secs) {
     rate = r;

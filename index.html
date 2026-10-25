@@ -627,7 +627,8 @@ const CONFIG = {
 
   // ---- health ----
   MAX_HP: 100, REGEN: 3, INVULN: 1.0,
-  DMG: { rory: 35, screamer: 30, laser: 20, fall: 20, lava: 25, flood: 25, wegaHead: 20, fireball: 15, burn: 10, glitch: 15, wegaBeam: 25, diverSlam: 40, diverWave: 15, diverBump: 15, jelly: 12, shadow: 20, urio: 30, destroyer: 20, wegaface: 30, wegaman: 30, duel: 25 },
+  DMG: { rory: 35, screamer: 30, laser: 20, fall: 20, lava: 25, flood: 25, wegaHead: 20, fireball: 15, burn: 10, glitch: 15, wegaBeam: 25, diverSlam: 40, diverWave: 15, diverBump: 15, jelly: 12, shadow: 20, urio: 30, destroyer: 20, wegaface: 30, wegaman: 30, duel: 25,
+    notes: 15, subwoofer: 15, bigOne: 25, eq: 20, strike: 20, record: 20, hush: 25 },
   // lilGuys: Lil' Guys per lap. hostile: how aggressive the characters are (shorter warnings, more
   // shots, faster chasers, longer hunts) on top of threat (how often things happen).
   DIFF: {
@@ -1078,6 +1079,8 @@ const Music = {
     if (this.ok() && !AudioSys.muted) window.WegaMusic.setVolume(level * this.mvEff(), secs);
   },
   setMuffled(on, secs) { this.desired.muffled = on; if (this.ok()) window.WegaMusic.setMuffled(on, secs); },
+  // a low-pass to any cutoff (the Hush: the music dying away as it closes in); ignored while muffled
+  cutoff(hz, secs) { if (this.ok() && window.WegaMusic.setCutoff && !this.desired.muffled) window.WegaMusic.setCutoff(hz, secs); },
   // syncLock: while a song is the game's clock (RORY'S CHALLENGE) its speed never changes (it would drift off the beat)
   syncLock: false,
   setRate(r, secs) { if (this.syncLock) r = 1; this.desired.rate = r; if (this.ok()) window.WegaMusic.setRate(r, secs); },
@@ -1620,6 +1623,29 @@ const Sfx = {
   alarm() { for (let i = 0; i < 4; i++) { this.tone({ type: 'square', f0: 880, dur: 0.18, vol: 0.08, when: i * 0.4, lp: 2400 }); this.tone({ type: 'square', f0: 660, dur: 0.18, vol: 0.08, when: i * 0.4 + 0.2, lp: 2400 }); } },
   lapPortal() { [392, 523, 659, 784, 1047].forEach((f, i) => this.tone({ type: 'triangle', f0: f, dur: 0.25, vol: 0.09, when: i * 0.06 })); },
   portal() { this.tone({ type: 'sine', f0: 220, f1: 1760, dur: 1.2, vol: 0.2, attack: 0.3 }); this.noise({ filter: 'highpass', f0: 1500, f1: 6000, dur: 1.2, vol: 0.12, attack: 0.4 }); },
+  // RORY'S CHALLENGE's cast
+  tink(p, f) { const dest = p || undefined; this.tone({ type: 'triangle', f0: f, dur: 0.16, vol: 0.05, dest }); this.tone({ type: 'sine', f0: f * 2, dur: 0.08, vol: 0.015, dest }); },
+  chime(p) { [1568, 2093, 2637].forEach((f, i) => this.tone({ type: 'triangle', f0: f, dur: 0.5, vol: 0.05, when: i * 0.06, verb: 0.4, dest: p || undefined })); },
+  sour(p) { const dest = p || undefined; this.tone({ type: 'triangle', f0: 880, dur: 0.35, vol: 0.09, dest }); this.tone({ type: 'triangle', f0: 932, dur: 0.35, vol: 0.09, dest }); this.tone({ type: 'square', f0: 466, f1: 233, dur: 0.3, vol: 0.04, lp: 1500, dest }); },
+  subThump(p, big) {
+    const dest = p || undefined;
+    this.tone({ type: 'sine', f0: big ? 90 : 75, f1: big ? 28 : 34, dur: big ? 0.9 : 0.42, vol: big ? 0.75 : 0.55, dest });
+    this.noise({ filter: 'lowpass', f0: big ? 400 : 220, dur: big ? 0.5 : 0.18, vol: big ? 0.4 : 0.25, dest });
+    if (big) this.tone({ type: 'sawtooth', f0: 55, f1: 30, dur: 0.8, vol: 0.18, lp: 300, shape: 'crush', dest });
+  },
+  charge(p) { const dest = p || undefined; this.tone({ type: 'sine', f0: 60, f1: 220, dur: 1.6, vol: 0.18, attack: 1.4, dest }); this.noise({ filter: 'bandpass', f0: 200, f1: 3000, q: 1.2, dur: 1.6, vol: 0.12, attack: 1.4, dest }); },
+  eqHum(p) { const dest = p || undefined; this.tone({ type: 'sawtooth', f0: 110, dur: 1.1, vol: 0.05, attack: 0.25, lp: 900, dest }); this.tone({ type: 'sawtooth', f0: 165, dur: 1.1, vol: 0.035, attack: 0.25, lp: 1200, dest }); },
+  eqUp(p) { this.tone({ type: 'square', f0: 220, f1: 1100, dur: 0.08, vol: 0.035, lp: 2600, dest: p || undefined }); },
+  eqZap() { this.tone({ type: 'sawtooth', f0: 1600, f1: 200, dur: 0.25, vol: 0.12, lp: 3000 }); this.noise({ filter: 'highpass', f0: 2500, dur: 0.15, vol: 0.15 }); },
+  baton(p) { const dest = p || undefined; for (let i = 0; i < 2; i++) { this.tone({ type: 'triangle', f0: 1900, f1: 1500, dur: 0.06, vol: 0.09, when: i * 0.13, lp: 3200, dest }); this.noise({ filter: 'bandpass', f0: 2400, q: 3, dur: 0.04, vol: 0.06, when: i * 0.13, dest }); } },
+  strike(vol = 1) { this.noise({ filter: 'highpass', f0: 2800, dur: 0.28, vol: 0.28 * vol }); this.tone({ type: 'sine', f0: 150, f1: 45, dur: 0.32, vol: 0.38 * vol }); this.tone({ type: 'triangle', f0: 2637, dur: 0.5, vol: 0.05 * vol, verb: 0.5 }); },
+  scratch(p, big) {
+    const dest = p || undefined, v = big ? 0.32 : 0.16;
+    this.noise({ filter: 'bandpass', f0: 450, f1: 2600, q: 5, dur: 0.11, vol: v, dest }); this.noise({ filter: 'bandpass', f0: 2600, f1: 500, q: 5, dur: 0.13, vol: v * 0.9, when: 0.11, dest });
+    if (big) this.tone({ type: 'sawtooth', f0: 300, f1: 900, dur: 0.12, vol: 0.06, lp: 2000, dest });
+  },
+  needle(p) { this.tone({ type: 'sine', f0: 120, f1: 50, dur: 0.2, vol: 0.4, dest: p || undefined }); this.crackle(p, 0.5); },
+  shh(p, vol = 1) { const dest = p || undefined; this.noise({ filter: 'bandpass', f0: 5200, q: 0.9, dur: 1.2, attack: 0.45, vol: 0.2 * vol, dest }); this.noise({ filter: 'highpass', f0: 7500, dur: 1.0, attack: 0.4, vol: 0.06 * vol, dest }); },
 };
 function setPannerPos(p, x, y, z) {
   if (!p) return;
@@ -1668,6 +1694,14 @@ const Cue = {
     crowd: ['[ THE CROWD GOES WILD ]', 2, () => { for (let i = 0; i < 4; i++) Sfx.noise({ filter: 'bandpass', f0: 900 + i * 300, q: 0.6, dur: 1.6, vol: 0.1, attack: 0.2, when: i * 0.05, verb: 0.6 }); Sfx.arp(); }],
     heart: ['[ HEARTBEAT ]', 1.2, () => Sfx.heartbeat()],
     healUp: ['[ HEALTH UP ]', 1.2, () => { Sfx.bonus(); Sfx.heartbeat(); }],
+    notes: ['[ NOTES CHIME ]', 1.2, (p) => Sfx.chime(p)],
+    bass: ['[ BASS THUMPS ]', 0.9, (p) => Sfx.subThump(p)],
+    bigOne: ['[ THE SUBWOOFER CHARGES UP ]', 1.6, (p) => Sfx.charge(p)],
+    eqHum: ['[ THE EQUALIZER HUMS ]', 1.4, (p) => Sfx.eqHum(p)],
+    baton: ['[ THE CONDUCTOR TAPS HIS BATON ]', 1.6, (p) => Sfx.baton(p)],
+    scratch: ['[ RECORD SCRATCH ]', 1.0, (p) => Sfx.scratch(p)],
+    needle: ['[ THE NEEDLE DROPS ]', 1.2, (p) => Sfx.needle(p)],
+    hush: ['[ SHHHHH... ]', 2.0, (p) => Sfx.shh(p)],
   },
   play(id, p, dur) {
     const c = this.LIST[id]; if (!c) return;
@@ -3001,11 +3035,12 @@ const Fade = {
 };
 
 const Effects = {
-  comfort: null, damage: null, flash: null, dmgAmt: 0, flashT: 0, flashDur: 0, flashColor: new THREE.Color(), flashPixel: false, flashPeak: 1,
+  comfort: null, damage: null, flash: null, hush: null, hushAmt: 0, dmgAmt: 0, flashT: 0, flashDur: 0, flashColor: new THREE.Color(), flashPixel: false, flashPeak: 1,
   comfortStrength: 0,
   init() {
     this.comfort = headSphere(0.3, VIGNETTE_FS, { uColor: { value: new THREE.Color(0x000000) }, uStrength: { value: 0 }, uInner: { value: 0.5 }, uSoft: { value: 0.25 } }, 9000);
     this.damage = headSphere(0.31, VIGNETTE_FS, { uColor: { value: new THREE.Color(0xff1010) }, uStrength: { value: 0 }, uInner: { value: 0.8 }, uSoft: { value: 0.55 } }, 9001);
+    this.hush = headSphere(0.305, VIGNETTE_FS, { uColor: { value: new THREE.Color(0x01030c) }, uStrength: { value: 0 }, uInner: { value: 0.95 }, uSoft: { value: 0.45 } }, 8999);
     this.flash = headSphere(0.32, FLASH_FS, { uColor: { value: new THREE.Color(0xffffff) }, uAmount: { value: 0 }, uPixel: { value: 0 }, uSeed: { value: 0 } }, 9002);
   },
   hurt(amount) { this.dmgAmt = Math.min(1, this.dmgAmt + amount / 40); },
@@ -3022,6 +3057,10 @@ const Effects = {
     const du = this.damage.material.uniforms;
     du.uStrength.value = this.dmgAmt * (Save.s.reduceFlash ? 0.45 : 0.75);
     this.damage.visible = this.dmgAmt > 0.01;
+    // the Hush (RORY'S CHALLENGE): the dark closes in round your view as one comes for you
+    const hu = this.hush.material.uniforms;
+    hu.uStrength.value = damp(hu.uStrength.value, this.hushAmt * 0.92, 6, dt); hu.uInner.value = lerp(0.98, 0.8, this.hushAmt);
+    this.hush.visible = hu.uStrength.value > 0.01;
     // comfort vignette
     const level = Save.s.vignette, cu = this.comfort.material.uniforms;
     const target = level === 0 || !XR.inVR ? 0 : this.comfortStrength;
@@ -5284,7 +5323,13 @@ const GUIDE = [
   { name: 'THE DIVER', where: 'LAP 4 + LAP 5', icon: 'diver', lines: ['LEAPS INTO THE SKY: A RED RING MARKS', 'WHERE HE LANDS (WHERE YOU ARE HEADING)', 'GET OUT OF THE RING (40 DAMAGE)', 'THEN JUMP HIS SHOCKWAVE (15 DAMAGE)', "DON'T BUMP INTO HIM AFTERWARDS"] },
   { name: 'JELLYFISH', where: 'LAP 4', icon: 'jelly', lines: ['GLOWING JELLIES DRIFT OVER THE WALKWAYS', 'TOUCH ONE AND IT ZAPS YOU (12 DAMAGE)', 'GO AROUND, WAIT, OR DUCK UNDER... JUMP!'] },
   { name: 'THE CHASE', where: 'AFTER YOU GRAB THE IDOL', icon: 'collapse', lines: ['THE PATH FALLS AWAY BEHIND YOU: RUN!', 'THE LAP YOU CAME FROM DECIDES THE CHASE:', 'LATER LAPS = LONGER, THEMED, WAY HARDER', 'AFTER LAP 5: FORGET ME NOT, THEN WEGA FACE'] },
-  { name: "RORY'S CHALLENGE", where: 'A GAME MODE (LOBBY > GAME MODE)', icon: 'rory', lines: ["500+ LIL' GUYS ON ONE HUGE BLUE MAP", 'THE TIMER IS THE SONG: EVERY PART OF IT', 'BRINGS ITS OWN ENEMIES (ON THE BEAT!)', 'WALKWAYS FALL, SKY BRIDGES RISE WITH IT', 'SONG OVER = SHOEBENCH. THEN FIND THE EXIT'] },
+  { name: "RORY'S CHALLENGE", where: 'A GAME MODE (LOBBY > GAME MODE)', icon: 'rory', lines: ["500+ LIL' GUYS ON ONE HUGE BLUE MAP", 'THE TIMER IS THE SONG. ITS OWN CAST COMES IN', 'ON ITS BEATS (NEXT PAGES); RORY COMES TOO', 'WALKWAYS FALL, SKY BRIDGES RISE WITH IT', 'SONG OVER = SHOEBENCH. THEN FIND THE EXIT'] },
+  { name: 'THE NOTES', where: "RORY'S CHALLENGE", icon: 'notes', lines: ['A FLOCK OF MUSIC NOTES HOPS AT YOU, A HOP A BEAT', 'EACH HOP AIMS WHERE YOU ARE ABOUT TO BE', "KEEP MOVING, DON'T RUN INTO THE FLOCK", 'A HIT = 15 DAMAGE (THE NOTE POPS)'] },
+  { name: 'THE SUBWOOFER', where: "RORY'S CHALLENGE", icon: 'subwoofer', lines: ['A FLOATING SPEAKER THAT SLAMS ON THE KICK', 'ITS SHOCKWAVE ROLLS ALONG THE FLOOR: JUMP IT', 'IT PULLS ITS CONE BACK THE BEAT BEFORE', 'THE STORM: THE BIG ONE. JUMP ON THE ONE!', 'A HIT = 15 (THE BIG ONE: 25)'] },
+  { name: 'THE EQUALIZER', where: "RORY'S CHALLENGE", icon: 'eq', lines: ['WALLS OF EQ BARS ACROSS THE WALKWAYS', 'THEY SHOOT UP ON THE BEAT: TOO HIGH TO JUMP', 'CROSS WHEN THEY DROP (THEY BREATHE IN FIRST)', 'A HIT = 20 DAMAGE AND A SHOVE BACK'] },
+  { name: 'THE CONDUCTOR', where: "RORY'S CHALLENGE", icon: 'conductor', lines: ['A GIANT IN THE SKY, CONDUCTING THE SONG', 'HE MARKS NUMBERED CIRCLES WHERE YOU\'RE HEADING', 'NEXT BAR, LIGHTNING HITS THEM: 1, 2, 3, 4', 'STEP ROUND THEM, OR BRAKE (20 DAMAGE)'] },
+  { name: 'THE RECORDS', where: "RORY'S CHALLENGE", icon: 'record', lines: ['SPINNING VINYL GRINDS ALONG THE WALKWAYS', 'THEY SURGE AT YOU ON EVERY BEAT', 'THEY SKIM ALONG LOW: JUMP OVER THEM', 'A HIT = 20 DAMAGE'] },
+  { name: 'THE HUSH', where: "RORY'S CHALLENGE: THE BREAKDOWN", icon: 'hush', lines: ['IT HATES THE MUSIC. IT COMES IN THE DARK', 'THE CLOSER IT GETS, THE QUIETER IT GOES', 'IF THE MUSIC FADES: RUN!', 'A TOUCH = 25 DAMAGE. THE BEAT CHASES IT OFF'] },
 ];
 function drawGuideIcon(ctx, kind, x, y, s) {
   ctx.save();
@@ -5318,6 +5363,36 @@ function drawGuideIcon(ctx, kind, x, y, s) {
     for (let i = 0; i < 3; i++) ctx.fillRect(cx - s * 0.12 + i * s * 0.09, cy + s * 0.27, s * 0.04, s * 0.1);
   }
   else if (kind === 'shoebench') ctx.drawImage(CANVAS.shoebench, x, y, s, s);
+  else if (kind === 'notes') {
+    ctx.shadowColor = '#3a9cff'; ctx.shadowBlur = 22; ctx.fillStyle = '#e6f6ff'; ctx.strokeStyle = '#e6f6ff'; ctx.lineCap = 'round';
+    const head = (nx, ny, k) => { ellipsePath(ctx, x + s * nx, y + s * ny, s * 0.09 * k, s * 0.065 * k, -0.4); ctx.fill(); };
+    const stem = (nx, y0, y1, k) => { ctx.lineWidth = s * 0.028 * k; ctx.beginPath(); ctx.moveTo(x + s * nx, y + s * y0); ctx.lineTo(x + s * nx, y + s * y1); ctx.stroke(); };
+    head(0.22, 0.8, 1); head(0.52, 0.72, 1); stem(0.3, 0.78, 0.42, 1); stem(0.6, 0.7, 0.34, 1);
+    ctx.lineWidth = s * 0.06; ctx.beginPath(); ctx.moveTo(x + s * 0.3, y + s * 0.42); ctx.lineTo(x + s * 0.6, y + s * 0.34); ctx.stroke();
+    head(0.74, 0.44, 0.8); stem(0.8, 0.43, 0.12, 0.8);
+    ctx.lineWidth = s * 0.03; ctx.beginPath(); ctx.moveTo(x + s * 0.8, y + s * 0.12); ctx.quadraticCurveTo(x + s * 0.95, y + s * 0.2, x + s * 0.88, y + s * 0.34); ctx.stroke();
+  } else if (kind === 'subwoofer') {
+    const cx = x + s * 0.5;
+    roundedRect(ctx, x + s * 0.2, y + s * 0.06, s * 0.6, s * 0.88, s * 0.06); ctx.fillStyle = '#0c1838'; ctx.fill();
+    ctx.lineWidth = 4; ctx.strokeStyle = '#7ad0ff'; ctx.shadowColor = '#3a8cff'; ctx.shadowBlur = 16; ctx.stroke();
+    const g = ctx.createRadialGradient(cx, y + s * 0.62, 2, cx, y + s * 0.62, s * 0.2); g.addColorStop(0, '#8ad8ff'); g.addColorStop(0.3, '#14306a'); g.addColorStop(1, '#0a1a40');
+    ctx.fillStyle = g; circlePath(ctx, cx, y + s * 0.62, s * 0.2); ctx.fill();
+    ctx.strokeStyle = '#6ac8ff'; ctx.lineWidth = s * 0.035; circlePath(ctx, cx, y + s * 0.62, s * 0.22); ctx.stroke();
+    ctx.lineWidth = s * 0.025; circlePath(ctx, cx, y + s * 0.24, s * 0.08); ctx.stroke(); ctx.fillStyle = '#6ac8ff'; circlePath(ctx, cx, y + s * 0.24, s * 0.035); ctx.fill();
+  } else if (kind === 'eq') {
+    [0.35, 0.6, 0.85, 0.7, 0.95, 0.5, 0.3].forEach((h, i) => {
+      const bx = x + s * (0.08 + i * 0.12), top = y + s * (0.95 - h * 0.85), g = ctx.createLinearGradient(0, top, 0, y + s * 0.95);
+      g.addColorStop(0, '#ffffff'); g.addColorStop(0.3, '#7ad0ff'); g.addColorStop(1, '#1a4aff');
+      ctx.fillStyle = g; ctx.shadowColor = '#3aa0ff'; ctx.shadowBlur = 14; ctx.fillRect(bx, top, s * 0.09, y + s * 0.95 - top);
+    });
+    ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(0,0,30,0.5)'; for (let k = 0; k < 12; k++) ctx.fillRect(x + s * 0.06, y + s * (0.95 - k * 0.075), s * 0.86, 2);
+  } else if (kind === 'conductor' && CANVAS.conductor) {
+    ctx.shadowColor = '#3a8cff'; ctx.shadowBlur = 20; ctx.drawImage(CANVAS.conductor, x + s * 0.2, y, s * 0.5, s);
+    ctx.save(); ctx.translate(x + s * (0.2 + 0.5 * 186 / 256), y + s * 182 / 512); ctx.rotate(-0.75); ctx.drawImage(CANVAS.condArm, 0, -s * 0.035, s * 0.45, s * 0.07); ctx.restore();
+  } else if (kind === 'record' && CANVAS.vinyl) {
+    ctx.shadowColor = '#3a8cff'; ctx.shadowBlur = 22; ctx.drawImage(CANVAS.vinyl, x + s * 0.05, y + s * 0.05, s * 0.9, s * 0.9);
+    ctx.strokeStyle = '#6ad8ff'; ctx.lineWidth = s * 0.03; circlePath(ctx, x + s * 0.5, y + s * 0.5, s * 0.45); ctx.stroke();
+  } else if (kind === 'hush' && CANVAS.hush) { ctx.shadowColor = '#5ab0ff'; ctx.shadowBlur = 18; ctx.drawImage(CANVAS.hush, x + s * 0.1, y, s * 0.8, s); }
   else if (kind === 'fireball') ctx.drawImage(CANVAS.flame, x, y, s, s);
   else if (kind === 'laser') {
     ctx.shadowColor = '#ff2020'; ctx.shadowBlur = 20; ctx.strokeStyle = '#ff3030'; ctx.lineWidth = s * 0.05;
@@ -7576,8 +7651,8 @@ const Flood = {
   // from far outside the maze, or from a point (Wega's roar)
   start(cx, cz) {
     if (!this.samples) this.prepare();
-    const a = Math.random() * Math.PI * 2, far = Maze.lap === RORY_LAP ? 125 : 85;      // just outside the maze (RORY'S is bigger)
-    this.cx = cx != null ? cx : Math.cos(a) * far; this.cz = cz != null ? cz : Math.sin(a) * far;
+    const a = Math.random() * Math.PI * 2;
+    this.cx = cx != null ? cx : Math.cos(a) * 85; this.cz = cz != null ? cz : Math.sin(a) * 85;
     let minD = Infinity, maxD = 0;
     for (let i = 0; i < this.count; i++) { const d = Math.hypot(this.samples[i * 3] - this.cx, this.samples[i * 3 + 2] - this.cz); if (d < minD) minD = d; if (d > maxD) maxD = d; }
     this.R = minD - 2; this.maxR = maxD + 2; this.active = true; this.hitDone = false; this.whooshDone = false;
@@ -7722,9 +7797,8 @@ const WegaBoss = {
     for (let i = 0; i < 2; i++) { this.beams.push(makeBeam(0xff2030)); this.stripes.push(makeStripe(0xff1a1a)); }
   },
   // chase = the lap-3 escape: he follows you down the route with glares and barrages only
-  // synced (RORY'S CHALLENGE): he attacks when the song says so (RoryDirector calls attackNow on a downbeat)
-  start(chase = false, synced = false) {
-    this.chase = chase; this.synced = synced;
+  start(chase = false) {
+    this.chase = chase;
     this.active = true; this.state = 'intro'; this.st = 0; this.t = 0; this.atkT = chase ? 2 : 5; this.phase = chase ? 2 : 1; this.lastKind = ''; this.roarT = 0; this.said = 1;
     this.sweeps.length = 0; this.shots.length = 0;
     Rig.headForward(_v1); this.orbit = Math.atan2(_v1.z, _v1.x);
@@ -7739,8 +7813,6 @@ const WegaBoss = {
     this.sweeps.length = 0; this.shots.length = 0;
   },
   hostile() { return diff().hostile; },
-  // an attack right now, if he's ready for one (RORY'S CHALLENGE: on the song's downbeats)
-  attackNow() { if (this.active && this.state === 'idle' && !Player.respawning) this.attack(); },
   eyeWorld(i, out) { this.group.updateMatrixWorld(true); return this.eyes[i].getWorldPosition(out); },
   // where the player is heading (unit XZ), along their walkway if they're on one
   heading(out) {
@@ -7864,7 +7936,6 @@ const WegaBoss = {
       if (f && g > -Infinity && g > p.y - 8) f.launch(_v1.set(sh.x, g, sh.z), _v2.copy(this.pos).addScaledVector(UP, -CONFIG.WEGA_SIZE * 0.25));
     }
     if (this.state === 'idle') {
-      if (this.synced) return;
       this.atkT -= dt;
       if (this.atkT <= 0 && !Player.respawning) this.attack();
       if (this.state === 'idle' && this.atkT <= 0) this.atkT = CONFIG.WEGA_GAP[this.phase - 1] / Hazards.tr();
@@ -7956,10 +8027,9 @@ const Diver = {
   },
   hostile() { return diff().hostile; },
   // chase = the lap-4 escape: he dives onto the walkway ahead, then leaps straight off again
-  // synced (RORY'S CHALLENGE): he only dives when the song says so (RoryDirector sets cycle = 0 so he lands on a downbeat)
-  start(chase = false, synced = false) {
-    this.chase = chase; this.synced = synced;
-    this.state = 'wait'; this.cycle = synced ? Infinity : (chase ? 3 : 6) / Hazards.tr(); this.t = 0; this.combo = 0; this.comboArmed = false;
+  start(chase = false) {
+    this.chase = chase;
+    this.state = 'wait'; this.cycle = (chase ? 3 : 6) / Hazards.tr(); this.t = 0; this.combo = 0; this.comboArmed = false;
     this.group.visible = false; this.ring.visible = this.disc.visible = this.wave.visible = false; this.line.show(false);
     if (!this.panner) this.panner = Sfx.panner(Player.pos.x, Player.pos.y, Player.pos.z, 6);
   },
@@ -8031,7 +8101,7 @@ const Diver = {
       if (k >= 1) this.impact();
     } else if (this.state === 'stand') {
       this.pos.copy(this.tgt);
-      if (this.st >= (this.combo ? 0.5 : this.chase ? 0.45 : CONFIG.DIVER_STAND / Math.sqrt(H))) { this.state = 'wait'; this.cycle = this.synced ? Infinity : this.combo || this.chase ? 0 : CONFIG.DIVER_GAP / Hazards.tr(); }
+      if (this.st >= (this.combo ? 0.5 : this.chase ? 0.45 : CONFIG.DIVER_STAND / Math.sqrt(H))) { this.state = 'wait'; this.cycle = this.combo || this.chase ? 0 : CONFIG.DIVER_GAP / Hazards.tr(); }
     }
     // the shockwave rolls outward along the floor: jump over it
     if (this.wave.visible) {
@@ -8078,8 +8148,8 @@ const Diver = {
     }
     this.waveR = 0.6; this.waveHit = d < CONFIG.DIVER_RADIUS + CONFIG.RADIUS;    // no double hit
     this.wave.position.set(T.x, T.y + 0.15, T.z); this.wave.visible = true;
-    // late in the lap he chains a second dive right away (not when the song decides his dives)
-    if (this.comboArmed && !this.combo && !this.synced) { this.combo = 1; this.comboArmed = false; }
+    // late in the lap he chains a second dive right away
+    if (this.comboArmed && !this.combo) { this.combo = 1; this.comboArmed = false; }
     else this.combo = 0;
   },
 };
@@ -8105,7 +8175,6 @@ const Jellies = {
   count() { return Math.min(this.MAX, Math.round(6 * diff().hostile)); },
   start() {
     this.active = true;
-    this.glow.material.color.set(Maze.lap === RORY_LAP ? 0x40c8ff : 0xff70ff);      // (blue in RORY'S CHALLENGE)
     for (const o of [this.domes, this.tent, this.glow]) o.visible = true;
     for (let i = 0; i < this.MAX; i++) { const j = this.list[i]; j.on = i < this.count(); if (j.on) this.place(j, true); }
   },
@@ -8128,7 +8197,7 @@ const Jellies = {
       j.pos.set(_v1.x, _v1.y + 1.55, _v1.z); j.base = _v1.y + 1.55;
       const across = Math.random() < 0.5, s = (Math.random() < 0.5 ? -1 : 1) * rr(0.35, 0.8);
       j.vel.set(I.axis === 0 ? (across ? 0 : s) : (across ? s : 0), 0, I.axis === 0 ? (across ? s : 0) : (across ? 0 : s));
-      j.col.setHSL(Maze.lap === RORY_LAP ? rr(0.5, 0.62) : rr(0.75, 0.95), 1, 0.65); this.domes.setColorAt(this.list.indexOf(j), j.col); this.tent.setColorAt(this.list.indexOf(j), j.col);   // (blue in RORY'S CHALLENGE)
+      j.col.setHSL(rr(0.75, 0.95), 1, 0.65); this.domes.setColorAt(this.list.indexOf(j), j.col); this.tent.setColorAt(this.list.indexOf(j), j.col);
       if (this.domes.instanceColor) this.domes.instanceColor.needsUpdate = true;
       if (this.tent.instanceColor) this.tent.instanceColor.needsUpdate = true;
       return;
@@ -8822,7 +8891,7 @@ const Hearts = {
 const Hazards = {
   mode: 'off', lasers: [], fireballs: [], roryT: 0, scrT: 0, laserT: [], fireT: 0, headTimes: [], floodsDone: null, esc: null,
   init() {
-    Rory.init(); Screamer.init(); GlitchGuy.init(); WegaHead.init(); Flood.init(); Shoebench.init(); WegaBoss.init(); Diver.init(); Jellies.init(); Shadow.init(); Urio.init(); Destroyer.init(); Hearts.init();
+    Rory.init(); Screamer.init(); GlitchGuy.init(); WegaHead.init(); Flood.init(); Shoebench.init(); WegaBoss.init(); Diver.init(); Jellies.init(); Shadow.init(); Urio.init(); Destroyer.init(); Hearts.init(); RoryFoes.init();
     for (let i = 0; i < 10; i++) this.lasers.push(new Laser());
     for (let i = 0; i < 8; i++) this.fireballs.push(new Fireball());
   },
@@ -8858,7 +8927,7 @@ const Hazards = {
       if (mode === 'lap5') Shadow.start();
     } else if (mode === 'escape') {
       this.setupEscape();
-    } else if (mode === 'rory') RoryDirector.reset();         // RORY'S CHALLENGE: everyone comes in on the song
+    } else if (mode === 'rory') RoryDirector.reset();         // RORY'S CHALLENGE: its own cast comes in on the song
     Enraged.set(mode === 'lap5' || (mode === 'escape' && Chamber.tier >= 5));
   },
   tr() { return diff().threat * (this.mode === 'lap3' ? CONFIG.LAP3_THREAT : this.mode === 'lap4' ? CONFIG.LAP4_THREAT : this.mode === 'lap5' || this.mode === 'rory' ? CONFIG.LAP5_THREAT : this.mode === 'escape' ? CHASE_THREAT[Chamber.tier] || 1 : 1); },
@@ -8974,6 +9043,7 @@ const Hazards = {
     if (m === 'off') return;
     Rory.update(dt); Screamer.update(dt); GlitchGuy.update(dt); WegaHead.update(dt); Flood.update(dt); Shoebench.update(dt);
     WegaBoss.update(dt); Diver.update(dt); Jellies.update(dt); Shadow.update(dt); Urio.update(dt); Destroyer.update(dt); Hearts.update(dt);
+    if (m === 'rory') RoryFoes.update(dt);
     for (const l of this.lasers) l.update(dt);
     for (const f of this.fireballs) f.update(dt);
   },
@@ -9013,16 +9083,16 @@ const RORY_SONG = {
   // pal = [sky low, sky high, sky glow, walkway neon, fog], fog density, storm (sky + lightning), kick (beat pulse), light
   SECTIONS: [
     { bar: 0, id: 'intro', name: 'THE BLUE HOUR', sub: "COLLECT EVERY LIL' GUY BEFORE THE SONG ENDS", col: '#5a8cff', pal: [0x01030c, 0x0a1a4a, 0x2a6aff, 0x2a5aff, 0x020616], fog: 0.010, storm: 0, kick: 1, light: 0.9 },
-    { bar: 8, id: 'lights', name: 'SEARCHLIGHTS', sub: 'THE LASERS SWITCH ON WITH THE HI-HATS', col: '#4aa8ff', pal: [0x020818, 0x0a2a6a, 0x3a8cff, 0x3a9cff, 0x04102a], fog: 0.011, storm: 0.1, kick: 1, light: 1 },
-    { bar: 16, id: 'bass', name: 'THE BASS DROPS', sub: 'AND RORY COMES WITH IT', col: '#7a8cff', pal: [0x02020e, 0x14207a, 0x6a7aff, 0x5a6aff, 0x050620], fog: 0.012, storm: 0.25, kick: 1, light: 1 },
-    { bar: 32, id: 'glitch', name: 'THE GLITCH', sub: 'THE GLITCH GUY JOINS IN', col: '#40e8ff', pal: [0x00101a, 0x004a6a, 0x40e8ff, 0x40e0ff, 0x011420], fog: 0.012, storm: 0.2, kick: 1, light: 1 },
-    { bar: 48, id: 'fire', name: 'FIREFALL', sub: 'FIRE LANDS ON THE BEAT', col: '#5ab0ff', pal: [0x000818, 0x0a3a8a, 0x5ab0ff, 0x4aa0ff, 0x020c22], fog: 0.012, storm: 0.3, kick: 1, light: 1 },
-    { bar: 64, id: 'deep', name: 'THE DEEP END', sub: 'THE DIVER LANDS ON THE DOWNBEAT', col: '#20d0ff', pal: [0x000a14, 0x003a5a, 0x20c8ff, 0x20d0ff, 0x011a26], fog: 0.014, storm: 0.15, kick: 1, light: 1 },
-    { bar: 80, id: 'breakdown', name: 'BREAKDOWN', sub: 'THE MAP IS FALLING APART', col: '#3a64e0', pal: [0x000004, 0x02081a, 0x1a3a90, 0x1a40a0, 0x000208], fog: 0.024, storm: 0, kick: 0, light: 0.45 },
+    { bar: 8, id: 'notes', name: 'THE NOTES', sub: 'THEY HOP ON THE BEAT: KEEP MOVING', col: '#4aa8ff', pal: [0x020818, 0x0a2a6a, 0x3a8cff, 0x3a9cff, 0x04102a], fog: 0.011, storm: 0.1, kick: 1, light: 1 },
+    { bar: 16, id: 'bass', name: 'THE BASS DROPS', sub: 'THE SUBWOOFER (AND RORY) COME WITH IT', col: '#7a8cff', pal: [0x02020e, 0x14207a, 0x6a7aff, 0x5a6aff, 0x050620], fog: 0.012, storm: 0.25, kick: 1, light: 1 },
+    { bar: 32, id: 'eq', name: 'THE EQUALIZER', sub: 'CROSS THE WALLS WHEN THEY DROP', col: '#40e8ff', pal: [0x00101a, 0x004a6a, 0x40e8ff, 0x40e0ff, 0x011420], fog: 0.012, storm: 0.2, kick: 1, light: 1 },
+    { bar: 48, id: 'conductor', name: 'THE CONDUCTOR', sub: 'GET OUT OF HIS NUMBERED CIRCLES', col: '#5ab0ff', pal: [0x000818, 0x0a3a8a, 0x5ab0ff, 0x4aa0ff, 0x020c22], fog: 0.012, storm: 0.3, kick: 1, light: 1 },
+    { bar: 64, id: 'scratch', name: 'SCRATCH', sub: 'THE RECORDS ARE SPINNING: JUMP THEM', col: '#20d0ff', pal: [0x000a14, 0x003a5a, 0x20c8ff, 0x20d0ff, 0x011a26], fog: 0.014, storm: 0.15, kick: 1, light: 1 },
+    { bar: 80, id: 'breakdown', name: 'BREAKDOWN', sub: 'THE MAP IS FALLING APART... IF THE MUSIC FADES, RUN', col: '#3a64e0', pal: [0x000004, 0x02081a, 0x1a3a90, 0x1a40a0, 0x000208], fog: 0.024, storm: 0, kick: 0, light: 0.45 },
     { bar: 87, id: 'build', name: 'SOMETHING IS COMING', sub: 'THE SKY BRIDGES ARE RISING', col: '#8aa0ff', pal: [0x00020a, 0x0a1a5a, 0x8aa8ff, 0x6a8aff, 0x020418], fog: 0.017, storm: 0.4, kick: 0.6, light: 0.7 },
     { bar: 96, id: 'drop', name: 'THE DROP', sub: 'EVERYONE IS HERE', col: '#a0f0ff', pal: [0x020a2a, 0x1060ff, 0xa0f0ff, 0x80e8ff, 0x061440], fog: 0.009, storm: 0.85, kick: 1.3, light: 1.25 },
-    { bar: 128, id: 'storm', name: 'THE STORM', sub: 'A PIXEL FLOOD ON EVERY PHRASE', col: '#7a8aff', pal: [0x02021a, 0x1a1a7a, 0x6a7aff, 0x7a8aff, 0x04041e], fog: 0.013, storm: 1, kick: 1, light: 0.95 },
-    { bar: 152, id: 'stripped', name: 'THE FINAL STRETCH', sub: 'JUMP THE LASER GATES ON THE BEAT', col: '#8ac0f0', pal: [0x020610, 0x1a3050, 0x7ab0e0, 0x8ac0f0, 0x040a14], fog: 0.012, storm: 0.3, kick: 1, light: 0.9 },
+    { bar: 128, id: 'storm', name: 'THE STORM', sub: 'THE BIG ONE: JUMP ON THE ONE', col: '#7a8aff', pal: [0x02021a, 0x1a1a7a, 0x6a7aff, 0x7a8aff, 0x04041e], fog: 0.013, storm: 1, kick: 1, light: 0.95 },
+    { bar: 152, id: 'stripped', name: 'THE FINAL STRETCH', sub: 'CROSS THE WALLS ON THE OFF-BEAT', col: '#8ac0f0', pal: [0x020610, 0x1a3050, 0x7ab0e0, 0x8ac0f0, 0x040a14], fog: 0.012, storm: 0.3, kick: 1, light: 0.9 },
     { bar: 160, id: 'last', name: 'THE LAST 8 BARS', sub: 'SHOEBENCH IS WAKING UP', col: '#e0f0ff', pal: [0x04081a, 0x2a4aaa, 0xe0f0ff, 0xc0e0ff, 0x081024], fog: 0.011, storm: 0.6, kick: 1.2, light: 1.15 },
     { bar: 168, id: 'overtime', name: 'OVERTIME', sub: 'SHOEBENCH IS COMING FOR YOU', col: '#ff6a8a', pal: [0x03030e, 0x16186a, 0x5a8cff, 0x6a8aff, 0x060a20], fog: 0.012, storm: 0.7, kick: 1.2, light: 1, alarm: true },
   ],
@@ -9187,7 +9257,10 @@ const RoryMap = {
     for (const G of this.groups) if (G.kind === 'bridge' && (G.state === 'solid' || G.state === 'warn')) live.push(...G.edges);
     for (const n of g.nodes) n.adj = [];
     for (const e of live) { const A = g.nodes[e.a], B = g.nodes[e.b], cost = Math.hypot(A.x - B.x, A.y - B.y, A.z - B.z); A.adj.push({ to: e.b, cost }); B.adj.push({ to: e.a, cost }); }
+    this.live = live; this.liveSet = new Set(live);
   },
+  liveEdges() { return this.live || this.graph().edges; },
+  isLive(e) { return !this.liveSet || this.liveSet.has(e); },
 };
 
 // ---------------- RORY'S CHALLENGE: the world follows the song (colours per section, every kick, every bar) ----------------
@@ -9325,7 +9398,7 @@ const RoryDeco = {
     this.pillars.material.color.copy(c2); this.pillars.material.opacity = (0.06 + Math.exp(-barPh * 5) * 0.45 * S.kick) * (S.id === 'breakdown' ? 0.3 : 1);
     for (const s of this.crystals) { const u = s.userData; s.rotation.y += dt * u.spin; s.rotation.x += dt * u.spin * 0.5; s.position.y = u.y + Math.sin(this.t * 0.5 + u.bob) * 2.5; s.children[0].material.color.copy(c2); s.children[1].material.opacity = 0.08 + kick * 0.3; }
     // giant Rory walks slowly round the horizon, bobbing to the beat
-    const want = { bass: 0.35, glitch: 0.2, drop: 0.95, storm: 0.55, last: 1, overtime: 1 }[S.id] || 0;
+    const want = { bass: 0.35, eq: 0.2, drop: 0.95, storm: 0.55, last: 1, overtime: 1 }[S.id] || 0;
     this.op = damp(this.op, want, 1.2, dt);
     const ga = this.t * 0.018, gx = Math.cos(ga) * 235, gz = Math.sin(ga) * 235, bob = t >= 0 ? Math.abs(Math.sin((t - RORY_SONG.BEAT0) / RORY_SONG.BEAT * Math.PI)) : 0;
     this.giant.position.set(gx, -40 + bob * 2.5, gz); this.giant.scale.set(56 * (1 + kick * 0.03), 112 * (1 - bob * 0.03), 1);
@@ -9364,37 +9437,27 @@ const RoryCard = {
 };
 
 // ---------------- RORY'S CHALLENGE: who comes in when (Hazards mode 'rory') ----------------
-// Each section of the song has its rules; everything is planned two bars ahead so it lands ON the music: a Screamer's
-// dash, the Diver's impact, a laser switching on and a laser gate hit a downbeat, fireballs land on beats, Rory's feet
-// hit every beat. Bars decide what happens (the same for everyone in a shared run); where is up to each player's own run.
+// Each section of the song has its own cast (below) and its own choreography, planned two bars ahead so it lands ON the
+// music: the Notes and Records arrive on a downbeat, the Conductor marks his strikes a bar ahead, the storm's big ones
+// get a countdown, Rory's feet hit every beat. Bars decide what happens (the same for everyone in a shared run); where
+// is up to each player's own run.
 const RoryDirector = {
-  on: false, sec: -1, q: [], planned: -1e9, lastBeat: null, gates: new Map(),        // gates: laser gate -> when it was set
-  // lasers: beams up at once; rory: [start bar, bars, ...]; screamer / diver / wega: every N bars into the section
-  // (wega -1: there, watching); fire: every N beats; flood / head: on those bars; gates: a laser gate every bar
-  RULES: {
-    intro: {},
-    lights: { lasers: 2 },
-    bass: { lasers: 2, rory: [16, 12], screamer: 4 },
-    glitch: { lasers: 3, glitch: true, rory: [40, 8], screamer: 4 },
-    fire: { lasers: 3, glitch: true, fire: 2, rory: [56, 8], head: [52, 60] },
-    deep: { lasers: 2, diver: 2, rory: [66, 8], flood: [72], screamer: 8 },
-    breakdown: { shadow: true, jellies: true },
-    build: { shadow: true, wega: -1 },
-    drop: { lasers: 4, wega: 2, screamer: 2, diver: 4, fire: 4, rory: [96, 16, 116, 12] },
-    storm: { lasers: 3, wega: 4, glitch: true, flood: [128, 136, 144], fire: 4, rory: [136, 8] },
-    stripped: { gates: 1, screamer: 2, rory: [152, 8] },
-    last: { lasers: 3, diver: 2, fire: 2, rory: [160, 8] },
-    overtime: { lasers: 2, screamer: 4, roryEvery: 16 },
-  },
+  on: false, sec: -1, q: [], planned: -1e9, lastBeat: null,
+  // Rory's windows in each section: [start bar, bars, ...]
+  RORY: { bass: [16, 12], eq: [40, 8], conductor: [56, 8], scratch: [66, 8], drop: [96, 16, 116, 12], storm: [136, 8], stripped: [152, 8], last: [160, 8] },
+  // who stays for a whole section: sub = the Subwoofer, slamming every N beats (-1: there, but only for the big ones),
+  // cond = the Conductor is up in the sky, hush = the Hush (the breakdown)
+  STAY: { bass: { sub: 4 }, conductor: { cond: true }, breakdown: { hush: true }, build: { cond: true }, drop: { sub: 2, cond: true }, storm: { sub: -1, cond: true }, last: { sub: 4, cond: true }, overtime: { sub: 4 } },
+  // the storm's big ones: the Subwoofer's wave goes through the whole map on these downbeats (jump on the one!)
+  MEGA: [128, 136, 144],
   reset() { this.clear(); this.on = true; Rory.syncSteps = true; },
   clear() {
-    for (const l of this.gates.keys()) l.stop();
-    this.on = false; this.q.length = 0; this.sec = -1; this.planned = -1e9; this.lastBeat = null; this.gates.clear();
-    Rory.syncSteps = false; Diver.synced = false; WegaBoss.synced = false;
+    this.on = false; this.q.length = 0; this.sec = -1; this.planned = -1e9; this.lastBeat = null;
+    Rory.syncSteps = false; RoryFoes.clear();
   },
-  // every-N rules get stretched on CHILL and tightened on HARD / WEGA MODE
+  // every-N rules get stretched on CHILL and tightened on HARD / WEGA MODE; how many come, the other way round
   per(n) { const k = diff().threat; return Math.max(1, Math.round(n * (k < 0.8 ? 2 : k > 1.5 ? 0.5 : k > 1.2 ? 0.75 : 1))); },
-  laserCount(n) { return clamp(n + (diff().hostile >= 1.3 ? 1 : 0) + (Mods.on('lasers') ? 2 : 0) - (diff().threat < 0.8 ? 1 : 0), 1, 7); },
+  count(n) { const k = diff().threat; return Math.max(1, Math.round(n * (k < 0.8 ? 0.67 : k > 1.5 ? 1.5 : k > 1.2 ? 1.25 : 1))); },
   at(t, fn) { this.q.push({ t, fn }); },
   update() {
     if (!this.on) return;
@@ -9406,8 +9469,6 @@ const RoryDirector = {
     const b = RORY_SONG.beat(t);
     if (this.lastBeat == null || b < this.lastBeat) this.lastBeat = b;
     else if (b > this.lastBeat) { this.lastBeat = b; if (t >= 0) this.onBeat(b); }
-    // laser gates are only up for a moment (a beat and a half, on the downbeat)
-    for (const [l, t0] of this.gates) if (t - t0 > CONFIG.LASER_TELEGRAPH + RORY_SONG.BEAT * 2 || t < t0 - 1 || !l.active) { l.stop(); this.gates.delete(l); }
     // whatever is due (anything more than half a second late - a stall, a jump - is dropped)
     for (let i = this.q.length - 1; i >= 0; i--) {
       const e = this.q[i];
@@ -9416,49 +9477,113 @@ const RoryDirector = {
       if (t - e.t < 0.5 && SM.isGameplay()) { try { e.fn(); } catch (err) { console.error('[Wega] rory director', err); } }
     }
   },
-  roryWindow(R, bar) {
-    if (!R.rory) return 0;
-    for (let i = 0; i < R.rory.length; i += 2) if (bar >= R.rory[i] && bar < R.rory[i] + R.rory[i + 1]) return R.rory[i] + R.rory[i + 1] - bar;
+  roryWindow(id, bar) {
+    const R = this.RORY[id]; if (!R) return 0;
+    for (let i = 0; i < R.length; i += 2) if (bar >= R[i] && bar < R[i] + R[i + 1]) return R[i] + R[i + 1] - bar;
     return 0;
   },
   enter(si, fresh) {
-    const S = RORY_SONG.SECTIONS[si], R = this.RULES[S.id] || {}, bar = RORY_SONG.bar(RoryRun.beatT());
-    if (R.glitch) { if (GlitchGuy.state === 'off') GlitchGuy.reset(1.5); } else GlitchGuy.stop();
-    if (R.shadow) { if (!Shadow.active) Shadow.start(); } else Shadow.stop();
-    if (R.jellies) { if (!Jellies.active) Jellies.start(); } else Jellies.stop();
-    if (R.wega) { if (!WegaBoss.active) WegaBoss.start(false, true); WegaBoss.synced = true; } else if (WegaBoss.active) WegaBoss.stop();
-    if (R.diver) { if (Diver.state === 'off') Diver.start(false, true); Diver.synced = true; } else Diver.stop();
-    // the breakdown: the lights go out and everyone's gone... except your shadow
-    if (S.id === 'breakdown') { Rory.despawn(true); Screamer.clear(); Flood.stop(); WegaHead.stop(); for (const l of Hazards.lasers) l.stop(); for (const f of Hazards.fireballs) f.stop(); this.gates.clear(); }
-    // inside one of the section's Rory windows (a late join, a comeback): he comes now, for what's left of it
-    if (!fresh) { const w = this.roryWindow(R, bar); if (w > 0) this.rory(w); }
+    const S = RORY_SONG.SECTIONS[si], id = S.id, St = this.STAY[id] || {}, bar = RORY_SONG.bar(RoryRun.beatT());
+    const next = RORY_SONG.SECTIONS[si + 1], left = Math.max(2, (next ? next.bar : bar + 8) - bar);
     Announce.queue.length = 0;                 // (the song has moved on: whatever was still waiting to be said is old news)
     UI.announce(S.name, { color: S.col });
     if (S.sub) UI.announce(S.sub, { color: '#ffffff', short: true });
-    if (fresh && S.id === 'drop') { Sfx.boom(null, true); Cue.play('wegaRoar'); Hands.pulse('both', 0.8, 400); }
-    if (fresh && S.id === 'breakdown') Sfx.crumble();
+    // the section's regulars come and go with it (in the scratch section the Subwoofer joins half way)
+    const sub = id === 'scratch' && bar >= 72 ? 4 : St.sub === 2 && diff().threat < 0.8 ? 4 : St.sub;     // (CHILL: never twice a bar)
+    if (sub) Subwoofer.show(sub); else Subwoofer.dismiss();
+    if (St.cond) Conductor.show(); else Conductor.dismiss();
+    if (St.hush) Hush.spawn(this.count(2)); else Hush.dismiss();
+    // the breakdown: the lights go out and the whole band walks off... and something that hates the music comes
+    if (id === 'breakdown') { Rory.despawn(true); BeatNotes.dismiss(); Scratch.dismiss(); EqWalls.dismiss(); }
+    // joining late or coming back mid-section: Rory if it's his moment, and whatever else it has going on right now
+    if (!fresh) {
+      const w = this.roryWindow(id, bar); if (w > 0) this.rory(w);
+      const n = (k) => this.count(k), L = (k) => Math.min(k, left);
+      if (id === 'notes' || id === 'overtime') BeatNotes.spawn(n(3), L(8));
+      else if (id === 'eq') EqWalls.place(n(5), L(8));
+      else if (id === 'scratch' || id === 'storm' || id === 'last') Scratch.spawn(n(2), L(8));
+      else if (id === 'drop') { Scratch.spawn(n(2), L(8)); BeatNotes.spawn(n(3), L(8)); }
+      else if (id === 'stripped') EqWalls.place(n(7), L(8), true);
+    }
+    if (fresh && id === 'drop') { Sfx.boom(null, true); Cue.play('crowd'); Hands.pulse('both', 0.8, 400); }
+    if (fresh && id === 'breakdown') Sfx.crumble();
   },
   // what bar `bar` brings (scheduled so it lands on the music)
   plan(bar) {
-    const si = RORY_SONG.sectionOfBar(bar), S = RORY_SONG.SECTIONS[si], R = this.RULES[S.id] || {}, bt = RORY_SONG.barT(bar), rel = bar - S.bar, H = Math.sqrt(diff().hostile);
-    const every = (n) => n > 0 && rel > 0 && rel % this.per(n) === 0;
-    if (R.rory) for (let i = 0; i < R.rory.length; i += 2) if (bar === R.rory[i]) { const len = R.rory[i + 1]; this.at(bt, () => this.rory(len)); }
-    if (R.roryEvery && rel % R.roryEvery === 8) this.at(bt, () => this.rory(8));
+    const si = RORY_SONG.sectionOfBar(bar), S = RORY_SONG.SECTIONS[si], id = S.id, bt = RORY_SONG.barT(bar), rel = bar - S.bar;
+    const at = (fn, t = bt) => this.at(t, fn), n = (k) => this.count(k);
+    // the Conductor marks his strikes half a bar ahead (on the 3): k of them, on the beats of the next bar
+    const strikes = (k) => at(() => Conductor.mark(bar + 1, k), bt + 2 * RORY_SONG.BEAT);
+    // Rory: his windows (and in overtime, every 16 bars)
+    const R = this.RORY[id];
+    if (R) for (let i = 0; i < R.length; i += 2) if (bar === R[i]) { const len = R[i + 1]; at(() => this.rory(len)); }
+    if (id === 'overtime' && rel % 16 === 8) at(() => this.rory(8));
     // RORY RAMPAGE: he's back every 8 bars wherever the song doesn't already send him
-    if (Mods.on('rory') && !['intro', 'breakdown', 'build'].includes(S.id) && bar % 8 === 4 && !this.roryWindow(R, bar)) this.at(bt, () => this.rory(6));
-    if (R.lasers && rel % 2 === 0) { const n = this.laserCount(R.lasers); this.at(bt - CONFIG.LASER_TELEGRAPH, () => this.laser(n)); }
-    if (every(R.screamer)) this.at(bt - CONFIG.SCREAMER_TELEGRAPH / H, () => { if (Screamer.state === 'idle' && !Player.respawning) Screamer.trigger(); });
-    if (R.fire) { const n = this.per(R.fire); for (let q = 0; q < 4; q++) { const b = bar * 4 + q; if (b % n === 0) this.at(RORY_SONG.beatT(b) - CONFIG.FIREBALL_TELEGRAPH, () => { if (!Player.respawning) Hazards.spawnFireball(); }); } }
-    if (every(R.diver)) this.at(bt - (0.55 + CONFIG.DIVER_TELE / H + 0.3), () => this.dive());
-    if (R.wega > 0 && every(R.wega)) this.at(bt, () => WegaBoss.attackNow());
-    if (R.flood && R.flood.includes(bar)) this.at(bt, () => { if (!Flood.active) Flood.start(); });
-    if (R.head && R.head.includes(bar)) this.at(bt, () => { if (!WegaHead.active) WegaHead.spawn(); });
-    if (R.gates) this.at(bt - CONFIG.LASER_TELEGRAPH, () => this.gate());
+    if (Mods.on('rory') && !['intro', 'breakdown', 'build'].includes(id) && bar % 8 === 4 && !this.roryWindow(id, bar)) at(() => this.rory(6));
+    switch (id) {
+      case 'notes':
+        if (rel === 0) at(() => BeatNotes.spawn(n(3), 8));
+        if (rel === 4) at(() => BeatNotes.spawn(n(2), 8));
+        break;
+      case 'bass':
+        if (rel === 8) at(() => BeatNotes.spawn(n(2), 8));
+        break;
+      case 'eq':
+        if (rel === 0 || rel === 8) at(() => EqWalls.place(n(rel ? 6 : 5), 8));
+        if (rel === 4) at(() => BeatNotes.spawn(n(2), 8));
+        break;
+      case 'conductor':
+        if (rel >= 1 && rel <= 14 && (rel - 1) % this.per(2) === 0) strikes(4);
+        if (rel === 8) at(() => EqWalls.place(n(3), 8));
+        break;
+      case 'scratch':
+        if (rel === 0) at(() => Scratch.spawn(n(2), 16));
+        if (rel === 8) { at(() => Scratch.spawn(n(1), 8)); at(() => Subwoofer.show(4)); }
+        break;
+      case 'breakdown':
+        if (rel === 3 && diff().hostile >= 1.3) at(() => Hush.spawn(1));
+        break;
+      case 'build':
+        if (rel === 2) at(() => BeatNotes.spawn(n(4), 7));
+        if (rel === 4) strikes(2);
+        if (rel === 6) strikes(4);
+        break;
+      case 'drop':
+        if (rel === 0) { at(() => Scratch.spawn(n(2), 16)); at(() => BeatNotes.spawn(n(4), 8)); }
+        if (rel === 16) at(() => Scratch.spawn(n(2), 12));
+        if (rel === 8 || rel === 24) at(() => BeatNotes.spawn(n(3), 8));
+        if (rel === 4 || rel === 12 || rel === 20) at(() => EqWalls.place(n(4), 8));
+        if (rel >= 1 && rel <= 30 && (rel - 1) % this.per(2) === 0) strikes(4);
+        break;
+      case 'storm':
+        if (rel === 4) at(() => Scratch.spawn(n(2), 16));
+        if (rel === 12) at(() => BeatNotes.spawn(n(3), 8));
+        if (rel <= 22 && rel % this.per(2) === 1 && !this.MEGA.includes(bar + 1)) strikes(4);
+        break;
+      case 'stripped':
+        if (rel === 0) at(() => EqWalls.place(n(7), 8, true));
+        if (rel === 2) at(() => BeatNotes.spawn(n(3), 6));
+        break;
+      case 'last':
+        if (rel === 0) at(() => Scratch.spawn(n(2), 8));
+        if (rel <= 6 && rel % this.per(1) === 0) strikes(4);
+        break;
+      case 'overtime':
+        if (rel % 8 === 0) at(() => BeatNotes.spawn(n(3), 8));
+        if (rel % 16 === 4) at(() => Scratch.spawn(1, 12));
+        break;
+    }
+    // the storm's big ones: a countdown through the bar before, then the wave on the downbeat
+    if (this.MEGA.includes(bar + 1)) {
+      at(() => { UI.announce('THE BIG ONE', { color: '#9ad0ff' }); UI.announce('JUMP ON THE ONE!', { color: '#ffffff', short: true }); Subwoofer.charge(); });
+      for (let q = 1; q < 4; q++) at(() => { RoryCard.show(String(4 - q), '#9ad0ff', { sub: 'JUMP ON THE ONE' }); Sfx.tone({ type: 'square', f0: 330 * Math.pow(2, q / 4), dur: 0.12, vol: 0.08, lp: 2200 }); }, RORY_SONG.beatT(bar * 4 + q));
+    }
+    if (this.MEGA.includes(bar)) at(() => { RoryCard.show('JUMP!', '#ffffff', { size: 140, hold: 0.5 }); Subwoofer.mega(); });
     // the beat card: the drop's countdown (the build's last bar), DROP!, the last 8 bars counting down
     if (bar === 95) for (let q = 0; q < 4; q++) this.at(RORY_SONG.beatT(bar * 4 + q), () => { RoryCard.show(String(4 - q), '#a0f0ff', { sub: 'THE DROP' }); Sfx.tone({ type: 'square', f0: 440 * Math.pow(2, q / 4), dur: 0.12, vol: 0.08, lp: 2200 }); });
-    if (bar === 96) this.at(bt, () => RoryCard.show('DROP!', '#a0f0ff', { size: 130, hold: 0.6 }));
-    if (S.id === 'last') this.at(bt, () => RoryCard.show(String(168 - bar), '#e0f0ff', { sub: bar === 167 ? 'LAST BAR!' : 'BARS LEFT', hold: 0.7 }));
-    if (bar === 164) this.at(bt, () => { UI.announce('SHOEBENCH IS WAKING UP...', { color: '#ff5a5a' }); Cue.play('squeak'); });
+    if (bar === 96) at(() => RoryCard.show('DROP!', '#a0f0ff', { size: 130, hold: 0.6 }));
+    if (id === 'last') at(() => RoryCard.show(String(168 - bar), '#e0f0ff', { sub: bar === 167 ? 'LAST BAR!' : 'BARS LEFT', hold: 0.7 }));
+    if (bar === 164) at(() => { UI.announce('SHOEBENCH IS WAKING UP...', { color: '#ff5a5a' }); Cue.play('squeak'); });
   },
   onBeat() { if (Rory.active && Rory.panner) Sfx.roryThump(Rory.panner); },       // his feet land on the beat
   rory(bars) {
@@ -9466,34 +9591,809 @@ const RoryDirector = {
     const S = RORY_SONG.SECTIONS[this.sec] || {}, extra = S.id === 'drop' || S.id === 'last' || S.id === 'overtime' ? 0.5 : 0;
     if (Rory.event(Hazards.roryEventSpeed(true) + extra)) Rory.duration = bars * RORY_SONG.BAR;
   },
-  // a searchlight / a sweeping beam switching on on the downbeat (keeps n of them up)
-  laser(n) {
-    let on = 0; for (const l of Hazards.lasers) if (l.active && !this.gates.has(l)) on++;
-    if (on >= n || Player.respawning) return;
-    const l = Hazards.lasers.find((x) => !x.active); if (!l) return;
-    const cfg = Hazards.makeLaserCfg(true); cfg.color = 0xff3a8a;
-    if (cfg.mode === 'sky') cfg.life = RORY_SONG.BAR * 6;
-    this.gates.delete(l); l.start(cfg);
+};
+
+// =====================================================================================
+// RORY'S CHALLENGE's own cast. Nobody from the laps comes here (Rory is the exception, and Shoebench when the song
+// runs out): these live on the song. The Notes hop on its beats, the Subwoofer slams on its kick, the Equalizer's walls
+// jump with it, the Conductor conducts it (and strikes where his baton says), the Records scratch along the walkways,
+// and in the breakdown the Hush comes for whatever music is left. RoryDirector says who comes when; each of them keeps
+// time with RoryRun.beatT() (the song as you hear it). Each player has their own (online too), on the same beats.
+// =====================================================================================
+const RF = {
+  ph(t) { return ((((t - RORY_SONG.BEAT0) / RORY_SONG.BEAT) % 1) + 1) % 1; },      // how far into the beat
+  q(t) { return ((RORY_SONG.beat(t) % 4) + 4) % 4; },                                // which beat of the bar (0 = the one)
+  k() { return Math.sqrt(diff().hostile) * Mods.foeK(); },                            // how quick and fierce (difficulty, challenges)
+  // distance from a point to the surface of the player's capsule (below 0: inside it)
+  cap(x, y, z) { const P = Player.pos, r = CONFIG.RADIUS, cy = clamp(y, P.y + r, P.y + Player.height - r); return Math.hypot(x - P.x, y - cy, z - P.z) - r; },
+  // can they hurt you right now? (not while you're respawning or the stage is changing)
+  open() { return !Player.respawning && !Game.transitioning && SM.isGameplay(); },
+  feet() { return Player.grounded ? Player.pos.y : Player.groundY; },
+  glowMat(color, o = {}) { return new THREE.SpriteMaterial(Object.assign({ map: TEX.glow, color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }, o)); },
+  // a spot on a floor near (x, z) at about height y (stepping back towards you if there's nothing there)
+  floor(x, z, y, out) {
+    const P = Player.pos;
+    for (let i = 0; i <= 6; i++) {
+      const k = i / 6, px = lerp(x, P.x, k), pz = lerp(z, P.z, k), g = World.groundAt(px, pz, y + 3);
+      if (g > -Infinity && Math.abs(g - y) < 3.5) return out.set(px, g, pz);
+    }
+    return out.set(P.x, this.feet() > -Infinity ? this.feet() : P.y, P.z);
   },
-  // the Diver: he leaps now so he lands on the planned downbeat (standing: he rises first; not up yet: he waits for it)
-  dive() {
-    if (Diver.state !== 'wait' || Player.respawning) return;
-    if (Diver.group.visible) Diver.cycle = 0;
-    else this.at(RoryRun.beatT() + 0.55, () => { if (Diver.state === 'wait') Diver.cycle = 0; });
+};
+
+// ---------------- THE NOTES: a flock of music notes that hop at you, one hop a beat ----------------
+// Each hop aims at where you'll be half a beat later, a few metres at most: keep moving and they fall behind, run into
+// the flock and they get you. Touch one and it pops (a sour note).
+const BeatNotes = {
+  MAX: 10, list: [], panner: null, lastBeat: null,
+  TINK: [1568, 1760, 2093, 2349, 2637, 3136],               // a pentatonic tinkle, a note a beat
+  geos: null,
+  // ♪ (a head, a stem, a curling flag) and ♫ (two heads under a beam)
+  makeGeos() {
+    const head = (x, y) => { const g = new THREE.SphereGeometry(0.2, 14, 10); g.scale(1.35, 1, 0.75); g.rotateZ(0.42); g.translate(x, y, 0); return g; };
+    const box = (w, h, x, y, rz = 0) => { const g = new THREE.BoxGeometry(w, h, 0.07); g.rotateZ(rz); g.translate(x, y, 0); return g; };
+    const eighth = mergeGeometries([head(0, 0), box(0.06, 0.82, 0.235, 0.4), box(0.07, 0.34, 0.34, 0.68, 0.75), box(0.07, 0.26, 0.4, 0.5, 0.25)]);
+    eighth.translate(-0.15, -0.35, 0);
+    const pair = mergeGeometries([head(-0.3, -0.08), head(0.3, 0.06), box(0.06, 0.8, -0.065, 0.32), box(0.06, 0.8, 0.535, 0.46), box(0.68, 0.12, 0.235, 0.79, 0.22)]);
+    pair.translate(-0.12, -0.32, 0);
+    return [eighth, pair];
   },
-  // a laser gate: a low beam across your walkway right where you'll be on the downbeat. It's on for a beat and a half:
-  // jump on the beat
-  gate() {
-    const l = Hazards.lasers.find((x) => !x.active); if (!l || Player.respawning) return;
-    const p = Player.pos, f = _v4, ax = Nav.walkAxisAt(p);
-    if (Math.hypot(Player.vel.x, Player.vel.z) > 1) f.set(Player.vel.x, 0, Player.vel.z).normalize(); else Rig.headForward(f);
-    if (ax) { const s = Math.sign(ax.x * f.x + ax.z * f.z) || 1; f.set(ax.x * s, 0, ax.z * s); }
-    const d = clamp(Player.hspeed * CONFIG.LASER_TELEGRAPH, 2.5, 12), cx = p.x + f.x * d, cz = p.z + f.z * d;
-    const g = World.groundAt(cx, cz, p.y + 2), y = (g > -Infinity && g > p.y - 3 ? g : Player.grounded ? p.y : Player.groundY) + 0.45;
-    const rx = -f.z, rz = f.x, w = CONFIG.WALK_W / 2 + 0.8;
-    l.start({ mode: 'fixed', a0: new THREE.Vector3(cx - rx * w, y, cz - rz * w), b0: new THREE.Vector3(cx + rx * w, y, cz + rz * w), color: 0xff3a8a, cycle: { on: RORY_SONG.BEAT * 1.5, off: 60 } });
-    this.gates.set(l, RoryRun.beatT());
+  // one note (the death scene makes its own too)
+  build(i) {
+    if (!this.geos) this.geos = this.makeGeos();
+    const g = new THREE.Group();
+    const glow = new THREE.Sprite(RF.glowMat(0x3a9cff)); glow.scale.set(1.9, 1.9, 1);
+    const body = new THREE.Mesh(this.geos[i % 3 === 2 ? 1 : 0], new THREE.MeshBasicMaterial({ color: 0xe6f6ff, transparent: true, fog: false }));
+    g.add(glow); g.add(body);
+    return { g, body, glow };
   },
+  init() {
+    for (let i = 0; i < this.MAX; i++) {
+      const N = this.build(i); N.g.visible = false; G.fx.add(N.g);
+      this.list.push(Object.assign(N, { on: false, st: 'off', t: 0, s: 1, sq: 0, pos: new THREE.Vector3(), from: new THREE.Vector3(), to: new THREE.Vector3(), endT: 0, idx: i }));
+    }
+  },
+  // n notes, for `bars` bars: they appear 14-18 m off, spread across in front of you
+  spawn(n, bars) {
+    const P = Player.pos, t = RoryRun.beatT(), y = (RF.feet() > -Infinity ? RF.feet() : P.y) + 1.25;
+    Rig.headForward(_v1); const a0 = Math.atan2(_v1.z, _v1.x);
+    if (!this.panner) this.panner = Sfx.panner(P.x, P.y, P.z);
+    let made = 0;
+    for (const N of this.list) {
+      if (made >= n) break;
+      if (N.on) continue;
+      const a = a0 + (made - (n - 1) / 2) * 0.62 + rr(-0.2, 0.2), d = rr(14, 18);
+      N.pos.set(P.x + Math.cos(a) * d, y, P.z + Math.sin(a) * d); N.from.copy(N.pos); N.to.copy(N.pos);
+      N.on = true; N.st = 'in'; N.t = 0; N.s = 0; N.endT = t + bars * RORY_SONG.BAR; N.g.visible = true; N.body.material.opacity = 1;
+      FX.spark(N.pos.x, N.pos.y, N.pos.z, 0.5, 0.8, 1);
+      made++;
+    }
+    if (made) { setPannerPos(this.panner, P.x + Math.cos(a0) * 15, y, P.z + Math.sin(a0) * 15); Cue.play('notes', this.panner); }
+  },
+  dismiss() { for (const N of this.list) if (N.on && N.st !== 'out') { N.st = 'out'; N.t = 0; } },
+  clear() { for (const N of this.list) this.off(N); this.lastBeat = null; },
+  off(N) { N.on = false; N.st = 'off'; N.g.visible = false; },
+  pop(N) {
+    for (let i = 0; i < 16; i++) FX.glow.emit(N.pos.x, N.pos.y, N.pos.z, rr(-3, 3), rr(-1, 3), rr(-3, 3), 0.5, 0.85, 1, rr(0.1, 0.22), rr(0.3, 0.6), 4, 1);
+    this.off(N);
+  },
+  // on the beat: every note hops (and the ones whose time is up fly off)
+  beat(b, t) {
+    const P = Player.pos, hop = 2.6 * RF.k(), lead = RORY_SONG.BEAT * 0.5;
+    let near = false;
+    for (const N of this.list) {
+      if (!N.on || N.st === 'out') continue;
+      if (t >= N.endT) { N.st = 'out'; N.t = 0; continue; }
+      N.from.copy(N.pos);
+      // at where you'll be half a beat from now, around your chest (each one a little off to the side of the others)
+      const a = N.idx * 2.4;
+      _v1.set(P.x + Player.vel.x * lead + Math.cos(a) * 0.35, P.y + 1.05, P.z + Player.vel.z * lead + Math.sin(a) * 0.35).sub(N.pos);
+      const d = _v1.length();
+      if (d > 0.01 && !Player.respawning) N.to.copy(N.pos).addScaledVector(_v1, Math.min(1, hop / d)); else N.to.copy(N.pos);
+      if (d < 24) near = true;
+    }
+    if (near && this.panner) { Sfx.tink(this.panner, this.TINK[((b % 6) + 6) % 6]); if ((b & 3) === 0) Cue.cap('notes', 0.8); }
+  },
+  update(dt, t) {
+    if (!this.list.some((N) => N.on)) { this.lastBeat = null; return; }
+    const b = RORY_SONG.beat(t), ph = RF.ph(t);
+    if (this.lastBeat == null || b < this.lastBeat) this.lastBeat = b;
+    else if (b > this.lastBeat) { this.lastBeat = b; this.beat(b, t); }
+    camera.getWorldPosition(_v8);
+    let n = 0, cx = 0, cy = 0, cz = 0;
+    for (const N of this.list) {
+      if (!N.on) continue;
+      N.t += dt;
+      if (N.st === 'in') { N.s = easeOutBack(clamp(N.t / 0.3, 0, 1)); if (N.t >= 0.3) N.st = 'live'; }
+      if (N.st === 'out') {
+        N.pos.y += dt * 7; N.s = Math.max(0, 1 - N.t / 0.6); N.body.material.opacity = N.s;
+        if (N.t >= 0.6) { this.off(N); continue; }
+      } else {
+        // the hop: off on the beat, landed by half way through it (with a little arc), then a bob
+        const k = clamp(ph / 0.45, 0, 1), e = 1 - Math.pow(1 - k, 3);
+        N.pos.lerpVectors(N.from, N.to, e);
+        N.sq = Math.sin(Math.PI * k); N.pos.y += N.sq * 0.5 + Math.sin(Clock.real * 3 + N.idx) * 0.05;
+        // touch one and it's a sour note
+        if (N.st === 'live' && RF.open() && RF.cap(N.pos.x, N.pos.y, N.pos.z) < 0.3) {
+          if (Player.damage(CONFIG.DMG.notes, 'notes')) Sfx.sour(this.panner);
+          this.pop(N); continue;
+        }
+      }
+      // it always faces you (so it reads as a note), squashes into each hop and pulses with the kick
+      N.g.position.copy(N.pos);
+      N.g.rotation.set(0, Math.atan2(_v8.x - N.pos.x, _v8.z - N.pos.z), Math.sin(Clock.real * 2.2 + N.idx) * 0.18);
+      const s = N.s * (1 + RoryWorld.kick * 0.08);
+      N.body.scale.set(s * (1 - N.sq * 0.15), s * (1 + N.sq * 0.25), s);
+      N.glow.material.opacity = (0.5 + RoryWorld.kick * 0.35) * N.s;
+      n++; cx += N.pos.x; cy += N.pos.y; cz += N.pos.z;
+    }
+    if (n && this.panner) setPannerPos(this.panner, cx / n, cy / n, cz / n);
+  },
+};
+
+// ---------------- THE SUBWOOFER: a floating speaker that slams on the kick ----------------
+// It hovers a few metres off to one side ahead of you and moves every two bars. The beat before it slams it pulls its
+// cone back; on the beat, a shockwave rolls out along the floor under it: jump it. In the storm it charges up for a
+// whole bar and lets go of THE BIG ONE on the downbeat: a wave through the whole map that meets you on whatever floor
+// you're on (jump on the one!).
+const Subwoofer = {
+  group: null, cone: null, cap: null, glow: null, mark: null, rings: [], ringGeo: null, ringTex: null,
+  on: false, st: 'off', t: 0, every: 4, chargeBar: -99, base: 0, baseFrom: 0, baseTo: 0, moveT: 9, lastBeat: null, punch: 0, panner: null,
+  pos: new THREE.Vector3(), from: new THREE.Vector3(), to: new THREE.Vector3(),
+  // the cabinet (the death scene makes its own too): a box with neon edges, the woofer (a cone in a glowing surround, a
+  // dust cap) and the tweeter above it
+  build() {
+    const g = new THREE.Group(), box = new THREE.BoxGeometry(1.8, 2.4, 1.3);
+    g.add(new THREE.Mesh(box, new THREE.MeshLambertMaterial({ color: 0x0c1838, emissive: 0x060c24 })));
+    g.add(new THREE.LineSegments(new THREE.EdgesGeometry(box), new THREE.LineBasicMaterial({ color: 0x7ad0ff, fog: false })));
+    const neon = new THREE.MeshBasicMaterial({ color: 0x6ac8ff, fog: false });
+    const sur = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.07, 10, 40), neon); sur.position.set(0, -0.32, 0.66); g.add(sur);
+    const cone = new THREE.Group(); cone.position.set(0, -0.32, 0.66); g.add(cone);
+    const cg = new THREE.ConeGeometry(0.6, 0.38, 40, 1, true); cg.rotateX(-Math.PI / 2); cg.translate(0, 0, -0.19);
+    cone.add(new THREE.Mesh(cg, new THREE.MeshLambertMaterial({ color: 0x14306a, emissive: 0x0a1a40, side: THREE.DoubleSide })));
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x8ad8ff, fog: false }));
+    cap.rotation.x = Math.PI / 2; cap.position.z = -0.2; cone.add(cap);
+    const tw = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.04, 8, 24), neon); tw.position.set(0, 0.72, 0.66); g.add(tw);
+    const twc = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 8), neon); twc.position.set(0, 0.72, 0.62); g.add(twc);
+    const glow = new THREE.Sprite(RF.glowMat(0x2a7aff)); glow.position.set(0, -0.3, 1.0); glow.scale.set(3.2, 3.2, 1); g.add(glow);
+    return { group: g, cone, cap, glow };
+  },
+  // a shockwave: a band of light rolling out along a floor (bright at the floor, fading upwards)
+  ringMesh(color) {
+    if (!this.ringGeo) {
+      const c = makeCanvas(4, 64), ctx = c.getContext('2d'), gr = ctx.createLinearGradient(0, 0, 0, 64);
+      gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.4, 'rgba(160,220,255,0.5)'); gr.addColorStop(0.85, 'rgba(255,255,255,1)'); gr.addColorStop(1, 'rgba(255,255,255,0.3)');
+      ctx.fillStyle = gr; ctx.fillRect(0, 0, 4, 64);
+      this.ringTex = canvasTex(c);
+      this.ringGeo = new THREE.CylinderGeometry(1, 1, 1, 72, 1, true); this.ringGeo.translate(0, 0.5, 0);
+    }
+    const m = new THREE.Mesh(this.ringGeo, new THREE.MeshBasicMaterial({ map: this.ringTex, color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+    m.visible = false; m.renderOrder = 6; m.frustumCulled = false;
+    return m;
+  },
+  init() {
+    Object.assign(this, this.build()); this.group.visible = false; G.fx.add(this.group);
+    // where its waves start: a ring on the floor under it
+    this.mark = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.15, 48), new THREE.MeshBasicMaterial({ color: 0x5ab0ff, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+    this.mark.rotation.x = -Math.PI / 2; this.mark.visible = false; this.mark.renderOrder = 3; G.fx.add(this.mark);
+    for (let i = 0; i < 5; i++) { const m = this.ringMesh(0x6ac8ff); G.fx.add(m); this.rings.push({ m, on: false, r: 0, x: 0, y: 0, z: 0, speed: 0, max: 0, h: 0.55, hit: false, mega: false }); }
+  },
+  // a spot 9-13 m from you, ahead and off to one side, over a floor at your height if there is one (it hovers 3.4 m up)
+  pick(out) {
+    const P = Player.pos, gy = RF.feet() > -Infinity ? RF.feet() : P.y; Rig.headForward(_v1); const a0 = Math.atan2(_v1.z, _v1.x);
+    let best = null, bs = -1e9;
+    for (let i = 0; i < 14; i++) {
+      const a = a0 + rr(-1.3, 1.3), d = rr(9, 13), x = P.x + Math.cos(a) * d, z = P.z + Math.sin(a) * d, g = World.groundAt(x, z, gy + 3);
+      const ok = g > -Infinity && Math.abs(g - gy) < 1.2, s = (ok ? 2 : 0) + Math.random();
+      if (s > bs) { bs = s; best = { x, z, y: ok ? g : gy }; }
+    }
+    this.baseTo = best.y;
+    return out.set(best.x, best.y + 3.4, best.z);
+  },
+  // here for the section: slamming every `every` beats (-1: only the big ones)
+  show(every) {
+    this.every = every;
+    if (this.on && this.st !== 'out') return;
+    if (!this.panner) this.panner = Sfx.panner(Player.pos.x, Player.pos.y, Player.pos.z);
+    this.on = true; this.st = 'in'; this.t = 0; this.lastBeat = null; this.punch = 0;
+    this.pick(this.to); this.base = this.baseFrom = this.baseTo;
+    this.from.copy(this.to); this.from.y += 32; this.pos.copy(this.from); this.moveT = 0;
+    this.group.visible = true; this.mark.visible = true;
+    setPannerPos(this.panner, this.to.x, this.to.y, this.to.z); Cue.play('bass', this.panner);
+  },
+  dismiss() { if (this.on && this.st !== 'out') { this.st = 'out'; this.t = 0; this.mark.visible = false; } },
+  clear() {
+    this.on = false; this.st = 'off'; this.group.visible = false; this.mark.visible = false; this.chargeBar = -99; this.lastBeat = null;
+    for (const R of this.rings) { R.on = false; R.m.visible = false; }
+  },
+  // the storm: a bar of charging up...
+  charge() {
+    if (!this.on || this.st === 'out') this.show(-1);
+    this.chargeBar = RORY_SONG.bar(RoryRun.beatT());
+    Cue.play('bigOne', this.panner);
+  },
+  // ...then THE BIG ONE
+  mega() {
+    if (!this.on || this.st === 'out') { this.show(-1); this.pos.copy(this.to); this.moveT = 9; this.st = 'live'; }
+    this.slam(true);
+    Effects.doFlash(0x9ad0ff, 0.3); Hands.pulse('both', 1, 300);
+  },
+  // does beat b get a slam?
+  slams(b) {
+    const q = ((b % 4) + 4) % 4, bar = Math.floor(b / 4);
+    return this.st === 'live' && this.every > 0 && q % this.every === 0 && bar !== this.chargeBar && !RoryDirector.MEGA.includes(bar);
+  },
+  slam(mega) {
+    const R = this.rings.find((r) => !r.on); if (!R) return;
+    R.on = true; R.mega = mega; R.r = R.prev = 0.8; R.x = this.pos.x; R.z = this.pos.z; R.hit = false;
+    R.y = mega ? (RF.feet() > -Infinity ? RF.feet() : Player.pos.y) : this.base;
+    R.speed = mega ? 70 : 15 * RF.k(); R.max = mega ? 150 : 17; R.h = mega ? 0.75 : 0.55;
+    R.m.material.color.set(mega ? 0xdff4ff : 0x6ac8ff); R.m.visible = true;
+    this.punch = 1;
+    Sfx.subThump(this.panner, mega); Cue.cap('bass', 0.8);
+    for (let i = 0; i < (mega ? 40 : 16); i++) { const a = Math.random() * 6.283; FX.glow.emit(R.x + Math.cos(a) * 0.9, R.y + 0.2, R.z + Math.sin(a) * 0.9, Math.cos(a) * rr(4, 9), rr(0.5, 2.5), Math.sin(a) * rr(4, 9), 0.45, 0.8, 1, rr(0.12, 0.25), rr(0.3, 0.6), 2, 1); }
+  },
+  update(dt, t) {
+    this.updRings(dt);
+    if (!this.on) return;
+    this.t += dt;
+    const b = RORY_SONG.beat(t), q = RF.q(t), ph = RF.ph(t), bar = RORY_SONG.bar(t);
+    if (this.st === 'in' && this.t > 1.2) this.st = 'live';
+    if (this.lastBeat == null || b < this.lastBeat) this.lastBeat = b;
+    else if (b > this.lastBeat) {
+      this.lastBeat = b;
+      if (this.slams(b)) this.slam(false);
+      // it moves on every other bar, just after the one
+      if (this.st === 'live' && q === 1 && (bar & 1) === 0) { this.from.copy(this.pos); this.baseFrom = this.base; this.pick(this.to); this.moveT = 0; }
+    }
+    // moving: dropping in from the sky, gliding to a new spot, or leaving
+    this.moveT += dt;
+    if (this.st === 'out') { this.pos.y += dt * (6 + this.t * 20); if (this.t > 1.6) { this.on = false; this.st = 'off'; this.group.visible = false; return; } }
+    else {
+      const mk = smooth01(this.moveT / (this.st === 'in' ? 1.2 : 0.45));
+      this.pos.lerpVectors(this.from, this.to, this.st === 'in' ? easeOutQuad(mk) : mk); this.base = lerp(this.baseFrom, this.baseTo, mk);
+    }
+    // the wind-up: the beat before a slam it pulls its cone back (the storm's charge: a whole bar of it, glowing white)
+    const charging = bar === this.chargeBar, w = charging ? clamp((q + ph) / 4, 0, 1) : this.slams(b + 1) ? easeInOut(ph) : 0;
+    this.punch = Math.max(0, this.punch - dt * 6);
+    const g = this.group; Rig.headWorld(_v8);
+    g.position.set(this.pos.x, this.pos.y + Math.sin(this.t * 2.1) * 0.12, this.pos.z);
+    g.rotation.set(-0.12 + this.punch * 0.12, Math.atan2(_v8.x - this.pos.x, _v8.z - this.pos.z), Math.sin(this.t * 1.3) * 0.04);
+    g.scale.setScalar(1 + this.punch * 0.08 + (charging ? Math.sin(Clock.real * 40) * 0.02 * w : 0));
+    this.cone.position.z = 0.66 - 0.17 * w + 0.22 * this.punch;
+    this.cap.material.color.setRGB(lerp(0.54, 1, w), lerp(0.85, 1, w), 1);
+    this.glow.scale.setScalar(3.2 * (1 + w * 0.7 + this.punch * 0.9 + RoryWorld.kick * 0.15));
+    this.glow.material.color.set(charging ? 0x9ad8ff : 0x2a7aff);
+    this.mark.position.set(this.pos.x, this.base + 0.04, this.pos.z); this.mark.scale.setScalar(1 + w * 0.5 + this.punch);
+    this.mark.material.opacity = 0.35 + w * 0.5;
+    setPannerPos(this.panner, this.pos.x, this.pos.y, this.pos.z);
+    if (charging && Math.random() < 0.5) FX.glow.emit(this.pos.x + rr(-1, 1), this.pos.y + rr(-1, 1), this.pos.z + rr(-1, 1), 0, rr(-1, 1), 0, 0.7, 0.9, 1, rr(0.1, 0.2), 0.4, 0, 0);
+  },
+  updRings(dt) {
+    for (const R of this.rings) {
+      if (!R.on) continue;
+      R.prev = R.r; R.r += R.speed * dt;
+      if (R.mega) R.y = damp(R.y, RF.feet() > -Infinity ? RF.feet() : R.y, 10, dt);    // (the big one goes through every floor: it meets you on yours)
+      const f = clamp(R.r / R.max, 0, 1);
+      R.m.position.set(R.x, R.y + 0.02, R.z); R.m.scale.set(R.r, R.h * (1 - f * 0.4), R.r); R.m.material.opacity = Math.sqrt(1 - f);
+      // it rolls past you: are you off the floor?
+      if (!R.hit && RF.open()) {
+        const P = Player.pos, d = Math.hypot(P.x - R.x, P.z - R.z), w = 0.3 + CONFIG.RADIUS;
+        if (d >= R.prev - w && d <= R.r + w) {
+          R.hit = true;                       // (one chance per wave: you jumped it or you didn't)
+          const up = P.y - R.y, low = R.mega ? Player.grounded || P.y - Player.groundY < 0.45 : up < R.h - 0.1 && up > -1.2;
+          if (low && Player.damage(CONFIG.DMG[R.mega ? 'bigOne' : 'subwoofer'], 'subwoofer')) FX.spark(P.x, P.y + 0.3, P.z, 0.5, 0.8, 1);
+        }
+      }
+      if (R.r >= R.max) { R.on = false; R.m.visible = false; }
+    }
+  },
+};
+
+// ---------------- THE EQUALIZER: walls of light across the walkways that jump with the beat ----------------
+// Each wall is a row of EQ bars across a walkway. On its beats (1 & 3, or 2 & 4) it shoots up, far too high to jump;
+// on the others it's down to the floor: cross then. It breathes in just before it jumps. The bars also dance to their
+// own bands of the song.
+const EqWalls = {
+  MAX: 10, NB: 7, list: [], bars: null, strips: null, tex: null, zipBeat: -1,
+  init() {
+    const c = makeCanvas(8, 128), ctx = c.getContext('2d'), gr = ctx.createLinearGradient(0, 0, 0, 128);
+    gr.addColorStop(0, '#ffffff'); gr.addColorStop(0.12, '#bff0ff'); gr.addColorStop(0.5, '#3aa0ff'); gr.addColorStop(1, '#0a2a9a');
+    ctx.fillStyle = gr; ctx.fillRect(0, 0, 8, 128);
+    ctx.fillStyle = 'rgba(0,0,30,0.55)'; for (let y = 6; y < 128; y += 10) ctx.fillRect(0, y, 8, 2);    // (an LED meter's segments)
+    this.tex = canvasTex(c);
+    const bg = new THREE.BoxGeometry(1, 1, 1); bg.translate(0, 0.5, 0);
+    this.bars = new THREE.InstancedMesh(bg, new THREE.MeshBasicMaterial({ map: this.tex, fog: false }), this.MAX * this.NB);
+    const sg = new THREE.PlaneGeometry(1, 1); sg.rotateX(-Math.PI / 2);
+    this.strips = new THREE.InstancedMesh(sg, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }), this.MAX);
+    for (const m of [this.bars, this.strips]) { m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.frustumCulled = false; m.count = 0; G.fx.add(m); }
+    this.strips.renderOrder = 3;
+    for (let i = 0; i < this.MAX * this.NB; i++) this.bars.setColorAt(i, _c1.setScalar(1));
+    for (let i = 0; i < this.MAX; i++) { this.strips.setColorAt(i, _c1.setScalar(0)); this.list.push({ on: false, st: 'off', t: 0, c: new THREE.Vector3(), ax: 0, par: 0, endT: 0, k: 0, H: 0, e: null }); }
+  },
+  // n walls for `bars` bars on walkways 7-34 m away (ahead of you first); offbeat: they all jump on 1 & 3
+  place(n, bars, offbeat) {
+    const P = Player.pos, t = RoryRun.beatT(), cands = [];
+    Rig.headForward(_v1); if (Math.hypot(Player.vel.x, Player.vel.z) > 2) _v1.set(Player.vel.x, 0, Player.vel.z).normalize();
+    for (const e of RoryMap.liveEdges()) {
+      const I = e.info; if (I.stairs || I.len < 5) continue;
+      edgePoint(I, 0.5, _v2);
+      const dx = _v2.x - P.x, dz = _v2.z - P.z, d = Math.hypot(dx, dz);
+      if (d < 7 || d > 34 || Math.abs(_v2.y - P.y) > 9) continue;
+      cands.push({ e, s: (dx * _v1.x + dz * _v1.z) / d + Math.random() * 0.8 - d / 60 });
+    }
+    cands.sort((a, b) => b.s - a.s);
+    let made = 0;
+    for (const C of cands) {
+      if (made >= n) break;
+      const W = this.list.find((w) => !w.on); if (!W) break;
+      edgePoint(C.e.info, rr(0.35, 0.65), _v2);
+      if (this.list.some((w) => w.on && w.c.distanceTo(_v2) < 6)) continue;
+      W.on = true; W.st = 'in'; W.t = 0; W.k = 0; W.H = 0; W.c.copy(_v2); W.ax = C.e.info.axis; W.e = C.e; W.par = offbeat ? 0 : made % 2; W.endT = t + bars * RORY_SONG.BAR;
+      made++;
+    }
+    if (made) Cue.play('eqHum');
+  },
+  dismiss() { for (const W of this.list) if (W.on && W.st !== 'out') { W.st = 'out'; W.t = 0; } },
+  clear() { for (const W of this.list) W.on = false; this.bars.count = 0; this.strips.count = 0; },
+  // how high a wall is at this point of the beat (up on its beats, down on the others, breathing in just before)
+  height(W, q, ph) {
+    const up = q % 2 === W.par, nextUp = (q + 1) % 2 === W.par;
+    if (up) return ph < 0.06 ? lerp(0.5, 2.4, ph / 0.06) : ph < 0.55 ? 2.4 : ph < 0.72 ? lerp(2.4, 0.15, (ph - 0.55) / 0.17) : 0.15;
+    if (nextUp && ph > 0.62) return 0.15 + 0.35 * smooth01((ph - 0.62) / 0.38);
+    return 0.15;
+  },
+  update(dt, t) {
+    if (!this.list.some((W) => W.on)) { this.bars.count = 0; this.strips.count = 0; return; }
+    const q = RF.q(t), ph = RF.ph(t), b = RORY_SONG.beat(t), spec = RoryDeco.spec, P = Player.pos, wide = CONFIG.WALK_W + 0.2, wb = wide / this.NB * 0.78;
+    let i = 0, si = 0, zip = false;
+    for (const W of this.list) {
+      if (!W.on) continue;
+      W.t += dt;
+      if (W.st !== 'out' && (t >= W.endT || (W.e && !RoryMap.isLive(W.e)))) { W.st = 'out'; W.t = 0; }
+      W.k = W.st === 'in' ? clamp(W.t / 0.4, 0, 1) : W.st === 'out' ? 1 - clamp(W.t / 0.4, 0, 1) : 1;
+      if (W.st === 'in' && W.k >= 1) W.st = 'live';
+      if (W.st === 'out' && W.k <= 0) { W.on = false; continue; }
+      const H = this.height(W, q, ph) * W.k; W.H = H;
+      const acx = W.ax === 1 ? 1 : 0, acz = W.ax === 0 ? 1 : 0;              // across the walkway
+      for (let j = 0; j < this.NB; j++) {
+        const o = (j - (this.NB - 1) / 2) * (wide / this.NB), band = spec ? spec[3 + j * 7] / 255 : 0.5;
+        const h = Math.max(0.06, H * (0.8 + band * 0.45) + (H < 0.6 ? band * 0.12 * W.k : 0));
+        _m1.makeScale(W.ax === 0 ? 0.28 : wb, h, W.ax === 0 ? wb : 0.28); _m1.setPosition(W.c.x + acx * o, W.c.y, W.c.z + acz * o);
+        this.bars.setMatrixAt(i, _m1); this.bars.setColorAt(i, _c1.setScalar(H > 1 ? 1 : 0.45 + H * 0.35)); i++;
+      }
+      _m1.makeScale(W.ax === 0 ? 0.9 : wide, 1, W.ax === 0 ? wide : 0.9); _m1.setPosition(W.c.x, W.c.y + 0.025, W.c.z);
+      this.strips.setMatrixAt(si, _m1);
+      this.strips.setColorAt(si, _c1.set(H > 1 ? 0x9ad8ff : 0x2a6aff).multiplyScalar((H > 1 ? 0.9 : 0.3 + 0.5 * clamp((H - 0.15) / 0.35, 0, 1)) * W.k)); si++;
+      // up: you can't go through it
+      if (H > 1) {
+        const rx = P.x - W.c.x, rz = P.z - W.c.z, along = W.ax === 0 ? rx : rz, across = W.ax === 0 ? rz : rx;
+        if (ph < 0.1 && Math.hypot(rx, rz) < 14) zip = true;
+        if (RF.open() && Math.abs(along) < 0.14 + CONFIG.RADIUS + 0.05 && Math.abs(across) < wide / 2 + CONFIG.RADIUS && P.y < W.c.y + H * 0.8 && P.y + Player.height > W.c.y - 0.3) {
+          if (Player.damage(CONFIG.DMG.eq, 'eq')) { Player.shoveFrom(W.c); Sfx.eqZap(); FX.spark(P.x, P.y + 1, P.z, 0.6, 0.9, 1); }
+        }
+      }
+    }
+    if (zip && b !== this.zipBeat) { this.zipBeat = b; Sfx.eqUp(); }
+    this.bars.count = i; this.strips.count = si;
+    this.bars.instanceMatrix.needsUpdate = true; this.strips.instanceMatrix.needsUpdate = true;
+    if (this.bars.instanceColor) this.bars.instanceColor.needsUpdate = true;
+    if (this.strips.instanceColor) this.strips.instanceColor.needsUpdate = true;
+  },
+};
+
+// ---------------- THE CONDUCTOR: a giant in the sky, conducting the song ----------------
+// His baton beats out the bar (down, in, out, up: 4/4). When he means you, numbered circles appear on the floor where
+// you're heading (half a bar ahead), and the next bar lightning strikes them on its beats: 1, 2, 3, 4. Jumping won't
+// help: step round them, or brake and let the beat pass.
+function drawConductor(c) {
+  const ctx = c.getContext('2d');                        // 256 x 512
+  ctx.clearRect(0, 0, 256, 512); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  const glow = (col, b) => { ctx.shadowColor = col; ctx.shadowBlur = b; };
+  // the tails of his coat, fading into the sky
+  const tg = ctx.createLinearGradient(0, 300, 0, 512); tg.addColorStop(0, '#0b1636'); tg.addColorStop(1, 'rgba(11,22,54,0)');
+  ctx.fillStyle = tg; glow('#3a8cff', 18);
+  polyPath(ctx, [90, 300, 126, 300, 110, 505, 68, 470]); ctx.fill();
+  polyPath(ctx, [130, 300, 166, 300, 188, 470, 146, 505]); ctx.fill();
+  // the tailcoat
+  ctx.fillStyle = '#0b1636'; polyPath(ctx, [64, 176, 192, 176, 174, 330, 82, 330]); ctx.fill();
+  ctx.strokeStyle = '#4aa8ff'; ctx.lineWidth = 4; ctx.stroke();
+  // shirt front, a glowing bow tie
+  glow('#ffffff', 8); ctx.fillStyle = '#e8f2ff'; polyPath(ctx, [108, 178, 148, 178, 128, 270]); ctx.fill();
+  ctx.fillStyle = '#5ab0ff'; glow('#5ab0ff', 14);
+  polyPath(ctx, [128, 186, 102, 172, 102, 200]); ctx.fill(); polyPath(ctx, [128, 186, 154, 172, 154, 200]); ctx.fill(); circlePath(ctx, 128, 186, 6); ctx.fill();
+  // his other arm, held up (the one with the baton moves: that's its own picture)
+  ctx.strokeStyle = '#0b1636'; ctx.lineWidth = 26; glow('#3a8cff', 12); ctx.beginPath(); ctx.moveTo(72, 192); ctx.lineTo(36, 250); ctx.lineTo(28, 172); ctx.stroke();
+  ctx.fillStyle = '#ffffff'; glow('#9ad0ff', 16); circlePath(ctx, 28, 160, 17); ctx.fill();
+  // wild white hair, a long pale face, eyes glowing blue, angry brows, a pointy moustache
+  glow('#ffffff', 14); ctx.fillStyle = '#f2f8ff';
+  for (const [x, y, r] of [[78, 96, 26], [70, 126, 22], [86, 70, 22], [178, 96, 26], [186, 126, 22], [170, 70, 22], [128, 54, 24], [104, 58, 20], [152, 58, 20]]) { circlePath(ctx, x, y, r); ctx.fill(); }
+  glow('#3a8cff', 10); ctx.fillStyle = '#9fb4d8'; ellipsePath(ctx, 128, 112, 40, 52); ctx.fill();
+  ctx.fillStyle = '#ffffff'; glow('#5ad0ff', 18); ellipsePath(ctx, 112, 104, 9, 6, 0.25); ctx.fill(); ellipsePath(ctx, 144, 104, 9, 6, -0.25); ctx.fill();
+  ctx.shadowBlur = 0; ctx.fillStyle = '#0a2a6a'; circlePath(ctx, 113, 106, 3.5); ctx.fill(); circlePath(ctx, 143, 106, 3.5); ctx.fill();
+  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(96, 88); ctx.lineTo(122, 97); ctx.moveTo(160, 88); ctx.lineTo(134, 97); ctx.stroke();
+  ctx.fillStyle = '#ffffff'; polyPath(ctx, [128, 130, 96, 128, 82, 118, 104, 138, 128, 136, 152, 138, 174, 118, 160, 128]); ctx.fill();
+  ctx.fillStyle = '#0a1230'; ellipsePath(ctx, 128, 147, 10, 5); ctx.fill();
+}
+// his baton arm: sleeve, cuff, glove, baton (it turns about the shoulder: the left end)
+function drawConductorArm(c) {
+  const ctx = c.getContext('2d'); ctx.clearRect(0, 0, 256, 40); ctx.lineCap = 'round';
+  ctx.shadowColor = '#3a8cff'; ctx.shadowBlur = 10;
+  ctx.strokeStyle = '#4aa8ff'; ctx.lineWidth = 26; ctx.beginPath(); ctx.moveTo(12, 20); ctx.lineTo(116, 20); ctx.stroke();      // (a neon edge, like his coat)
+  ctx.strokeStyle = '#0b1636'; ctx.lineWidth = 19; ctx.beginPath(); ctx.moveTo(12, 20); ctx.lineTo(116, 20); ctx.stroke();
+  ctx.fillStyle = '#e8f2ff'; ctx.fillRect(116, 10, 10, 20);
+  ctx.fillStyle = '#ffffff'; ctx.shadowColor = '#9ad0ff'; ctx.shadowBlur = 14; circlePath(ctx, 140, 20, 15); ctx.fill();
+  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(146, 20); ctx.lineTo(246, 20); ctx.stroke();
+}
+const Conductor = {
+  body: null, arm: null, halo: null, tip: null, trail: [], hist: [], marks: [], beams: [], nums: null,
+  on: false, st: 'off', t: 0, ang: 0, base: new THREE.Vector3(), op: 0, capT: 0,
+  W: 15, H: 30, SH: [3.45, 19.35],                        // his size (m) and his baton shoulder (from his feet: right, up)
+  // the 4/4 pattern: where his baton tip is on each beat (from the shoulder: right, up)
+  PAT: [[0.9, -9.0], [-7.5, -5.4], [9.6, -4.5], [2.4, 3.9]],
+  init() {
+    CANVAS.conductor = makeCanvas(256, 512); drawConductor(CANVAS.conductor); TEX.conductor = canvasTex(CANVAS.conductor);
+    CANVAS.condArm = makeCanvas(256, 40); drawConductorArm(CANVAS.condArm); TEX.condArm = canvasTex(CANVAS.condArm);
+    const spr = (map, o) => { const s = new THREE.Sprite(new THREE.SpriteMaterial(Object.assign({ map, transparent: true, depthWrite: false, fog: false }, o))); s.visible = false; G.fx.add(s); return s; };
+    this.halo = spr(TEX.glow, { color: 0x2a6aff, blending: THREE.AdditiveBlending });
+    this.body = spr(TEX.conductor, { alphaTest: 0.02 }); this.body.center.set(0.5, 0);
+    this.arm = spr(TEX.condArm, { alphaTest: 0.02 }); this.arm.center.set(0, 0.5);
+    this.tip = spr(TEX.glow, { color: 0xdff4ff, blending: THREE.AdditiveBlending });
+    for (let i = 0; i < 10; i++) this.trail.push(spr(TEX.glow, { color: 0x5ab0ff, blending: THREE.AdditiveBlending }));
+    // the circles on the floor (numbered with the beat they're struck on) and the lightning that strikes them
+    this.nums = [1, 2, 3, 4].map((k) => { const c = makeCanvas(128, 128); drawText(c.getContext('2d'), String(k), 64, 68, { size: 96, style: 'italic 900', font: FONT_IMPACT, fill: '#ffffff', stroke: '#06123a', lw: 10, glow: '#5ab0ff', glowBlur: 18 }); return canvasTex(c); });
+    const ringGeo = new THREE.RingGeometry(1.3, 1.5, 48); ringGeo.rotateX(-Math.PI / 2);
+    const discGeo = new THREE.CircleGeometry(1.3, 48); discGeo.rotateX(-Math.PI / 2);
+    const numGeo = new THREE.PlaneGeometry(1.3, 1.3); numGeo.rotateX(-Math.PI / 2);
+    const add = { transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false };
+    for (let i = 0; i < 12; i++) {
+      const g = new THREE.Group(); g.visible = false; G.fx.add(g);
+      const disc = new THREE.Mesh(discGeo, new THREE.MeshBasicMaterial(Object.assign({ color: 0x2a6aff, opacity: 0.4 }, add)));
+      const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial(Object.assign({ color: 0x9ad8ff }, add)));
+      const num = new THREE.Mesh(numGeo, new THREE.MeshBasicMaterial({ map: this.nums[0], transparent: true, depthWrite: false, fog: false }));
+      disc.position.y = 0.03; ring.position.y = 0.04; num.position.y = 0.06; disc.renderOrder = ring.renderOrder = num.renderOrder = 3;
+      g.add(disc, ring, num);
+      this.marks.push({ g, disc, ring, num, on: false, done: false, t: 0, at: 0, from: 0 });
+    }
+    for (let i = 0; i < 6; i++) this.beams.push({ b: makeBeam(0xbfe8ff), t: 9, x: 0, y: 0, z: 0 });
+  },
+  show() {
+    if (this.on && this.st !== 'out') return;
+    this.on = true; this.st = 'in'; this.t = 0; this.hist.length = 0;
+    this.ang = Rig.headYaw() + 0.4;                            // just off to one side of where you're looking
+    for (const s of [this.body, this.arm, this.halo, this.tip, ...this.trail]) s.visible = true;
+    Sfx.baton(); Cue.cap('baton');
+  },
+  dismiss() { if (this.on && this.st !== 'out') { this.st = 'out'; this.t = 0; } },
+  clear() {
+    this.on = false; this.st = 'off';
+    for (const s of [this.body, this.arm, this.halo, this.tip, ...this.trail]) s.visible = false;
+    for (const M of this.marks) { M.on = false; M.g.visible = false; }
+    for (const B of this.beams) { B.t = 9; B.b.show(false); }
+  },
+  // where his baton tip is at song time t (it rebounds off each beat and speeds up into the next)
+  tipAt(t, out) {
+    const q = RF.q(t), s = RF.ph(t) ** 2, A = this.PAT[q], B = this.PAT[(q + 1) % 4], u = 1 - s;
+    const c1x = A[0] + (B[0] - A[0]) * 0.2, c1y = A[1] + 6.0, c2x = B[0], c2y = B[1] + 4.8;
+    out[0] = u * u * u * A[0] + 3 * u * u * s * c1x + 3 * u * s * s * c2x + s * s * s * B[0];
+    out[1] = u * u * u * A[1] + 3 * u * u * s * c1y + 3 * u * s * s * c2y + s * s * s * B[1];
+    return out;
+  },
+  // k circles, struck on the beats of `bar` (4: every beat; 2: the 1 and the 3), where you'll be by then
+  mark(bar, k) {
+    if (!this.on || this.st === 'out') this.show();
+    const now = RoryRun.beatT(), P = Player.pos, vx = Player.vel.x, vz = Player.vel.z, sp = Math.hypot(vx, vz), gy = RF.feet() > -Infinity ? RF.feet() : P.y;
+    let made = 0;
+    for (let i = 0; i < k; i++) {
+      const M = this.marks.find((m) => !m.on); if (!M) break;
+      const q = Math.round(i * 4 / k), at = RORY_SONG.beatT(bar * 4 + q);
+      let x, z;
+      if (sp > 1.5) {
+        const dx = vx / sp, dz = vz / sp, L = Math.min(20, sp * Math.max(0, at - now)) * rr(0.8, 1.0), side = rr(-0.8, 0.8);
+        x = P.x + dx * L - dz * side; z = P.z + dz * L + dx * side;
+      } else { const a = rr(0, 6.283), r = rr(1.5, 4.5); x = P.x + Math.cos(a) * r; z = P.z + Math.sin(a) * r; }
+      RF.floor(x, z, gy, _v3);
+      M.on = true; M.done = false; M.t = 0; M.at = at; M.from = now; M.g.position.copy(_v3); M.g.rotation.y = Rig.headYaw(); M.g.visible = true;
+      M.num.material.map = this.nums[q]; M.num.material.opacity = 1; M.disc.scale.setScalar(0.01);
+      made++;
+    }
+    if (made) { Sfx.baton(); if (Clock.real - this.capT > 8) { this.capT = Clock.real; Cue.cap('baton'); } }
+  },
+  strike(M) {
+    M.done = true; M.t = 0;
+    const p = M.g.position, B = this.beams.find((x) => x.t > 0.3) || this.beams[0];
+    B.t = 0; B.x = p.x; B.y = p.y; B.z = p.z; B.b.show(true);
+    const P = Player.pos, d = Math.hypot(P.x - p.x, P.z - p.z);
+    Sfx.strike(clamp(1 - d / 60, 0.2, 1));
+    for (let i = 0; i < 18; i++) FX.glow.emit(p.x, p.y + 0.2, p.z, rr(-5, 5), rr(1, 6), rr(-5, 5), 0.6, 0.85, 1, rr(0.12, 0.25), rr(0.3, 0.6), 9, 1);
+    if (RF.open() && d < 1.35 + CONFIG.RADIUS && Math.abs(P.y - p.y) < 2.2) { if (Player.damage(CONFIG.DMG.strike, 'conductor')) Effects.doFlash(0xbfe8ff, 0.25); }
+  },
+  update(dt, t) {
+    // the circles fill up to their beat; then the lightning
+    for (const M of this.marks) {
+      if (!M.on) continue;
+      if (!M.done) {
+        const k = clamp((t - M.from) / Math.max(0.1, M.at - M.from), 0, 1);
+        M.disc.scale.setScalar(Math.max(0.01, k)); M.disc.material.opacity = 0.2 + 0.5 * k;
+        M.ring.material.opacity = Save.s.reduceFlash ? 0.8 : 0.55 + 0.45 * Math.sin(Clock.real * (8 + k * 24));
+        if (t >= M.at) this.strike(M);
+      } else {
+        M.t += dt; const f = 1 - M.t / 0.5;
+        M.disc.material.opacity = 0.7 * f; M.ring.material.opacity = f; M.num.material.opacity = f; M.ring.scale.setScalar(1 + M.t * 2);
+        if (M.t > 0.5) { M.on = false; M.g.visible = false; M.ring.scale.setScalar(1); }
+      }
+    }
+    for (const B of this.beams) {
+      if (B.t > 0.3) continue;
+      B.t += dt; const f = 1 - B.t / 0.3;
+      if (f <= 0) { B.b.show(false); continue; }
+      _v6.set(B.x, B.y + 70, B.z); _v7.set(B.x, B.y, B.z);
+      B.b.set(_v6, _v7, 0.1 + 0.25 * f, 0.6 + 0.5 * f, f, 0.4 * f);
+    }
+    if (!this.on) return;
+    this.t += dt;
+    if (this.st === 'in' && this.t > 3.3) this.st = 'live';
+    const rise = this.st === 'in' ? 1 - easeOutQuad(clamp(this.t / 3.3, 0, 1)) : this.st === 'out' ? easeInOut(clamp(this.t / 2, 0, 1)) : 0;
+    this.op = 1 - rise;
+    if (this.st === 'out' && this.t > 2) { this.clearFigure(); return; }
+    // he stays out in front of you, a little to one side (and drifts round as you turn)
+    const want = Rig.headYaw() + 0.4;
+    this.ang += clamp(wrapAngle(want - this.ang), -0.5 * dt, 0.5 * dt);
+    const P = Player.pos, gy = RF.feet() > -Infinity ? RF.feet() : P.y;
+    this.base.set(P.x - Math.sin(this.ang) * 64, gy + 7 - rise * 50, P.z - Math.cos(this.ang) * 64);
+    // sprites face you: his shoulder is out along your view's right and up
+    camera.matrixWorld.extractBasis(_v4, _v5, _v6);
+    const sway = Math.sin(this.t * 0.7) * 0.03;
+    this.body.position.copy(this.base); this.body.scale.set(this.W, this.H, 1); this.body.material.rotation = sway; this.body.material.opacity = this.op;
+    this.halo.position.copy(this.base).addScaledVector(_v5, this.H * 0.55); this.halo.scale.setScalar(this.H * 1.5); this.halo.material.opacity = 0.3 * this.op * (1 + RoryWorld.kick * 0.4);
+    const sh = _v7.copy(this.base).addScaledVector(_v4, this.SH[0]).addScaledVector(_v5, this.SH[1]);
+    const tp = this.tipAt(t, this._tp || (this._tp = [0, 0])), len = Math.hypot(tp[0], tp[1]);
+    this.arm.position.copy(sh); this.arm.material.rotation = Math.atan2(tp[1], tp[0]); this.arm.scale.set(len / 0.96, len / 0.96 * 40 / 256, 1); this.arm.material.opacity = this.op;
+    this.tip.position.copy(sh).addScaledVector(_v4, tp[0]).addScaledVector(_v5, tp[1]); this.tip.scale.setScalar(2.2 + RoryWorld.kick * 1.4); this.tip.material.opacity = this.op;
+    // the baton leaves a trail of light
+    const H = this.hist;
+    if (H.length < this.trail.length) { H.length = 0; for (let i = 0; i < this.trail.length; i++) H.push(this.tip.position.clone()); }
+    for (let i = H.length - 1; i > 0; i--) H[i].copy(H[i - 1]);
+    H[0].copy(this.tip.position);
+    this.trail.forEach((s, i) => { s.position.copy(H[i]); s.scale.setScalar(1.8 * (1 - i / this.trail.length)); s.material.opacity = 0.6 * (1 - i / this.trail.length) * this.op; });
+  },
+  clearFigure() { this.on = false; this.st = 'off'; for (const s of [this.body, this.arm, this.halo, this.tip, ...this.trail]) s.visible = false; },
+};
+
+// ---------------- THE RECORDS: spinning vinyl that grinds along the walkways at you ----------------
+// They follow the walkways (straight at you when it's a clear run) and surge forward on every beat, scratching. They
+// skim along at shin height: jump them.
+function drawVinyl(c) {
+  const ctx = c.getContext('2d'), W = c.width, R = W / 2;
+  ctx.clearRect(0, 0, W, W);
+  ctx.fillStyle = '#05060c'; circlePath(ctx, R, R, R); ctx.fill();
+  for (let r = R - 4; r > R * 0.36; r -= 3) { ctx.strokeStyle = (r | 0) % 2 ? 'rgba(90,120,200,0.2)' : 'rgba(20,30,60,0.5)'; ctx.lineWidth = 1.2; circlePath(ctx, R, R, r); ctx.stroke(); }
+  const sh = ctx.createLinearGradient(0, 0, W, W); sh.addColorStop(0.35, 'rgba(160,210,255,0)'); sh.addColorStop(0.5, 'rgba(160,210,255,0.3)'); sh.addColorStop(0.65, 'rgba(160,210,255,0)');
+  ctx.fillStyle = sh; circlePath(ctx, R, R, R - 2); ctx.fill();
+  const lg = ctx.createRadialGradient(R, R, 4, R, R, R * 0.34); lg.addColorStop(0, '#7ad0ff'); lg.addColorStop(1, '#1a4aff');
+  ctx.fillStyle = lg; circlePath(ctx, R, R, R * 0.34); ctx.fill();
+  drawText(ctx, 'RORY', R, R - R * 0.13, { size: R * 0.15, style: 'italic 900', font: FONT_IMPACT, fill: '#ffffff', stroke: '#06123a', lw: 3 });
+  drawText(ctx, "RORY'S CHALLENGE", R, R + R * 0.14, { size: R * 0.065, fill: '#e0f4ff', maxWidth: R * 0.5 });
+  ctx.fillStyle = '#000'; circlePath(ctx, R, R, R * 0.035); ctx.fill();
+}
+const Scratch = {
+  MAX: 5, list: [], mats: null,
+  // one record (the death scene makes its own too): the disc, a neon rim, a glow under it
+  build() {
+    if (!this.mats) {
+      CANVAS.vinyl = makeCanvas(256, 256); drawVinyl(CANVAS.vinyl); TEX.vinyl = canvasTex(CANVAS.vinyl);
+      const side = new THREE.MeshBasicMaterial({ color: 0x0a1430, fog: false });
+      this.mats = { disc: [side, new THREE.MeshBasicMaterial({ map: TEX.vinyl, fog: false }), side], rim: new THREE.MeshBasicMaterial({ color: 0x6ad8ff, fog: false }) };
+    }
+    const g = new THREE.Group(), disc = new THREE.Group();
+    disc.add(new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.85, 0.07, 48), this.mats.disc));
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.035, 8, 48), this.mats.rim); rim.rotation.x = Math.PI / 2; disc.add(rim);
+    g.add(disc);
+    const glow = new THREE.Sprite(RF.glowMat(0x3a8cff)); glow.scale.set(2.6, 2.6, 1); glow.position.y = -0.1; g.add(glow);
+    return { g, disc, glow };
+  },
+  init() {
+    for (let i = 0; i < this.MAX; i++) {
+      const R = this.build(); R.g.visible = false; G.fx.add(R.g);
+      this.list.push(Object.assign(R, { on: false, st: 'off', t: 0, pos: new THREE.Vector3(), path: [], pathIdx: 0, repathT: 0, endT: 0, hitCD: 0, stun: 0, panner: null, sparkT: 0, lastBeat: null }));
+    }
+  },
+  // n records for `bars` bars, dropped onto walkways 15-30 m away (ones you can see first)
+  spawn(n, bars) {
+    const g = Nav.g; if (!g) return;
+    const P = Player.pos, t = RoryRun.beatT(), cands = [];
+    Rig.headForward(_v1);
+    for (const nd of g.nodes) {
+      if (!nd.adj || !nd.adj.length) continue;
+      const dx = nd.x - P.x, dz = nd.z - P.z, d = Math.hypot(dx, dz);
+      if (d < 15 || d > 30 || Math.abs(nd.y - P.y) > 8) continue;
+      cands.push({ nd, s: (dx * _v1.x + dz * _v1.z) / d + Math.random() });
+    }
+    cands.sort((a, b) => b.s - a.s);
+    let made = 0;
+    for (const C of cands) {
+      if (made >= n) break;
+      const R = this.list.find((r) => !r.on); if (!R) break;
+      if (this.list.some((r) => r.on && Math.hypot(r.pos.x - C.nd.x, r.pos.z - C.nd.z) < 5)) continue;
+      R.on = true; R.st = 'in'; R.t = 0; R.pos.set(C.nd.x, C.nd.y, C.nd.z); R.endT = t + bars * RORY_SONG.BAR; R.hitCD = 0.6; R.stun = 0;
+      R.path.length = 0; R.repathT = 0; R.lastBeat = null; R.g.visible = true; R.g.scale.setScalar(1);
+      if (!R.panner) R.panner = Sfx.panner(R.pos.x, R.pos.y, R.pos.z);
+      setPannerPos(R.panner, R.pos.x, R.pos.y, R.pos.z);
+      made++;
+    }
+    if (made) Cue.cap('needle');                  // (each one's needle drop plays as it lands)
+  },
+  dismiss() { for (const R of this.list) if (R.on && R.st !== 'out') { R.st = 'out'; R.t = 0; } },
+  clear() { for (const R of this.list) { R.on = false; R.st = 'off'; R.g.visible = false; } },
+  // a clear run from a to b along the floor? (no gaps, no big steps; then it can go straight at you)
+  clearRun(a, b) {
+    const dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz);
+    if (d > 14 || Math.abs(b.y - a.y) > 1.2) return false;
+    const steps = Math.ceil(d / 0.7); let h = a.y;
+    for (let i = 1; i <= steps; i++) { const g = World.groundAt(a.x + dx * i / steps, a.z + dz * i / steps, h + 1.0); if (g === -Infinity || Math.abs(g - h) > 0.6) return false; h = g; }
+    return true;
+  },
+  update(dt, t) {
+    if (!this.list.some((R) => R.on)) return;
+    const P = Player.pos, ph = RF.ph(t), b = RORY_SONG.beat(t), g = Nav.g, base = 4.6 * RF.k() * (Player.lapK || 1), surge = Math.exp(-ph * 5);
+    const feet = RF.feet() > -Infinity ? RF.feet() : P.y;
+    for (const R of this.list) {
+      if (!R.on) continue;
+      R.t += dt; R.hitCD -= dt;
+      if (R.st === 'live' && t >= R.endT) { R.st = 'out'; R.t = 0; }
+      if (R.st === 'out') {
+        R.pos.y += dt * 9; R.g.scale.setScalar(Math.max(0.01, 1 - R.t / 0.6)); R.disc.rotation.y += dt * 40;
+        R.g.position.set(R.pos.x, R.pos.y + 0.3, R.pos.z);
+        if (R.t > 0.6) { R.on = false; R.st = 'off'; R.g.visible = false; }
+        continue;
+      }
+      if (R.st === 'in') {
+        // it drops onto the walkway (the needle goes down)
+        const k = clamp(R.t / 0.35, 0, 1); R.g.position.set(R.pos.x, R.pos.y + 0.3 + (1 - k * k) * 7, R.pos.z); R.disc.rotation.y += dt * 30;
+        if (k >= 1) { R.st = 'live'; Sfx.needle(R.panner); for (let i = 0; i < 14; i++) { const a = Math.random() * 6.283; FX.glow.emit(R.pos.x, R.pos.y + 0.1, R.pos.z, Math.cos(a) * 4, rr(0.5, 2), Math.sin(a) * 4, 0.4, 0.8, 1, 0.14, 0.4, 3, 1); } }
+        continue;
+      }
+      // on the beat: a scratch (when you can hear it)
+      if (R.lastBeat == null || b < R.lastBeat) R.lastBeat = b;
+      else if (b > R.lastBeat) { R.lastBeat = b; const d = R.pos.distanceTo(P); if (d < 32) { Sfx.scratch(R.panner); if (d < 22) Cue.cap('scratch', 0.8); } }
+      // where to: along the walkways to you, or straight at you on a clear run
+      R.repathT -= dt;
+      if (R.repathT <= 0 && g) {
+        R.repathT = 0.45;
+        const path = Nav.astar(Nav.nearestNode(R.pos), Nav.nearestNode(P));
+        R.path.length = 0; for (const id of path) R.path.push(id);
+        R.pathIdx = 0;
+        if (R.path.length >= 2) { const A = g.nodes[R.path[0]], B = g.nodes[R.path[1]]; if (Math.hypot(R.pos.x - B.x, R.pos.z - B.z) < Math.hypot(A.x - B.x, A.z - B.z)) R.pathIdx = 1; }
+        R.direct = this.clearRun(R.pos, _v2.set(P.x, feet, P.z));
+      }
+      let tx = P.x, tz = P.z;
+      if (!R.direct && g && R.pathIdx < R.path.length) { const nd = g.nodes[R.path[R.pathIdx]]; tx = nd.x; tz = nd.z; if (Math.hypot(tx - R.pos.x, tz - R.pos.z) < 0.6) R.pathIdx++; }
+      // it surges on the beat (a bump back after it hits you)
+      let v = base * (0.5 + 1.7 * surge), sx = tx - R.pos.x, sz = tz - R.pos.z;
+      if (R.stun > 0) { R.stun -= dt; v = 3; sx = -sx; sz = -sz; }
+      const d = Math.hypot(sx, sz);
+      if (d > 0.05) {
+        const step = Math.min(d, v * dt), nx = R.pos.x + sx / d * step, nz = R.pos.z + sz / d * step, gy = World.groundAt(nx, nz, R.pos.y + 1.2);
+        if (gy > -Infinity && gy > R.pos.y - 2.5) R.pos.set(nx, gy, nz); else { R.direct = false; R.repathT = Math.min(R.repathT, 0.05); }
+      }
+      R.disc.rotation.y += dt * (16 + surge * 14);
+      R.g.position.set(R.pos.x, R.pos.y + 0.3 + Math.sin(R.t * 30) * 0.01, R.pos.z); R.g.rotation.set(Math.sin(R.t * 3) * 0.05, 0, Math.cos(R.t * 2.6) * 0.05);
+      R.glow.material.opacity = 0.5 + surge * 0.4;
+      setPannerPos(R.panner, R.pos.x, R.pos.y + 0.3, R.pos.z);
+      R.sparkT -= dt;
+      if (R.sparkT <= 0) { R.sparkT = 0.05; FX.glow.emit(R.pos.x + rr(-0.6, 0.6), R.pos.y + 0.05, R.pos.z + rr(-0.6, 0.6), rr(-1, 1), rr(0.5, 2), rr(-1, 1), 0.4, 0.8, 1, 0.07, 0.3, 6, 1); }
+      // it's low: over the top of it you're fine
+      if (R.hitCD <= 0 && RF.open()) {
+        const hd = Math.hypot(P.x - R.pos.x, P.z - R.pos.z);
+        if (hd < 0.85 + CONFIG.RADIUS - 0.08 && P.y < R.pos.y + 0.38 && P.y > R.pos.y - 0.8) {
+          if (Player.damage(CONFIG.DMG.record, 'record')) { Sfx.scratch(R.panner, true); FX.spark(P.x, P.y + 0.3, P.z, 0.6, 0.9, 1); }
+          R.hitCD = 1.2; R.stun = 0.5;
+        }
+      }
+    }
+  },
+};
+
+// ---------------- THE HUSH: in the breakdown, something that hates the music ----------------
+// Shadows with a finger to their lips drift at you through the dark (straight through the air). The closer one gets,
+// the more the music dies away and the dark closes in round your view: if the music fades, run. The beat coming back
+// (the build-up) chases them away.
+function drawHush(c) {
+  const ctx = c.getContext('2d');                        // 256 x 320
+  ctx.clearRect(0, 0, 256, 320);
+  for (let i = 0; i < 9; i++) {
+    const x = 128 + Math.sin(i * 1.7) * 30, y = 120 + i * 20, r = 72 - i * 4;
+    const g = ctx.createRadialGradient(x, y, 4, x, y, r); g.addColorStop(0, 'rgba(2,4,14,0.95)'); g.addColorStop(0.7, 'rgba(4,8,26,0.7)'); g.addColorStop(1, 'rgba(4,8,26,0)');
+    ctx.fillStyle = g; circlePath(ctx, x, y, r); ctx.fill();
+  }
+  ctx.shadowColor = '#5ab0ff'; ctx.shadowBlur = 20; ctx.fillStyle = '#c8dcf4'; ellipsePath(ctx, 128, 112, 36, 46); ctx.fill();
+  ctx.shadowBlur = 0; ctx.strokeStyle = '#0a1430'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+  for (const s of [-1, 1]) { ctx.beginPath(); ctx.arc(128 + s * 14, 102, 9, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke(); }
+  ctx.fillStyle = '#0a1430'; ellipsePath(ctx, 128, 140, 6, 4); ctx.fill();
+  ctx.shadowColor = '#9ad0ff'; ctx.shadowBlur = 14; ctx.fillStyle = '#e8f2ff';
+  roundedRect(ctx, 121, 116, 14, 58, 7); ctx.fill();
+  ellipsePath(ctx, 128, 186, 24, 18); ctx.fill();
+  ctx.shadowBlur = 0; ctx.strokeStyle = 'rgba(10,20,48,0.6)'; ctx.lineWidth = 2;
+  for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.moveTo(110 + k * 9, 182); ctx.lineTo(112 + k * 9, 196); ctx.stroke(); }
+}
+const Hush = {
+  list: [], cut: 22000,
+  init() {
+    CANVAS.hush = makeCanvas(256, 320); drawHush(CANVAS.hush); TEX.hush = canvasTex(CANVAS.hush);
+    for (let i = 0; i < 3; i++) {
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.hush, transparent: true, depthWrite: false, fog: false })); s.scale.set(2.2, 2.75, 1); s.visible = false; G.fx.add(s);
+      this.list.push({ s, on: false, st: 'off', t: 0, pos: new THREE.Vector3(), seed: i * 2.1, panner: null, whT: 0 });
+    }
+  },
+  // n of them: one behind you, the others off to the sides
+  spawn(n) {
+    const P = Player.pos; Rig.headForward(_v1); const a0 = Math.atan2(_v1.z, _v1.x);
+    let made = 0, first = null;
+    for (const H of this.list) {
+      if (made >= n) break;
+      if (H.on) continue;
+      const a = a0 + Math.PI * [1, 0.45, -0.45][made % 3] + rr(-0.3, 0.3), d = rr(13, 17);
+      H.pos.set(P.x + Math.cos(a) * d, P.y + 1.3, P.z + Math.sin(a) * d);
+      H.on = true; H.st = 'in'; H.t = 0; H.whT = rr(0.5, 1.5); H.s.visible = true; H.s.material.opacity = 0; H.s.scale.set(2.2, 2.75, 1);
+      if (!H.panner) H.panner = Sfx.panner(H.pos.x, H.pos.y, H.pos.z);
+      setPannerPos(H.panner, H.pos.x, H.pos.y, H.pos.z); first = first || H;
+      made++;
+    }
+    if (first) { Cue.play('hush', first.panner); UI.announce('THE HUSH IS HERE', { color: '#8aa0ff' }); }
+  },
+  // the beat's back: they're gone
+  dismiss() {
+    let any = false;
+    for (const H of this.list) if (H.on && H.st !== 'out') { H.st = 'out'; H.t = 0; any = true; }
+    if (any) Sfx.whoosh();
+  },
+  clear() { for (const H of this.list) { H.on = false; H.st = 'off'; H.s.visible = false; } this.cut = 1; this.quiet(0); },
+  poof(H) {
+    for (let i = 0; i < 24; i++) FX.sq.emit(H.pos.x + rr(-0.6, 0.6), H.pos.y + rr(-1, 0.8), H.pos.z + rr(-0.6, 0.6), rr(-2, 2), rr(-1, 2), rr(-2, 2), 0.03, 0.05, 0.14, rr(0.25, 0.45), rr(0.5, 0.9), -0.5, 1);
+    Sfx.poof(H.panner); H.on = false; H.st = 'off'; H.s.visible = false;
+  },
+  // k (0-1): how far the music has died away (and how dark the edges of your view are)
+  quiet(k) {
+    const hz = k > 0.001 ? 22000 * Math.pow(1 - k, 3) + 280 : 22000;
+    if (Math.abs(hz - this.cut) / this.cut > 0.04) { this.cut = hz; Music.cutoff(hz, 0.15); }
+    Effects.hushAmt = k;
+    if (k > 0.3) Cue.cap('hush', 0.6);
+  },
+  update(dt) {
+    let near = 99;
+    const P = Player.pos;
+    for (const H of this.list) {
+      if (!H.on) continue;
+      H.t += dt;
+      if (H.st === 'out') {
+        const f = H.t / 0.8; H.s.material.opacity = Math.max(0, 1 - f); H.s.scale.set(2.2 * (1 + f), 2.75 * (1 + f), 1);
+        if (f >= 1) { H.on = false; H.st = 'off'; H.s.visible = false; }
+        continue;
+      }
+      if (H.st === 'in') { H.s.material.opacity = clamp(H.t / 1.2, 0, 1); if (H.t > 1.2) H.st = 'live'; }
+      // it drifts at you through the air, weaving (quicker once it's close)
+      _v1.set(P.x - H.pos.x, P.y + 1.2 - H.pos.y, P.z - H.pos.z); const d = _v1.length();
+      if (d > 0.01) {
+        const v = 2.6 * RF.k() * (d < 6 ? 1.35 : 1), w = Math.sin(Clock.real * 0.9 + H.seed) * 1.2 * dt;
+        H.pos.addScaledVector(_v1, Math.min(d, v * dt) / d); H.pos.x += -_v1.z / d * w; H.pos.z += _v1.x / d * w;
+      }
+      near = Math.min(near, d);
+      if (H.st === 'live' && RF.open() && RF.cap(H.pos.x, H.pos.y, H.pos.z) < 0.45) { Player.damage(CONFIG.DMG.hush, 'hush'); this.poof(H); continue; }
+      H.s.position.set(H.pos.x, H.pos.y + Math.sin(Clock.real * 1.3 + H.seed) * 0.15, H.pos.z);
+      H.s.material.rotation = Math.sin(Clock.real * 0.8 + H.seed) * 0.08;
+      if (Math.random() < 0.3) FX.sq.emit(H.pos.x + rr(-0.5, 0.5), H.pos.y + rr(-1.1, 0.3), H.pos.z + rr(-0.5, 0.5), rr(-0.3, 0.3), rr(-0.6, -0.1), rr(-0.3, 0.3), 0.02, 0.03, 0.09, rr(0.12, 0.26), rr(0.6, 1.1), -0.3, 0.5);
+      setPannerPos(H.panner, H.pos.x, H.pos.y, H.pos.z);
+      H.whT -= dt; if (H.whT <= 0) { H.whT = rr(1.4, 2.2); Sfx.shh(H.panner, d < 10 ? 1 : 0.6); }
+    }
+    // the music dies away as one closes in
+    this.quiet(near < 14 ? smooth01((14 - near) / 11) : 0);
+  },
+};
+
+const RoryFoes = {
+  init() { BeatNotes.init(); Subwoofer.init(); EqWalls.init(); Conductor.init(); Scratch.init(); Hush.init(); },
+  clear() { BeatNotes.clear(); Subwoofer.clear(); EqWalls.clear(); Conductor.clear(); Scratch.clear(); Hush.clear(); },
+  update(dt) { const t = RoryRun.beatT(); BeatNotes.update(dt, t); Subwoofer.update(dt, t); EqWalls.update(dt, t); Conductor.update(dt, t); Scratch.update(dt, t); Hush.update(dt, t); },
 };
 
 // ---------------- RORY'S CHALLENGE: the run (its clock, the count-in, the timer, Shoebench, the exit) ----------------
@@ -9557,7 +10457,6 @@ function setupRory() {
   Game.lap = RORY_LAP;
   setLook('rory'); Sky.set(8); Sky.uni.uBright.value = 1; RoryWorld.si = -1;
   LapTimer.timeMax = LapTimer.timeLeft = RORY_SONG.END; LapTimer.tension = false; LapTimer.expired = false; RoryRun.shoe = false;
-  Flood.prepare();
   Hazards.reset('rory');
   Maze.startPos(_v1);
   Player.spawn(_v1.x, _v1.y, _v1.z, Maze.startYaw());
@@ -12453,10 +13352,15 @@ const DEATH_INFO = {
   shadow: ['YOUR SHADOW GOT YOU', 'YOU STOPPED MOVING', '#9040ff'], glitch: ['GLITCHED OUT', 'THE GLITCH GUY GOT YOU', '#40f0ff'],
   collapse: ['THE IDOL WAS RECLAIMED', 'THE COLLAPSE CAUGHT UP', '#8090ff'], fall: ['YOU FELL', 'INTO THE VOID', '#8090ff'], lava: ['BURNED UP', 'INTO THE LAVA', '#ff6010'],
   destroyer: ['FORGET ME NOT...', 'WEGA, DESTROYER OF WORLDS GOT YOU', '#ffffff'], wegaface: ['WEGA FACE ATE YOU', 'CHOMP', '#c070ff'], wegaman: ['WEGA MAN KNOCKED YOU OUT', 'BONK HIM NEXT TIME', '#ff7040'],
+  // RORY'S CHALLENGE's cast
+  notes: ['OUT OF TUNE', 'THE NOTES CAUGHT UP WITH YOU', '#7ad0ff'], subwoofer: ['BASS BOOSTED', 'THE SUBWOOFER BLEW YOU AWAY', '#3a8cff'],
+  eq: ['FLATLINED', 'THE EQUALIZER WALL GOT YOU', '#40e0ff'], conductor: ['FORTISSIMO!', 'THE CONDUCTOR STRUCK YOU DOWN', '#bfe8ff'],
+  record: ['SCRATCHED', 'A RECORD SLICED RIGHT THROUGH YOU', '#5ab0ff'], hush: ['SHHHHH...', 'THE HUSH SILENCED YOU', '#8aa0ff'],
 };
 // which scene a damage source plays
 function deathScene(src) {
   if (src === 'rory' || src === 'screamer' || src === 'shoebench' || src === 'urio' || src === 'diver' || src === 'jelly' || src === 'shadow' || src === 'glitch' || src === 'collapse' || src === 'fall' || src === 'lava' || src === 'destroyer' || src === 'wegaface' || src === 'wegaman' || src === 'flood') return src;
+  if (src === 'notes' || src === 'subwoofer' || src === 'eq' || src === 'conductor' || src === 'record' || src === 'hush') return src;
   if (src === 'diverWave') return 'diver';
   if (src === 'fireball' || src === 'burn') return 'fire';
   return 'wega';                               // lasers, Wega's beams / head, anything else
@@ -12549,13 +13453,17 @@ const DeathCam = {
     this.ring.visible = this.floor.visible;
     if (this.shadowRig) { this.shadowRig.dispose(); this.shadowRig = null; }
     this.hideExtras();
-    this.len = { rory: 4.6, screamer: 4.2, shoebench: 4.4, urio: 4.8, wega: 4.6, fire: 4.2, flood: 4.2, diver: 4.8, jelly: 4.4, shadow: 4.6, glitch: 4.2, collapse: 4.2, fall: 3.8, lava: 4.2, destroyer: 5.2, wegaface: 4.4, wegaman: 4.6 }[this.scene] || 4.4;
+    this.len = { rory: 4.6, screamer: 4.2, shoebench: 4.4, urio: 4.8, wega: 4.6, fire: 4.2, flood: 4.2, diver: 4.8, jelly: 4.4, shadow: 4.6, glitch: 4.2, collapse: 4.2, fall: 3.8, lava: 4.2, destroyer: 5.2, wegaface: 4.4, wegaman: 4.6, notes: 4.2, subwoofer: 4.4, eq: 4.2, conductor: 4.8, record: 4.2, hush: 4.6 }[this.scene] || 4.4;
     Sfx.stinger();
   },
   active() { return this.root && this.root.visible; },
-  stop() { this.root.visible = false; for (const k of Object.keys(this.overlay)) this.overlay[k].visible = false; if (this.shadowRig) { this.shadowRig.dispose(); this.shadowRig = null; } this.hideExtras(); },
+  stop() { this.root.visible = false; for (const k of Object.keys(this.overlay)) this.overlay[k].visible = false; if (this.shadowRig) { this.shadowRig.dispose(); this.shadowRig = null; } this.hideExtras(); if (this.scene === 'hush') Music.cutoff(22000, 0.4); },
   // the big one-off models (made on first use) - hidden between scenes so they never leak into the next one
-  hideExtras() { if (this.god) { this.god.visible = false; this.godHands.forEach((h) => { h.visible = false; }); } if (this.wf) this.wf.root.visible = false; if (this.wm) this.wm.root.visible = false; },
+  hideExtras() {
+    if (this.god) { this.god.visible = false; this.godHands.forEach((h) => { h.visible = false; }); } if (this.wf) this.wf.root.visible = false; if (this.wm) this.wm.root.visible = false;
+    const F = this.rf;
+    if (F) { F.notes.forEach((N) => { N.g.visible = false; }); for (const o of [F.sub.group, F.ring, F.eq, F.cond, F.arm, F.tip, F.rec.g, F.hush]) o.visible = false; F.bolt.show(false); }
+  },
   once(k) { if (this.steps[k]) return false; this.steps[k] = true; return true; },
   shake(a) { if (Save.s.shake === false) return; this.shakeAmt = Math.max(this.shakeAmt, a * (Save.s.reduceFlash ? 0.3 : 1)); },
   over(name, op, color) { const o = this.overlay[name]; o.visible = op > 0.004; o.material.opacity = clamp(op, 0, 1); if (color != null) o.material.color.set(color); },
@@ -12570,6 +13478,121 @@ const DeathCam = {
       this.overlay.title.material.map.needsUpdate = true;
     }
     const k = clamp(op, 0, 1); this.over('title', k); this.overlay.title.scale.setScalar(1 + (1 - k) * 0.25);
+  },
+  // RORY'S CHALLENGE's cast: their actors (made the first time one of them gets you)
+  rfActors() {
+    if (this.rf) return this.rf;
+    const r = this.root, F = this.rf = {};
+    F.notes = [];
+    for (let i = 0; i < 6; i++) { const N = BeatNotes.build(i); N.body.material = N.body.material.clone(); N.g.visible = false; r.add(N.g); F.notes.push(N); }
+    F.sub = Subwoofer.build(); F.sub.group.visible = false; r.add(F.sub.group);
+    F.ring = Subwoofer.ringMesh(0xdff4ff); r.add(F.ring);
+    F.eq = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), new THREE.MeshBasicMaterial({ map: EqWalls.tex, fog: false }), 9);
+    F.eq.visible = false; F.eq.frustumCulled = false; r.add(F.eq);
+    const spr = (map, o) => { const s = new THREE.Sprite(new THREE.SpriteMaterial(Object.assign({ map, transparent: true, depthWrite: false, fog: false }, o))); s.visible = false; r.add(s); return s; };
+    F.cond = spr(TEX.conductor, { alphaTest: 0.02 }); F.cond.center.set(0.5, 0);
+    F.arm = spr(TEX.condArm, { alphaTest: 0.02 }); F.arm.center.set(0, 0.5);
+    F.tip = spr(TEX.glow, { color: 0xdff4ff, blending: THREE.AdditiveBlending });
+    F.bolt = makeBeam(0xbfe8ff);                              // (world space: it lives in G.fx)
+    F.rec = Scratch.build(); F.rec.g.visible = false; r.add(F.rec.g);
+    F.hush = spr(TEX.hush, {});
+    return F;
+  },
+  roryScene(S, t, dt, FL) {
+    const F = this.rfActors();
+    if (S === 'notes') {
+      // the flock closes in round you, a hop a beat (a note each)... then they all come at once: a sour chord
+      const hop = Math.floor(t / 0.414), hk = clamp(((t % 0.414) / 0.414) / 0.45, 0, 1), e = 1 - Math.pow(1 - hk, 3), rush = clamp((t - 2.6) / 0.25, 0, 1);
+      if (hop !== this.lastStep && t < 2.6) { this.lastStep = hop; Sfx.tink(null, BeatNotes.TINK[hop % 6]); }
+      const rAt = (n) => lerp(5.5, 1.5, clamp(n / 6, 0, 1));
+      F.notes.forEach((N, i) => {
+        const a = (i - 2.5) * 0.42 + Math.sin(hop * 1.3 + i) * 0.08, r = lerp(lerp(rAt(hop), rAt(hop + 1), e), 0.35, rush);
+        const x = Math.sin(a) * r, z = -Math.cos(a) * r - 0.2, y = -0.25 + Math.sin(Math.PI * hk) * 0.4 * (1 - rush);
+        this.at(N.g, x, y, z); N.g.rotation.set(0, Math.atan2(-x, -z), Math.sin(t * 3 + i) * 0.2); N.body.scale.setScalar(1 + rush * 0.4);
+        N.g.visible = t <= 2.85;
+      });
+      if (t > 2.85) {
+        if (this.once('pop')) {
+          Sfx.sour(); Effects.doFlash(0x9ad0ff, 0.4); this.shake(0.3); Hands.pulse('both', 1, 300);
+          for (let i = 0; i < 40; i++) FX.glow.emit(this.base.x + rr(-0.5, 0.5), this.base.y + rr(-0.4, 0.4), this.base.z + rr(-0.5, 0.5), rr(-4, 4), rr(-2, 4), rr(-4, 4), 0.5, 0.85, 1, rr(0.05, 0.12), 0.8, 2, 1);
+        }
+        this.over('crack', clamp((t - 2.85) / 0.4, 0, 0.8), 0x9ad0ff);
+      }
+      if (t > 3.0) this.over('veil', clamp((t - 3.0) / 0.6, 0, 0.8), 0x020a24);
+    } else if (S === 'subwoofer') {
+      // the speaker rises up in front of you, pulls its cone all the way back... and lets go
+      const g = F.sub.group, rise = easeOutQuad(clamp(t / 1.2, 0, 1)), w = clamp((t - 0.8) / 1.5, 0, 1), boom = t > 2.3, punch = boom ? Math.max(0, 1 - (t - 2.3) * 3) : 0;
+      this.at(g, 0, lerp(-7, -0.4, rise) + Math.sin(t * 2) * 0.08, -3.4); g.rotation.set(-0.08, 0, Math.sin(t * 1.3) * 0.04); g.scale.setScalar(1.3 + punch * 0.1);
+      if (this.once('c')) Sfx.charge();
+      F.sub.cone.position.z = 0.66 - (boom ? 0 : 0.2 * w) + 0.3 * punch;
+      F.sub.cap.material.color.setRGB(lerp(0.54, 1, w), lerp(0.85, 1, w), 1); F.sub.glow.scale.setScalar(3.2 * (1 + w + punch * 1.5));
+      if (!boom && t > 0.8) this.shake(0.02 + w * 0.05);
+      if (boom) {
+        if (this.once('boom')) { Sfx.subThump(null, true); Cue.cap('bass'); this.shake(0.7); Effects.doFlash(0x9ad0ff, 0.5); Hands.pulse('both', 1, 500); }
+        const k = clamp((t - 2.3) / 0.5, 0, 1);
+        this.at(F.ring, 0, FL + 0.05, -3.4); F.ring.scale.set(0.8 + k * 9, 0.9, 0.8 + k * 9); F.ring.material.opacity = 1 - k; F.ring.visible = k < 1;
+        this.over('crack', clamp((t - 2.35) / 0.3, 0, 0.85), 0x9ad0ff); this.over('veil', clamp((t - 2.6) / 0.6, 0, 0.8), 0x020a24);
+      }
+    } else if (S === 'eq') {
+      // a wall of EQ bars in front of you, bouncing with the beat, higher and higher... then it slams into you
+      const beat = Math.floor(t / 0.414), hop = (t % 0.414) / 0.414, slam = clamp((t - 2.5) / 0.18, 0, 1), z = lerp(-2.4, -0.25, slam * slam);
+      if (this.once('h')) Sfx.eqHum();
+      if (beat !== this.lastStep && t < 2.5) { this.lastStep = beat; Sfx.eqUp(); }
+      F.eq.visible = true;
+      const amp = lerp(0.3, 1.6, clamp(t / 2.4, 0, 1));
+      for (let i = 0; i < 9; i++) {
+        const h = t < 2.5 ? 0.2 + amp * Math.max(0, Math.sin(Math.PI * clamp(hop / 0.6, 0, 1))) * (0.7 + 0.3 * Math.sin(i * 1.9 + beat)) : 3.2;
+        _m1.makeScale(0.36, Math.max(0.05, h), 0.3); _m1.setPosition((i - 4) * 0.48, FL, z); F.eq.setMatrixAt(i, _m1);
+      }
+      F.eq.instanceMatrix.needsUpdate = true;
+      if (slam >= 1) {
+        if (this.once('slam')) { Sfx.eqZap(); Sfx.boom(null, true); this.shake(0.5); Effects.doFlash(0xbff0ff, 0.5); Hands.pulse('both', 1, 400); }
+        this.over('crack', 0.85, 0x9ad8ff); this.over('veil', clamp((t - 2.8) / 0.6, 0, 0.8), 0x02122a);
+      }
+    } else if (S === 'conductor') {
+      // he rises up out of the dark, conducting... raises his baton high over you... and brings it down
+      const sc = 0.47, rise = easeOutQuad(clamp(t / 1.4, 0, 1)), bx = 1.5, by = lerp(-18, -5, rise), bz = -16;
+      this.at(F.cond, bx, by, bz); F.cond.scale.set(Conductor.W * sc, Conductor.H * sc, 1);
+      const tp = this._tp || (this._tp = [0, 0]);
+      let tx, ty;
+      if (t < 2.0) { Conductor.tipAt(RORY_SONG.BEAT0 + t, tp); tx = tp[0]; ty = tp[1]; }
+      else if (t < 2.9) { const k = easeInOut(clamp((t - 2.0) / 0.5, 0, 1)); Conductor.tipAt(RORY_SONG.BEAT0 + 2.0, tp); tx = lerp(tp[0], 1.2, k); ty = lerp(tp[1], 9.8, k); }
+      else { const k = clamp((t - 2.9) / 0.1, 0, 1); tx = lerp(1.2, 0.6, k); ty = lerp(9.8, -11.2, k); }
+      tx *= sc; ty *= sc;
+      const shx = bx + Conductor.SH[0] * sc, shy = by + Conductor.SH[1] * sc, len = Math.hypot(tx, ty);
+      this.at(F.arm, shx, shy, bz + 0.05); F.arm.material.rotation = Math.atan2(ty, tx); F.arm.scale.set(len / 0.96, len / 0.96 * 40 / 256, 1);
+      this.at(F.tip, shx + tx, shy + ty, bz + 0.1); F.tip.scale.setScalar(2 + (t > 2.0 && t < 2.9 ? 1 + Math.sin(t * 30) * 0.5 : 0));
+      if (t > 0.3 && this.once('b')) Sfx.baton();
+      if (t > 2.0 && this.once('raise')) Sfx.charge();
+      // a circle round your feet, flashing... then the lightning
+      if (t > 1.2 && t < 3.0) this.ring.material.color.set(Math.sin(t * 30) > 0 ? 0x9ad8ff : 0x1a3a80);
+      if (t > 3.0) {
+        if (this.once('strike')) { Sfx.strike(1); Sfx.boom(null, true); this.shake(0.6); Effects.doFlash(0xdff4ff, 0.6); Hands.pulse('both', 1, 400); }
+        const f = 1 - clamp((t - 3.0) / 0.35, 0, 1);
+        if (f > 0) { this.root.updateMatrixWorld(); this.root.localToWorld(_v6.set(0, 40, -0.6)); this.root.localToWorld(_v7.set(0, FL, -0.6)); F.bolt.show(true); F.bolt.set(_v6, _v7, 0.15 + 0.35 * f, 1.2, f, 0.5 * f); } else F.bolt.show(false);
+        this.over('veil', clamp((t - 3.1) / 0.6, 0, 0.85), 0x0a1a40);
+      }
+    } else if (S === 'record') {
+      // a record stood on its edge rolls at you, surging on every beat, scratching... and slices right through
+      const g = F.rec.g, beat = Math.floor(t / 0.414), ph = (t % 0.414) / 0.414, prog = clamp((beat + 1 - Math.exp(-ph * 6)) / 6, 0, 1), z = lerp(-14, -0.5, prog * prog * 0.6 + prog * 0.4);
+      if (beat !== this.lastStep && t < 2.4) { this.lastStep = beat; Sfx.scratch(); }
+      this.at(g, Math.sin(t * 2) * 0.1, -0.75, z); g.rotation.set(Math.PI / 2, 0, 0); g.scale.setScalar(1.3);
+      F.rec.disc.rotation.y += dt * (20 + Math.exp(-ph * 6) * 20);
+      if (Math.random() < 0.6) { this.root.updateMatrixWorld(); this.root.localToWorld(_v6.set(0, FL, z)); FX.glow.emit(_v6.x, _v6.y, _v6.z, rr(-2, 2), rr(1, 3), rr(-2, 2), 0.4, 0.8, 1, 0.08, 0.4, 6, 1); }
+      g.visible = t < 2.75;
+      if (t > 2.5) {
+        if (this.once('slice')) { Sfx.scratch(null, true); Sfx.crunch(); this.shake(0.5); Effects.doFlash(0x9ad0ff, 0.4); Hands.pulse('both', 1, 300); }
+        this.over('crack', clamp((t - 2.5) / 0.2, 0, 0.9), 0x9ad8ff); this.over('veil', clamp((t - 2.8) / 0.6, 0, 0.8), 0x020a24);
+      }
+    } else if (S === 'hush') {
+      // it rises up in front of you, a finger to its lips: shhhhh... the music dies away and the dark closes in
+      if (this.once('m')) { Music.cutoff(320, 2.4); Sfx.shh(null, 1.2); Cue.cap('hush'); }
+      const rise = easeOutQuad(clamp(t / 1.6, 0, 1)), lean = clamp((t - 2.4) / 1.2, 0, 1);
+      this.at(F.hush, 0, lerp(-2.6, 0.05, rise), lerp(-3.2, -1.1, lean)); F.hush.scale.set(2.2 * (1 + lean * 0.8), 2.75 * (1 + lean * 0.8), 1); F.hush.material.opacity = rise;
+      if (t > 1.8 && this.once('s2')) Sfx.shh(null, 1.5);
+      if (Math.random() < 0.5) FX.sq.emit(this.base.x + rr(-1.5, 1.5), this.base.y + rr(-1.5, 0.5), this.base.z + rr(-1.5, 1.5), 0, rr(-0.3, 0.3), 0, 0.02, 0.03, 0.09, rr(0.1, 0.25), rr(0.6, 1.2), 0, 0.5);
+      this.over('veil', clamp((t - 1.0) / 2.4, 0, 0.95), 0x01030c);
+    }
   },
   // place an actor at (x, y, z) in the scene frame
   at(o, x, y, z) { o.visible = true; o.position.set(x, y, z); return o; },
@@ -12737,7 +13760,7 @@ const DeathCam = {
       else { M.legs[0].rotation.x = 0.3; M.legs[1].rotation.x = -0.3; M.arms[0].rotation.x = 0.4; M.arms[1].rotation.x = t < 2.6 ? lerp(0, 1.2, clamp((t - 1.8) / 0.5, 0, 1)) : lerp(1.2, -1.75, clamp((t - 2.6) / 0.15, 0, 1)); }
       if (t > 1.9 && this.once('sh')) Cue.play('shout');
       if (t > 2.75) { if (this.once('punch')) { Sfx.boom(null, true); Sfx.hurt(); this.shake(0.6); Effects.doFlash(0xffffff, 0.4); Hands.pulse('both', 1, 400); } this.over('crack', 0.9, 0xffffff); this.over('veil', clamp((t - 2.9) / 1, 0, 0.75), 0x200010); }
-    }
+    } else this.roryScene(S, t, dt, FL);                  // (RORY'S CHALLENGE's cast)
     // the title comes up for the last stretch
     if (t > this.len - 1.7) this.title((t - (this.len - 1.7)) / 0.4);
     // jump / trigger skips once the hit has landed
@@ -13625,7 +14648,7 @@ window.WEGA_DEBUG = {
   player: () => ({ pos: Player.pos.toArray().map((v) => +v.toFixed(2)), hp: Player.hp, speed: +(Player.hspeed * CONFIG.SPEED_MULT).toFixed(1), grounded: Player.grounded }),
 };
 // test/debug access to internals (only with ?debug in the URL)
-if (DEBUG_URL) window.WEGA_DEBUG.internals = { SM, Session, FaceBoss, RoryRun, RoryDirector, RoryMap, RoryWorld, RoryDeco, RoryCard, RORY_SONG, Duel, Spectate, DeathCam, Clock, Destroyer, Urio, Cue, Sfx, Lap1Deco, Lap2Deco, Lap3Deco, Mods, MOD, MODS, Shop, SHOP, SHOP_CATS, Wallet, Shadow, Enraged, Lap5Deco, WegaShared, NameEdit, AvatarRig, WegaBoss, Diver, Jellies, DeepDeco, LobbyPlus, Achievements, Player, Collect, Beacon, Chamber, Hazards, Game, Rory, Screamer, LapTimer, Lap2: LapTimer, Flood, Shoebench, LapPortal, FPBody, Touch, Net, AV, Avatar, WegaHead, GlitchGuy, Idol, Music, HUD, Maze, Nav, World, Rig, Input, Fade, AudioSys, Save, Lobby, Stage, UI, get renderer() { return renderer; }, get scene() { return scene; }, get camera() { return camera; }, get perf() { return { upd: +Perf.upd.toFixed(2), ren: +Perf.ren.toFixed(2), calls: renderer.info.render.calls, tris: renderer.info.render.triangles }; } };
+if (DEBUG_URL) window.WEGA_DEBUG.internals = { SM, Session, FaceBoss, RoryRun, RoryDirector, RoryFoes, BeatNotes, Subwoofer, EqWalls, Conductor, Scratch, Hush, Effects, RoryMap, RoryWorld, RoryDeco, RoryCard, RORY_SONG, Duel, Spectate, DeathCam, Clock, Destroyer, Urio, Cue, Sfx, Lap1Deco, Lap2Deco, Lap3Deco, Mods, MOD, MODS, Shop, SHOP, SHOP_CATS, Wallet, Shadow, Enraged, Lap5Deco, WegaShared, NameEdit, AvatarRig, WegaBoss, Diver, Jellies, DeepDeco, LobbyPlus, Achievements, Player, Collect, Beacon, Chamber, Hazards, Game, Rory, Screamer, LapTimer, Lap2: LapTimer, Flood, Shoebench, LapPortal, FPBody, Touch, Net, AV, Avatar, WegaHead, GlitchGuy, Idol, Music, HUD, Maze, Nav, World, Rig, Input, Fade, AudioSys, Save, Lobby, Stage, UI, get renderer() { return renderer; }, get scene() { return scene; }, get camera() { return camera; }, get perf() { return { upd: +Perf.upd.toFixed(2), ren: +Perf.ren.toFixed(2), calls: renderer.info.render.calls, tris: renderer.info.render.triangles }; } };
 
 // =====================================================================================
 // MAIN LOOP
