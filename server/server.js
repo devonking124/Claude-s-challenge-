@@ -31,6 +31,13 @@ const FILES = {
   '/wega-music-chase5.js': 'text/javascript; charset=utf-8',
   '/wega-music-boss.js': 'text/javascript; charset=utf-8',
   '/wega-music-rory.js': 'text/javascript; charset=utf-8',
+  '/wega-music-endless0.js': 'text/javascript; charset=utf-8',
+  '/wega-music-endless1.js': 'text/javascript; charset=utf-8',
+  '/wega-music-endless2.js': 'text/javascript; charset=utf-8',
+  '/wega-music-endless3.js': 'text/javascript; charset=utf-8',
+  '/wega-music-endless4.js': 'text/javascript; charset=utf-8',
+  '/wega-music-endless5.js': 'text/javascript; charset=utf-8',
+  '/wega-music-eshop.js': 'text/javascript; charset=utf-8',
   '/README.md': 'text/markdown; charset=utf-8',
 };
 

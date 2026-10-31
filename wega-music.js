@@ -26,6 +26,10 @@
  *   WegaMusic.play("rory", 0.05, 12.3, false);                                  // from 12.3 s, no loop
  *   WegaMusic.position();                   // where in the track it is right now (loops included)
  *
+ * Lazy tracks (add-ons registered with lazy: true, e.g. ENDLESS's) aren't decoded by init(): load(name) decodes one
+ * when it's needed, unload(name) frees it again. A track with xfade loops by crossfading back to its loopStart
+ * (the game does that, for tracks that end on a reverb tail).
+ *
  * You can also pass your own AudioContext: WegaMusic.init(myCtx)
  * Raw data:  WEGA_MUSIC_DATA.lap1.src  -> "data:audio/mpeg;base64,..."
  */
@@ -60,7 +64,7 @@ function b64ToArrayBuffer(dataUrl) {
 }
 
 var ctx = null, master = null, filter = null, analyser = null, levelData = null;
-var buffers = {}, current = null, initPromise = null, rate = 1, volume = 0.8, muffled = false;
+var buffers = {}, pending = {}, current = null, initPromise = null, rate = 1, volume = 0.8, muffled = false;
 var listeners = {};
 
 function emit(ev, arg) { (listeners[ev] || []).forEach(function (fn) { try { fn(arg); } catch (e) { console.error(e); } }); }
@@ -121,11 +125,25 @@ var WegaMusic = {
     levelData = new Uint8Array(analyser.frequencyBinCount);
     filter.connect(master); master.connect(analyser); analyser.connect(ctx.destination);
     if (ctx.state === "suspended") ctx.resume();
-    initPromise = Promise.all(WegaMusic.tracks.map(decode)).then(function () { emit("ready"); return WegaMusic; });
+    // (lazy tracks - add-ons the game loads later, like ENDLESS's - are decoded only when they're needed: load())
+    initPromise = Promise.all(WegaMusic.tracks.filter(function (n) { return !WEGA_MUSIC_DATA[n].lazy; }).map(decode)).then(function () { emit("ready"); return WegaMusic; });
     return initPromise;
   },
 
-  isReady: function () { return WegaMusic.tracks.every(function (n) { return !!buffers[n]; }); },
+  isReady: function () { return !!initPromise && WegaMusic.tracks.every(function (n) { return WEGA_MUSIC_DATA[n].lazy || !!buffers[n]; }); },
+
+  /** Decode a lazy track so it can play (resolves when it's ready); unload() frees it again. */
+  load: function (name) {
+    if (buffers[name]) return Promise.resolve(buffers[name]);
+    if (!ctx || !WEGA_MUSIC_DATA[name] || !WEGA_MUSIC_DATA[name].src) return Promise.reject(new Error("[WegaMusic] can't load " + name));
+    if (!pending[name]) pending[name] = decode(name).then(function (b) { delete pending[name]; return b; }, function (e) { delete pending[name]; throw e; });
+    return pending[name];
+  },
+  loaded: function (name) { return !!buffers[name]; },
+  unload: function (name) {
+    var t = WEGA_MUSIC_DATA[name];
+    if (t && t.lazy && buffers[name] && !(current && current.name === name)) delete buffers[name];
+  },
   getContext: function () { return ctx; },
   /** Node you can connect your own SFX to so they share master volume (not the muffle filter). */
   getMasterNode: function () { return master; },

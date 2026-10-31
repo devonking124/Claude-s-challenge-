@@ -12,6 +12,10 @@ wega-music-lap5.js  Lap 5 song add-on ("I made it better"); optional, Lap 5 fall
 wega-music-boss.js  WEGA FACE's boss theme (Pizza Tower: "Unexpectancy", parts 1-3); optional, the fight falls back to the Lap 5 song
 wega-music-chase5.js  the Lap 5 chase song ("Forget Me Not"); optional, the chase falls back to a sped-up Lap 5 song
 wega-music-rory.js  RORY'S CHALLENGE's song ("RORY'S CHALLENGE"); needed for that game mode (the whole run is synced to it)
+wega-music-endless0.js ... wega-music-endless5.js  ENDLESS's songs (Endless, then Endless 1-5: a new one every 10 floors)
+wega-music-eshop.js  the theme of MR. GREEN'S SHOP in ENDLESS
+                    (the ENDLESS songs aren't in index.html: the game loads each one only when a run needs it and
+                    drops it again afterwards, so they cost nothing until you play ENDLESS; without them it's silent)
 wega-relay.json     optional: which multiplayer server to use (empty = free public relays)
 server/             the multiplayer server (Node 20+): hosts the game, relays player data and runs the shared runs
 render.yaml         one-click deploy of server/ on Render
@@ -153,6 +157,11 @@ banner and a toast tell you when you unlock one, and other players online see it
 | MARATHON | Run 42.2 km in total | Sweatband |
 | RORY'S CHALLENGE | Beat RORY'S CHALLENGE | Rory blue colour |
 | BEAT THE BEAT | Beat RORY'S CHALLENGE before its song ends | Electric blue colour |
+| GOING UP | Reach floor 10 in ENDLESS | Green Guy colour |
+| SKYSCRAPER | Reach floor 25 in ENDLESS | Skyscraper colour |
+| **FLOOR 50** | Reach floor 50 in ENDLESS | **Green Guy buddy hat + Floor 50 gold colour** |
+| BIG SPENDER | Spend 300 Green Guys at Mr. Green's in one ENDLESS run | Toxic colour |
+| ICE SKATER | Clear 3 icy floors in one ENDLESS run | Glacier colour |
 | COMPLETIONIST | Unlock every other achievement | Rainbow halo |
 
 Achievements are saved in the browser. Runs that use the debug helpers don't count.
@@ -176,8 +185,9 @@ pick** (everyone else sees what's picked and who picks it); offline it's your ow
 
 - **WEGA'S CHALLENGE** (classic): lap after lap, the idol, the chase and WEGA FACE.
 - **RORY'S CHALLENGE** (endurance): one huge map, one song, no laps.
+- **ENDLESS**: floor after floor of small maps full of Green Guys, until you go down.
 
-Difficulty and challenges (the lobby page) apply to both.
+Difficulty and challenges (the lobby page) apply to all three.
 
 ### RORY'S CHALLENGE
 
@@ -244,6 +254,95 @@ BEAT**. Your best time is saved on the GAME MODES page.
 at the same time, and late joiners drop in where the song is). Lil' Guys anyone collects are gone for everyone. If
 you go down you spectate and **come back when the song moves on to its next part** (in overtime: every 8 bars).
 If everyone goes down, the song starts over from the top. **Offline**, going down gives you **START OVER**.
+
+### ENDLESS
+
+How high can you go? Every **floor** is a **fresh small map** (5 x 5 platforms) full of **Green Guys**: grab every
+one and a **beacon** lights up; reach it and you go **up a floor** to a brand new map. It never ends: the run is
+over when you go down. The **floor counter** is at the top of the HUD (with the world's name, a bar of how many
+you've got, the enemies on this floor and when the next shop is).
+
+**Green Guys** are ENDLESS's collectibles (instead of Lil' Guys): little bright green beans with big eyes, a smile,
+nub arms and feet and a sprout on top. They're also the run's money (the counter by the HUD's top bar).
+
+| Floors | Map | Green Guys | Song |
+|---|---|---|---|
+| 1-10 | 5 x 5 | 40 | Endless |
+| 11-20 | 6 x 6 | 52 | Endless 1 |
+| 21-30 | 7 x 7 | 64 | Endless 2 |
+| 31-40 | 8 x 8 | 76 | Endless 3 |
+| 41-50 | 9 x 9 | 88 | Endless 4 |
+| 51-60 | 10 x 10 | 100 | Endless 5 |
+| 61+ | 10 x 10 | 100 (the most) | Endless 1-5 again, round and round |
+
+**It gets harder as you climb:** every 10 floors the map grows and there are more Green Guys, and every floor the
+enemies get a little quicker and come more often (all the way to floor 51); from floor 11 on there are more of
+them too.
+
+**The enemies.** ENDLESS has its own ten (no characters from the laps). Every floor brings **one random enemy**,
+and **every 5 floors one more stays for good** (so floor 5 has two, floor 10 three, and so on; never the same one
+twice). The HUD's top bar shows who's here.
+
+| Enemy | What it does | How to beat it |
+|---|---|---|
+| **THE MIMIC** | Looks just like a Green Guy, but its eyes flash red now and then. Get close and it opens up and lunges (25) | Watch the eyes before you grab |
+| **THE STATUE** | A stone angel that only moves when you're not looking at it, and then fast (you hear the stone grind) (30) | Keep it on screen |
+| **BOING** | A big rubber ball that bounces after you; its shadow shows where it lands (20) | Be somewhere else |
+| **THE WEAVER** | Spiders hang over the walkways and drop on you (15); webs on the floor slow you right down | Look up; go round the webs |
+| **THE SENTRIES** | Eye turrets on the platforms track you, beep faster and faster, then fire an orb (15) | Dodge the orbs |
+| **THE BURROWER** | Digs under the walkways at you: the floor cracks in a ring, then it bursts up (25) | Get out of the ring (or jump) |
+| **THE SWARM** | A cloud of hornets that chases you and stings you over and over inside it (5 a sting) | It's slower than you: keep running |
+| **THE BOULDER** | A huge rock rolling along the walkways at you (40) | Too big to jump: take another way, or step aside |
+| **THE VACUUM** | A hole in the world that drifts after you and pulls you in; touch it and it spits you out (20) | Run against it |
+| **THE THIEF** | Runs up and steals your Green Guys, then runs off (with nothing to steal it bonks you, 10) | Catch it to get them back (+3) |
+
+Each one has its own sound (and caption), its own death scene and a page in the character guide.
+
+**Ten worlds.** Every floor has a world: its walkways (colours and a pattern of their own), its sky, what's far
+below, the scenery round the map, its weather, fog and light. Floor 1 is NEON NIGHT, **floor 2 is the ice**, then
+the rest come round in a shuffled order.
+
+| World | Walkways | Sky / below | Scenery, weather |
+|---|---|---|---|
+| NEON NIGHT | dark, with a glowing neon grid | synthwave sun and grid over a neon grid | pyramids, dust |
+| **FROZEN PEAKS** | **ice: you slide** (you speed up and slow down slowly) | aurora over a frozen sea | icebergs, snow |
+| MAGMA FORGE | dark rock with glowing veins | red storm clouds over **lava (it burns)** | spires, embers |
+| TOXIC SWAMP | dark, with green ooze creeping over it | green haze over acid | giant mushrooms, spores |
+| CANDY CLOUDS | pink and white candy stripes | pastel sky over clouds | lollipops, sprinkles |
+| DESERT DUSK | rippled sand | a huge low sun over dunes | cacti, blowing sand |
+| DEEP SPACE | black, glittering with stars | stars and planets over the void | planets, star dust |
+| THUNDERSTORM | steel plates and rivets | **lightning** over a dark sea | pylons, rain |
+| JUNGLE RUINS | old stone with moss and cracks | sun through the canopy over water | ruins, fireflies |
+| CRYSTAL CAVERN | shimmering violet crystal | glowing crystal far below | crystals, sparkles |
+
+**MR. GREEN'S SHOP.** After every 5th floor (5, 10, 15...) you go to Mr. Green's shop (with its own song): a
+little wooden deck in the sky, Mr. Green in his top hat behind the counter and the items floating round it. Spend
+your Green Guys (prices go up a little the higher you are, and with each level you own); what you buy lasts for
+this run. Then **NEXT FLOOR**.
+
+| Item | What it does | Max |
+|---|---|---|
+| HEART | Heals 50 health right now | any |
+| ARMOR | 15% less damage (each level) | 3 |
+| SPEED BOOTS | 6% faster top speed (each level) | 3 |
+| SPRING SHOES | Jump 15% higher (each level) | 2 |
+| DOUBLE JUMP | One more jump in mid-air | 1 |
+| BUBBLE SHIELD | Blocks a hit (2 at level 2), refills every floor | 2 |
+| MAGNET | Pulls Green Guys in from 4 m (7 m at level 2) | 2 |
+| EXTRA LIFE | Go down and you come back with half health | 2 |
+| RADAR | An arrow points to the nearest Green Guy | 1 |
+| REGENERATION | Health comes back sooner and faster | 2 |
+| LUCKY CLOVER | 25% chance of a bonus Green Guy (each level) | 2 |
+| TIME STOP | Press **E / Q** (GRAB on a phone, grip in VR): every enemy freezes for 5 s | 3 |
+
+**Floor 50** unlocks the **FLOOR 50** achievement (and its Green Guy buddy hat). Your best floor is saved on the
+GAME MODES page and the main menu. At the end you get a Lil' Guy payout for the lobby shop (more the higher you got).
+
+**Online**, everyone plays the same floors (same map, world and enemies) and Green Guys anyone grabs are gone for
+everyone; each player keeps their own Green Guy wallet and items. When anyone reaches the beacon, **everyone goes up**.
+At the shop everyone presses **READY** (or the shop closes after 45 s). If you go down you spectate and **come back
+on the next floor**; if everyone goes down, it's game over for the run. **Offline**, going down ends the run
+(unless you bought an extra life).
 
 ## Challenges and modifiers
 
@@ -397,15 +496,18 @@ segment per hit), the phase, and when it's shielded.
 Every character that can kill you has its **own death scene** (RORY'S CHALLENGE's cast too: the notes close in a
 hop a beat and hit a sour chord, the Subwoofer pulls its cone back and blows you away, an EQ wall slams into you, the
 Conductor raises his baton and brings the lightning down, a record on its edge slices through, the Hush puts a finger
-to its lips and the music dies): Rory sprints at you out of the dark and grabs you
+to its lips and the music dies; and ENDLESS's ten: a Green Guy's eyes flash red and it chomps, the Statue gets closer
+every time the lights flicker, Boing's shadow spreads round your feet, the Weaver drops on its thread and webs over
+your eyes, a Sentry beeps faster and fires, the Burrower bursts up through the cracks, the Swarm closes in, the
+Boulder rolls out of the dark, the Vacuum pulls everything in and the Thief bonks you and runs off laughing): Rory sprints at you out of the dark and grabs you
 with his gloves, the Screamer stops dead in your face and red cracks run across your view, Shoebench comes down on
 you, Urio walks into a spotlight, laughs and lunges, Wega rises and fires his eye lasers, the Diver plunges in front
 of you and the water rises, the jellyfish close in and all zap at once, your Shadow walks into you, the Glitch Guy
 breaks the world into pixels, the flood crashes over you, the Destroyer's hands clap, WEGA FACE chomps and WEGA MAN
 punches. Then the title comes up (jump skips once the hit has landed).
 
-**Online, you then spectate:** you can't come back until the run moves on (the next lap, the chase, or WEGA FACE's
-next phase), or until everyone is down and the stage starts over. Use **< >** to watch someone else. If everyone
+**Online, you then spectate:** you can't come back until the run moves on (the next lap, the chase, WEGA FACE's
+next phase or ENDLESS's next floor), or until everyone is down and the stage starts over. Use **< >** to watch someone else. If everyone
 goes down in a chase or the boss fight, everyone spectates for 12 seconds (riding along over the collapse) before it
 starts over. You always come back with full health.
 
@@ -425,7 +527,9 @@ hop), **[ BASS THUMPS ]**, **[ THE CONDUCTOR TAPS HIS BATON ]**, **[ RECORD SCRA
 
 A speed dial (it turns red past 55 s/s), a card with your Lil' Guys left (RUN! in a chase, FIGHT! against WEGA
 FACE) and your health in ten cells, all in the lap's colour. The bar on top is the lap timer, the chase's progress
-(you, Urio, the collapse eating the route, the exit), Forget Me Not's time left, or the boss's health.
+(you, Urio, the collapse eating the route, the exit), Forget Me Not's time left, or the boss's health. In ENDLESS
+it's green, the card counts Green Guys left, and the top shows the floor and its world, how many you've got, who's
+on this floor, your Green Guy wallet, when the next shop is and your shield / time stops.
 
 ## Difficulty
 
@@ -465,7 +569,7 @@ The game still runs if `wega-music.js` is missing (just without music).
 | WASD / arrow keys | Move (speed builds up the longer you run) |
 | Mouse | Look (click the game to lock the pointer) |
 | Space | Jump (hold it to keep hopping) |
-| E | Grab the idol |
+| E | Grab the idol (ENDLESS: use a TIME STOP; Q works too) |
 | Shift | Sprint lock |
 | Esc / P | Pause |
 | M / F | Mute / full screen |
@@ -496,10 +600,12 @@ The full-screen button is in the top-right corner.
 ## Debug
 
 Open `index.html?debug`: keys `1`–`9` jump to Lap 1 / Lap 2 / Idol Chamber / Escape / Win / Lap 3 / Lap 4 / Lap 5 /
-RORY'S CHALLENGE.
+RORY'S CHALLENGE, and `0` starts ENDLESS.
 `window.WEGA_DEBUG` has `skipToLap2()`, `skipToLap3()`, `skipToLap4()`, `skipToLap5()`, `skipToIdol()`, `skipToEscape()`, `win()`, `godMode(bool)`,
 `setLeft(n)`, `spawnShoebench()`, `skipToChase5(seconds)`, `skipToBoss(phase)`, `bossAge(seconds)`, `bossHit()` and
 `die(killer)` (plays that character's death scene). For RORY'S CHALLENGE: `skipToRory(seconds)` starts it at that
 point of the song, `rorySeek(seconds)` jumps the song (offline) and `roryTime()` shows the song clock, the music's
-position and the current part.
+position and the current part. For ENDLESS: `skipToFloor(n, seed)` starts a run on floor `n`, `endlessShop()`
+opens Mr. Green's shop, `giveGreen(n)` adds Green Guys to your wallet and `endlessState()` shows the floor, world,
+enemies, wallet, items and song.
 Runs that use debug helpers don't save a best time. Add `?offline` to play without connecting to any server.

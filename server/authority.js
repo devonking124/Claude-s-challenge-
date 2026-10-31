@@ -9,8 +9,11 @@
 // boss phase; if everyone is down the stage restarts), and who escaped. It also owns the lobby: the first
 // player to join is the owner (the next earliest takes over if they leave), and only the owner can START
 // and change the lobby settings (game mode, difficulty, how many laps, run modifiers). The game modes: CLASSIC (the
-// laps, the chase, WEGA FACE) and RORY'S CHALLENGE (one huge map, 500+ Lil' Guys, the whole run on its song's
-// clock: the timer is the song, anyone who is down is back at the song's next section, Shoebench when it ends). The real server
+// laps, the chase, WEGA FACE), RORY'S CHALLENGE (one huge map, 500+ Lil' Guys, the whole run on its song's
+// clock: the timer is the song, anyone who is down is back at the song's next section, Shoebench when it ends) and
+// ENDLESS (floor after floor of small maps full of Green Guys: the beacon takes everyone to the next floor, every 5th
+// floor ends in the shop, anyone who is down is back on the next floor, and when everyone is down the run is over).
+// The real server
 // (server/server.js) runs one per room; on a public relay the game itself runs one in the player with the
 // lowest id (and hands it over if they leave). Plain JS, no dependencies: the same file is inlined into index.html.
 //
@@ -21,7 +24,7 @@ const WegaShared = (() => {
   const TOTAL = 207, LAP_TOTAL = 330;     // Lil' Guys per lap (the owner's difficulty can ask for more)
   const MAX_TOTAL = 720;                  // ...and in RORY'S CHALLENGE (500+)
   const MAX_LAP = 5;
-  const MODES = ['classic', 'rory'];      // the game modes the lobby owner picks from
+  const MODES = ['classic', 'rory', 'endless'];      // the game modes the lobby owner picks from
   // RORY'S CHALLENGE (stage 'rory', then 'roryexit' once every Lil' Guy is in): the song starts RORY_LEAD s after
   // START (the count-in) and the timer ends with its last bar; then Shoebench. RORY_SECTIONS: where the song's
   // sections start (s into it); anyone who is down comes back when it moves on to the next one (in overtime: every 8 bars).
@@ -33,6 +36,11 @@ const WegaShared = (() => {
     let i = 0; while (i + 1 < RORY_SECTIONS.length && t >= RORY_SECTIONS[i + 1]) i++;
     return i;
   }
+  // ENDLESS (stage 'endless', then 'endexit' once every Green Guy on the floor is in, then the next floor; after every
+  // SHOP_EVERY-th floor 'eshop': everyone shops at once, SHOP_TIME s at most, or until everyone is READY). Its lap code
+  // is END_LAP; the floor is fl. Green Guys: 40 a floor, 12 more every 10 floors, 100 at most (the map grows with them).
+  const END_LAP = 7, SHOP_EVERY = 5, SHOP_TIME = 45;
+  const endGreen = (fl) => Math.min(100, 40 + 12 * Math.floor((Math.max(1, fl) - 1) / 10));
   const MOD_MAX = 0xffff;                 // run modifier bits (the game decides what each one does)
   const DIFFS = ['chill', 'normal', 'hard', 'wega'];
   const BONUS = 3, BONUS_EVERY = 25;      // laps 2-4: +3 s on the shared timer every 25 collected
@@ -153,6 +161,7 @@ const WegaShared = (() => {
       this.by = ''; this.gr = ''; this.runners = new Map(); this.startT = this.now(); this.escT = 0; this.winT = 0; this.doneT = 0; this.emptyT = 0;
       this.boss = null; this.bs = 0; this.lv = 0; this.wipeAt = 0;
       this.rgm = 'classic'; this.rT0 = 0; this.rsec = -1;      // the run's game mode; RORY'S CHALLENGE: when its clock started
+      this.fl = 0; this.shopEnd = 0; this.ready = new Set();   // ENDLESS: the floor, the shop's deadline, who's done shopping
     }
     event(kind, who, id, extra) { this.ev = [this.ev[0] + 1, kind, who, id || '']; if (extra != null) this.ev.push(extra); }
     changed() { this.sq++; this.dirty = true; }
@@ -199,8 +208,20 @@ const WegaShared = (() => {
       this.rT0 = now; this.rsec = -1; this.tEnd = now + (RORY_LEAD + RORY_LEN) * 1000;
     }
     roryAge() { return (this.now() - this.rT0) / 1000; }
+    // ENDLESS: floor n (a fresh map: its Green Guys, everyone who is down is back)
+    startFloor(n) {
+      this.fl = n; this.lap = END_LAP; this.st = 'endless'; this.tot = endGreen(n);
+      this.bits.fill(0); this.left = this.tot; this.lapCount = 0; this.shopEnd = 0; this.ready = new Set();
+      this.revive();
+    }
+    // ...and through its beacon: the next floor, or the shop first
+    nextFloor(who, id) {
+      if (this.fl % SHOP_EVERY === 0 && this.st !== 'eshop') { this.st = 'eshop'; this.shopEnd = this.now() + SHOP_TIME * 1000; this.ready = new Set(); this.revive(); this.event('shop', who, id, this.fl); }
+      else { this.startFloor(this.fl + 1); this.event('floor', who, id, this.fl); }
+      this.changed();
+    }
     // the stage everyone collects Lil' Guys on right now
-    collecting() { return this.st === 'lap' + this.lap || this.st === 'rory'; }
+    collecting() { return this.st === 'lap' + this.lap || this.st === 'rory' || this.st === 'endless'; }
     has(i) { return (this.bits[i >> 3] >> (i & 7)) & 1; }
     // WEGA FACE takes the exit: the Lap 5 chase's song is over
     startBoss(who, id) {
@@ -223,6 +244,7 @@ const WegaShared = (() => {
     checkWipe() {
       if (this.ph !== 'run' || !this.runners.size || this.wipeAt) return;
       for (const r of this.runners.values()) if (!r.dead) return;
+      if (this.rgm === 'endless') { this.st = 'done'; this.doneT = this.now(); this.event('over', '', '', this.fl); this.changed(); return; }   // ENDLESS: game over
       if (this.st === 'escape' || this.st === 'boss') { this.wipeAt = this.now() + WIPE_WAIT * 1000; this.event('wipewait', '', '', this.st); this.changed(); return; }
       this.wipeNow();
     }
@@ -268,7 +290,7 @@ const WegaShared = (() => {
           const rory = this.rgm === 'rory';
           this.tot = Math.round(clampNum(m.tot, 50, rory ? MAX_TOTAL : LAP_TOTAL, rory ? 550 : TOTAL));
           this.times = [0, 0, clampNum(m.t2, 50, 400, 150), clampNum(m.t3, 50, 400, 120), clampNum(m.t4, 50, 400, 105), clampNum(m.t5, 50, 400, 120)];
-          if (rory) { this.startRory(); this.revive(); } else this.startLap(1, 0);
+          if (rory) { this.startRory(); this.revive(); } else if (this.rgm === 'endless') this.startFloor(1); else this.startLap(1, 0);
           this.startT = now;
           this.runner(m.i, who);
           this.event('start', who, m.i); this.changed();
@@ -276,6 +298,7 @@ const WegaShared = (() => {
         }
         case 'col': {
           if (!mine || m.lap !== this.lap || !this.collecting() || !Array.isArray(m.ix)) return;
+          if (this.rgm === 'endless' && m.fl !== this.fl) return;                // (from a floor that's gone)
           this.runner(m.i, who);
           let got = 0;
           for (let k = 0; k < m.ix.length && k < 64; k++) {
@@ -288,7 +311,7 @@ const WegaShared = (() => {
           if (!got) return;
           if (this.left <= 0) {
             this.left = 0;
-            if (this.st === 'rory') { this.st = 'roryexit'; this.escT = now; } else this.st = 'beacon' + this.lap;
+            if (this.st === 'rory') { this.st = 'roryexit'; this.escT = now; } else if (this.st === 'endless') this.st = 'endexit'; else this.st = 'beacon' + this.lap;
             this.event('clear', who, m.i);
           }
           this.changed();
@@ -300,6 +323,17 @@ const WegaShared = (() => {
           this.startLap(this.lap + 1, CUT_DELAY);
           this.event('portal', who, m.i, this.lap); this.changed();
           return;
+        case 'floor':               // ENDLESS: someone went through the floor's beacon
+          if (!mine || this.st !== 'endexit' || m.fl !== this.fl) return;
+          this.runner(m.i, who);
+          this.nextFloor(who, m.i);
+          return;
+        case 'ready': {             // ENDLESS: done shopping (when everyone is, the next floor starts)
+          if (!mine || this.st !== 'eshop' || m.fl !== this.fl) return;
+          this.runner(m.i, who); this.ready.add(m.i);
+          if ([...this.runners.keys()].every((id) => this.ready.has(id))) this.nextFloor(who, m.i); else this.changed();
+          return;
+        }
         case 'beacon':
           if (!mine || !this.st.startsWith('beacon') || m.lap !== this.lap) return;
           this.runner(m.i, who);
@@ -320,7 +354,7 @@ const WegaShared = (() => {
           return;
         }
         case 'dead': {              // you're down: you watch until the next lap / the chase / the next boss phase
-          if (!mine || !/^(lap|beacon)[1-5]$|^chamber$|^escape$|^boss$|^rory$|^roryexit$/.test(this.st)) return;
+          if (!mine || !/^(lap|beacon)[1-5]$|^chamber$|^escape$|^boss$|^rory$|^roryexit$|^endless$|^endexit$/.test(this.st)) return;
           const r = this.runner(m.i, who); if (r.dead) return;
           r.dead = true; this.event('dead', who, m.i, typeof m.by === 'string' ? m.by.slice(0, 12) : '');
           // a duelist who goes down loses the duel: the next player is up
@@ -387,6 +421,8 @@ const WegaShared = (() => {
         }
         // everyone has been down for a while: the chase / the boss phase starts over
         if (this.wipeAt && now >= this.wipeAt) this.wipeNow();
+        // ENDLESS: the shop closes (whoever isn't READY yet comes along anyway); someone who left can't hold it up
+        if (this.st === 'eshop' && (now >= this.shopEnd || (this.runners.size && [...this.runners.keys()].every((id) => this.ready.has(id))))) this.nextFloor('', '');
         // the Lap 5 chase's song is over: WEGA FACE
         if (this.st === 'escape' && this.lap >= MAX_LAP && now - this.escT >= CHASE5_LEN * 1000) { this.startBoss(); this.changed(); }
         // the duelist whose turn it is has left the run: skip them
@@ -420,6 +456,10 @@ const WegaShared = (() => {
       };
       if (this.boss) Object.assign(s, this.boss.snap(now));
       if (this.rgm === 'rory') { s.rgm = 'rory'; s.ra = Math.round((now - this.rT0) / 100) / 10; }   // the song's clock
+      if (this.rgm === 'endless') {                                                                  // the floor (+ the shop)
+        s.rgm = 'endless'; s.fl = this.fl;
+        if (this.st === 'eshop') { s.sl = Math.round(Math.max(0, this.shopEnd - now) / 100) / 10; s.rd = [...this.ready].filter((id) => this.runners.has(id)).slice(0, 16); }
+      }
       return s;
     }
     // take over from a snapshot (a new host after the old one left): the lobby owner and settings,
@@ -435,8 +475,12 @@ const WegaShared = (() => {
       this.sq = (s.sq | 0) + 1; this.dirty = true;
       if (s.ph !== 'run' || !Number.isInteger(s.run)) return;
       this.reset(s.run);
-      this.rgm = s.rgm === 'rory' ? 'rory' : 'classic';
-      this.ph = 'run'; this.st = String(s.st || 'lap1'); this.lap = clampNum(s.lap | 0, 1, this.rgm === 'rory' ? RORY_LAP : MAX_LAP, 1);
+      this.rgm = s.rgm === 'rory' || s.rgm === 'endless' ? s.rgm : 'classic';
+      this.ph = 'run'; this.st = String(s.st || 'lap1'); this.lap = clampNum(s.lap | 0, 1, this.rgm === 'rory' ? RORY_LAP : this.rgm === 'endless' ? END_LAP : MAX_LAP, 1);
+      if (this.rgm === 'endless') {
+        this.fl = clampNum(s.fl | 0, 1, 9999, 1);
+        if (this.st === 'eshop') { this.shopEnd = this.now() + clampNum(s.sl, 0, SHOP_TIME, SHOP_TIME) * 1000; if (Array.isArray(s.rd)) for (const id of s.rd) if (okId(id)) this.ready.add(id); }
+      }
       if (this.rgm === 'rory') { this.rT0 = this.now() - clampNum(s.ra, 0, 1e6, 0) * 1000; this.rsec = rorySection(this.roryAge() - RORY_LEAD); }
       this.tot = Math.round(clampNum(s.tot, 50, MAX_TOTAL, TOTAL)); this.left = Math.round(clampNum(s.left, 0, this.tot, this.tot));
       if (typeof s.c === 'string') for (let i = 0; i < Math.ceil(this.tot / 8); i++) this.bits[i] = parseInt(s.c.substr(i * 2, 2), 16) || 0;
@@ -456,6 +500,6 @@ const WegaShared = (() => {
   }
 
   return { Room, Boss, hash01, cleanName, nameAllowed, label, TOTAL, MAX_TOTAL, MAX_LAP, NAME_MAX, CHASE5_LEN, BOSS_MIN, BOSS_INTRO, BOSS_HITS, DUEL_GAP, DUEL_INTRO, DUEL_CHARS, WIPE_WAIT,
-    MODES, RORY_LAP, RORY_LEAD, RORY_LEN, RORY_SECTIONS, rorySection };
+    MODES, RORY_LAP, RORY_LEAD, RORY_LEN, RORY_SECTIONS, rorySection, END_LAP, SHOP_EVERY, SHOP_TIME, endGreen };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = WegaShared;
