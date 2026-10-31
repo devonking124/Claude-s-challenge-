@@ -162,6 +162,9 @@ banner and a toast tell you when you unlock one, and other players online see it
 | **FLOOR 50** | Reach floor 50 in ENDLESS | **Green Guy buddy hat + Floor 50 gold colour** |
 | BIG SPENDER | Spend 300 Green Guys at Mr. Green's in one ENDLESS run | Toxic colour |
 | ICE SKATER | Clear 3 icy floors in one ENDLESS run | Glacier colour |
+| STOMPER | Stomp 50 enemies in ENDLESS | Stomp red colour |
+| KING SLAYER | Beat KING MIMIC | Royal gold colour |
+| S RANK | Clear an ENDLESS floor fast without getting hit | S-rank silver colour |
 | COMPLETIONIST | Unlock every other achievement | Rainbow halo |
 
 Achievements are saved in the browser. Runs that use the debug helpers don't count.
@@ -277,7 +280,42 @@ nub arms and feet and a sprout on top. They're also the run's money (the counter
 
 **It gets harder as you climb:** every 10 floors the map grows and there are more Green Guys, and every floor the
 enemies get a little quicker and come more often (all the way to floor 51); from floor 11 on there are more of
-them too.
+them too, and the floor's own enemy is often **ELITE** (a red glow: half as many again, and faster).
+
+**Fight back: STOMP them.** Come down on top of an enemy and you stomp it: you bounce off, it's done for (for a
+while) and you get Green Guys. Mimics (awake ones) cough up 3, spiders down on the walkway 2, the Thief gives back
+everything it stole plus 4, the Burrower's hard hat 2 as it comes up, and **Boing is a trampoline**: land on it
+just as it squashes down and it throws you sky high. A SUPER STAR stomps anything that touches you.
+
+**The combo.** Every Green Guy and every stomp adds to your combo (it runs out if you stop for a couple of
+seconds). At 8 it's **x2**, at 16 x3, then x4 and **x5**: everything you pick up or stomp is worth that much more.
+Your combo and its timer are on the HUD by your bag.
+
+**Par time and rank.** Every floor has a **par time** (the clock top right). Clear all its Green Guys and you get
+a rank and a bonus: **S** (under 3/4 of par, no hits) +30, **A** (under par) +15, **B** +5, **C** nothing, and
++10 more for no hits.
+
+**THE COLLECTOR.** Take too long and Mr. Green sends his debt collector: you're warned at par time, it comes at
+1.3 x par. A tall hooded shape in a battered top hat with a green lantern, it floats straight at you through
+anything, faster and faster (45 damage), and only the beacon gets you away from it.
+
+**Floor twists.** Most floors from floor 3 on have a twist (the same one for everyone):
+
+| Twist | What happens |
+|---|---|
+| GOLD RUSH | A golden Green Guy runs away from you (it stops for breath now and then): catch it for 25 Green Guys |
+| GREEN RAIN | Bonus Green Guys fall out of the sky round you all floor long |
+| LIGHTS OUT | The world goes black; you carry a lamp |
+| METEOR SHOWER | Meteors come down where you're heading (red rings on the floor first, 20 damage) |
+| MOON JUMP | Low gravity: you jump sky high (and come down slowly) |
+| FRENZY | Everything's faster (you a little, the enemies a lot) and Green Guys count double |
+| DOUBLE TROUBLE | Two new enemies on the floor instead of one |
+
+**KING MIMIC.** Every 10th floor (10, 20, 30...) has a boss: a Mimic the size of a house, with a crown. It hops after
+you (every landing sends a shockwave rolling along the floor: jump it), leaps up and comes down where you are (a
+red ring shows where: a huge shockwave), and then sits there **dizzy** for a few seconds: **jump on its head**. It
+spits Mimics at you. Stomp it 3 times (more on later bosses) and it bursts: lots of Green Guys and two items for
+your bag. The beacon won't take you up while it's alive.
 
 **The enemies.** ENDLESS has its own ten (no characters from the laps). Every floor brings **one random enemy**,
 and **every 5 floors one more stays for good** (so floor 5 has two, floor 10 three, and so on; never the same one
@@ -285,18 +323,19 @@ twice). The HUD's top bar shows who's here.
 
 | Enemy | What it does | How to beat it |
 |---|---|---|
-| **THE MIMIC** | Looks just like a Green Guy, but its eyes flash red now and then. Get close and it splits open into two jaws full of teeth, a tongue lolls out, six spider legs unfold and it scuttles at you (25) | Watch the eyes before you grab |
+| **THE MIMIC** | Looks just like a Green Guy, but its eyes flash red now and then. Get close and it splits open into two jaws full of teeth, a tongue lolls out, six spider legs unfold and it scuttles at you (25) | Watch the eyes before you grab; **stomp it** (+3) |
 | **THE STATUE** | A weeping stone angel (robe in folds, feathered wings, hands over its face) that only moves when you're not looking at it, and then fast (you hear the stone grind). Look back when it's close and it's reaching for you, claws out, fangs bared (30) | Keep it on screen |
-| **BOING** | A striped rubber ball with a cartoon face (big blinking eyes, angry brows, little kicking feet) that bounces after you; its shadow shows where it lands, and its toothy mouth opens wide as it comes down (20) | Be somewhere else |
-| **THE WEAVER** | Big hairy spiders with a glowing skull on their backs, eight jointed legs, eight red eyes and snapping fangs, hanging over the walkways; they drop on you (15). Webs on the floor slow you right down | Look up; go round the webs |
-| **THE SENTRIES** | Tripod turrets with an armoured, bloodshot eye: the shutters blink, the eye tracks you, a lens ring glows and spins as it beeps faster and faster, then fires an orb (15) | Dodge the orbs |
-| **THE BURROWER** | A giant drill-nosed mole in a miner's hard hat (its lamp shines), digging under the walkways at you: the floor cracks in a ring, then it bursts up, drill spinning and claws flailing (25) | Get out of the ring (or jump) |
-| **THE SWARM** | A cloud of striped hornets (wings a blur) round their queen, who's twice their size and wears a little crown; inside it you get stung over and over (5 a sting) | It's slower than you: keep running |
+| **BOING** | A striped rubber ball with a cartoon face (big blinking eyes, angry brows, little kicking feet) that bounces after you; its shadow shows where it lands, and its toothy mouth opens wide as it comes down (20) | Be somewhere else, or land on it: **a trampoline** |
+| **THE WEAVER** | Big hairy spiders with a glowing skull on their backs, eight jointed legs, eight red eyes and snapping fangs, hanging over the walkways; they drop on you (15) and then scuttle after you along the walkway. Webs on the floor slow you right down | Look up; go round the webs; **stomp them** on the ground |
+| **THE SENTRIES** | Tripod turrets with an armoured, bloodshot eye: the shutters blink, the eye tracks you, a lens ring glows and spins as it beeps faster and faster, then fires an orb that bends after you (15; from floor 11, three at once) | Dodge the orbs |
+| **THE BURROWER** | A giant drill-nosed mole in a miner's hard hat (its lamp shines), digging under the walkways at you: the floor cracks in a ring, then it bursts up, drill spinning and claws flailing (25) | Get out of the ring (or jump, and **bonk its hard hat**) |
+| **THE SWARM** | A cloud of striped hornets (wings a blur) round their queen, who's twice their size and wears a little crown; inside it you get stung over and over (5 a sting) and the stings slow you down | Keep running, flat out |
 | **THE BOULDER** | A huge cracked boulder with lava glowing through its cracks, moss on top and an angry face carved in it, rolling along the walkways at you (40) | Too big to jump: take another way, or step aside |
-| **THE VACUUM** | A little black hole (a swirling disc of hot gas, a bright ring, rocks circling in) that drifts after you and pulls you in; touch it and it spits you out (20) | Run against it |
-| **THE THIEF** | A raccoon burglar (mask, striped jumper, beanie, ringed tail) that runs up and steals your Green Guys, then runs off with its swag bag glowing (with nothing to steal it bonks you, 10) | Catch it to get them back (+3) |
+| **THE VACUUM** | A little black hole (a swirling disc of hot gas, a bright ring, rocks circling in) that drifts after you and pulls you in (and eats your Green Guys while you're close); touch it and it spits you out (20) | Run against it |
+| **THE THIEF** | A raccoon burglar (mask, striped jumper, beanie, ringed tail) that runs up and steals your Green Guys, then runs off with its swag bag glowing (with nothing to steal it bonks you, 10) | Catch it to get them back (+3), or **stomp it** (all back +4) |
 
-Each one has its own sound (and caption), its own death scene and a page in the character guide.
+Each one has its own sound (and caption), its own death scene and a page in the character guide (and so do THE
+COLLECTOR, KING MIMIC and the meteors; the guide also has pages on stomping and the floor twists).
 
 **Ten worlds.** Every floor has a world: its walkways (colours and a pattern of their own), its sky, what's far
 below, the landmarks and scenery round the map (lots of it moving), the platforms' own dressing, two layers of

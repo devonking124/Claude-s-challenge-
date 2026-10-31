@@ -678,7 +678,8 @@ const CONFIG = {
   MAX_HP: 100, REGEN: 3, INVULN: 1.0,
   DMG: { rory: 35, screamer: 30, laser: 20, fall: 20, lava: 25, flood: 25, wegaHead: 20, fireball: 15, burn: 10, glitch: 15, wegaBeam: 25, diverSlam: 40, diverWave: 15, diverBump: 15, jelly: 12, shadow: 20, urio: 30, destroyer: 20, wegaface: 30, wegaman: 30, duel: 25,
     notes: 15, subwoofer: 15, bigOne: 25, eq: 20, strike: 20, record: 20, hush: 25,
-    mimic: 25, statue: 30, boing: 20, weaver: 15, sentry: 15, mole: 25, swarm: 5, boulder: 40, vacuum: 20, thief: 10 },
+    mimic: 25, statue: 30, boing: 20, weaver: 15, sentry: 15, mole: 25, swarm: 5, boulder: 40, vacuum: 20, thief: 10,
+    meteor: 20, collector: 45, kingWave: 15, kingSlam: 30 },
   // lilGuys: Lil' Guys per lap. hostile: how aggressive the characters are (shorter warnings, more
   // shots, faster chasers, longer hunts) on top of threat (how often things happen).
   DIFF: {
@@ -1826,6 +1827,8 @@ const Cue = {
     boulder: ['[ A BOULDER COMES ROLLING ]', 1.6, (p) => { Sfx.rumbleS(p, 2); Sfx.crumble(); }],
     vacuum: ['[ WHOOOOSH ]', 0.8, (p) => Sfx.suck(p)],
     thief: ['[ HEE HEE HEE ]', 1.2, (p) => Sfx.thiefLaugh(p)],
+    collector: ['[ A BELL TOLLS ]', 2, () => { Sfx.tone({ type: 'sine', f0: 196, dur: 2.4, vol: 0.2, verb: 0.7 }); Sfx.tone({ type: 'sine', f0: 392.5, dur: 1.8, vol: 0.07, verb: 0.7 }); Sfx.tone({ type: 'sine', f0: 98, dur: 2.6, vol: 0.12 }); }],
+    kingRoar: ['[ KING MIMIC ROARS ]', 1.4, (p) => { Sfx.noise({ filter: 'lowpass', f0: 700, f1: 160, dur: 1.1, vol: 0.35, shape: 'growl', dest: p || undefined }); Sfx.tone({ type: 'sawtooth', f0: 120, f1: 50, dur: 1.1, vol: 0.14, shape: 'growl', dest: p || undefined }); }],
     notes: ['[ NOTES CHIME ]', 1.2, (p) => Sfx.chime(p)],
     bass: ['[ BASS THUMPS ]', 0.9, (p) => Sfx.subThump(p)],
     bigOne: ['[ THE SUBWOOFER CHARGES UP ]', 1.6, (p) => Sfx.charge(p)],
@@ -3369,7 +3372,9 @@ const HUD = {
     // ENDLESS: the floor, how much of it is collected, its enemies, your Green Guys, what's next
     if (st === 'ENDLESS' || st === 'ENDLESS_EXIT') {
       const E = EndlessRun, T = E.theme, SE = WegaShared.SHOP_EVERY;
-      return { kind: 'endless', floor: E.floor, name: T.name, col: T.col, left: Collect.left, total: Collect.n, gg: E.gg, foe: E.foe, perm: E.perm, exit: st === 'ENDLESS_EXIT',
+      const BB = EndBoss.alive() ? EndBoss.B : null;
+      return { kind: 'endless', floor: E.floor, name: T.name, col: T.col, left: Collect.left, total: Collect.n, gg: E.gg, foe: E.foe, foe2: E.foe2, perm: E.perm, exit: st === 'ENDLESS_EXIT',
+        t: E.floorT, par: E.par(), twist: E.twist, elite: E.elite, boss: BB ? { hp: BB.hp, max: BB.max } : null, coll: !!(ECollector.C && ECollector.C.out),
         freeze: 0, frozen: E.freezeT > 0 ? Math.ceil(E.freezeT) : E.stunT > 0 ? -Math.ceil(E.stunT) : 0, shield: Player.shield, shopIn: (SE - E.floor % SE) % SE, gift: GiftBox.on && GiftBox.g && GiftBox.g.visible && !GiftBox.open };
     }
     if (this.showBoss) return { kind: 'timer', secs: Math.max(0, LapTimer.timeLeft), frac: clamp(LapTimer.timeLeft / LapTimer.timeMax, 0, 1), expired: LapTimer.expired, lap: Game.lap };
@@ -3377,7 +3382,7 @@ const HUD = {
   },
   barKey(b) {
     if (b.kind === 'rory') return 'r' + Math.ceil(b.secs) + '|' + Math.round(b.frac * 300) + '|' + b.si + '|' + (b.over ? Math.floor(Clock.real * 3) % 2 + ':' + Math.floor(b.ot) : 'n') + '|' + b.exit + '|' + b.count + '|' + this.vals.acc;
-    if (b.kind === 'endless') return 'e' + b.floor + '|' + b.left + '|' + b.gg + '|' + b.exit + '|' + b.gift + '|' + b.frozen + '|' + b.shield + '|' + (b.exit ? Math.floor(Clock.real * 3) % 2 : '') + '|' + this.vals.acc;
+    if (b.kind === 'endless') return 'e' + b.floor + '|' + b.left + '|' + b.gg + '|' + b.exit + '|' + b.gift + '|' + b.frozen + '|' + b.shield + '|' + Math.floor(b.t) + '|' + b.coll + '|' + (b.boss ? b.boss.hp : '') + '|' + (b.coll ? Math.floor(Clock.real * 3) % 2 : '') + '|' + (b.exit ? Math.floor(Clock.real * 3) % 2 : '') + '|' + this.vals.acc;
     if (b.kind === 'timer') return 't' + Math.ceil(b.secs) + '|' + Math.round(b.frac * 200) + '|' + (b.expired ? Math.floor(Clock.real * 3) % 2 : 'n') + '|' + this.vals.acc;
     if (b.kind === 'chase') return 'c' + Math.round(b.you * 300) + '|' + Math.round(b.front * 300) + '|' + Math.round(b.urio * 150) + '|' + (b.secs != null ? Math.ceil(b.secs) : '') + '|' + Math.round(b.exitM) + '|' + Math.round(b.behind) + '|' + this.vals.acc;
     return 'b' + b.name + '|' + b.frac.toFixed(3) + '|' + b.sub + '|' + b.shielded + '|' + b.phase + '|' + (b.segs || 0);
@@ -3444,8 +3449,8 @@ const HUD = {
       const right = b.exit ? 'EXIT OPEN!' : b.over ? 'SHOEBENCH!' : b.secs < 30 ? 'HURRY!' : 'UNTIL SHOEBENCH';
       drawText(ctx, right, 420, 102, { size: b.exit || b.over || b.secs < 30 ? 20 : 15, style: 'italic 900', font: FONT_IMPACT, fill: b.exit ? '#6ad8ff' : b.over || b.secs < 30 ? '#ff3a4a' : 'rgba(255,255,255,0.75)', stroke: '#000', lw: 4, spacing: 0.08, maxWidth: 150 });
     } else if (b.kind === 'endless') {
-      const y = 34, h = 26, L = X1 - X0, frac = b.total ? 1 - b.left / b.total : 1;
-      drawText(ctx, 'FLOOR ' + b.floor + '  ·  ' + b.name, 256, 15, { size: 23, style: 'italic 900', font: FONT_IMPACT, fill: b.col, stroke: '#000', lw: 6, spacing: 0.1, glow: b.col, glowBlur: 12, maxWidth: 480 });
+      const y = 34, h = 26, L = X1 - X0, frac = b.total ? 1 - b.left / b.total : 1, tw = b.twist ? ENDLESS.TWISTS[b.twist] : null;
+      drawText(ctx, 'FLOOR ' + b.floor + '  ·  ' + b.name + (tw ? '  ·  ' + tw[0] : ''), 256, 15, { size: 23, style: 'italic 900', font: FONT_IMPACT, fill: b.col, stroke: '#000', lw: 6, spacing: 0.08, glow: b.col, glowBlur: 12, maxWidth: 490 });
       track(y, h); ctx.fillStyle = 'rgba(4,8,4,0.86)'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#000'; ctx.stroke();
       ctx.save(); track(y, h); ctx.clip();
       const g = ctx.createLinearGradient(X0, 0, X1, 0); g.addColorStop(0, uiShade(b.col, 0.55)); g.addColorStop(1, b.col);
@@ -3455,18 +3460,29 @@ const HUD = {
       if (b.exit && Math.floor(Clock.real * 3) % 2 === 0) { ctx.fillStyle = 'rgba(255,255,255,0.28)'; ctx.fillRect(X0 - sk, y, L + sk * 2, h); }
       ctx.restore();
       track(y, h); ctx.lineWidth = 2; ctx.strokeStyle = b.col; ctx.stroke();
-      drawText(ctx, b.exit ? 'BEACON OPEN!' : (b.total - b.left) + ' / ' + b.total, 256, y + h / 2 + 1, { size: 17, style: 'italic 900', font: FONT_IMPACT, fill: '#ffffff', stroke: '#000', lw: 4 });
-      // the ones that stay (small) and the floor's own enemy (framed)
-      let ix = 256 - (b.perm.length * 22 + (b.foe ? 34 : 0)) / 2;
-      for (const id of b.perm) { drawFoeIcon(ctx, id, ix, 74, 22); ix += 22; }
-      if (b.foe) { roundedRect(ctx, ix + 2, 68, 30, 30, 6); ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fill(); ctx.strokeStyle = ENDLESS.FOE[b.foe].col; ctx.lineWidth = 2; ctx.stroke(); drawFoeIcon(ctx, b.foe, ix + 3, 69, 28); }
-      // your Green Guys, and what's next
-      ctx.save(); ctx.shadowColor = '#3dff6a'; ctx.shadowBlur = 10; drawGreenGuy(ctx, 34, 78, 30); ctx.restore();
-      drawText(ctx, String(b.gg), 68, 96, { size: 24, align: 'left', style: 'italic 900', font: FONT_IMPACT, fill: '#3dff6a', stroke: '#000', lw: 5 });
-      const right = b.frozen > 0 ? 'FROZEN ' + b.frozen + 's' : b.frozen < 0 ? 'STUNNED ' + -b.frozen + 's' : b.exit ? 'TO THE BEACON!' : b.shopIn === 0 ? 'SHOP NEXT!' : 'SHOP IN ' + b.shopIn;
-      drawText(ctx, right, 438, 90, { size: 18, style: 'italic 900', font: FONT_IMPACT, fill: b.frozen > 0 ? '#a0e0ff' : b.frozen < 0 ? '#ffa040' : b.exit ? '#ffffff' : b.shopIn === 0 ? '#3dff6a' : 'rgba(255,255,255,0.8)', stroke: '#000', lw: 4, maxWidth: 140 });
-      const extra = (b.shield ? 'SHIELD x' + b.shield : '') + (b.shield && b.gift ? ' · ' : '') + (b.gift ? 'A GIFT BOX IS HIDDEN HERE' : '');
-      if (extra) drawText(ctx, extra, 438, 112, { size: 12, fill: '#a0e0ff', stroke: '#000', lw: 3, maxWidth: 150 });
+      drawText(ctx, b.exit ? (b.boss ? 'BEAT KING MIMIC!' : 'BEACON OPEN!') : (b.total - b.left) + ' / ' + b.total, 256, y + h / 2 + 1, { size: 17, style: 'italic 900', font: FONT_IMPACT, fill: '#ffffff', stroke: '#000', lw: 4 });
+      if (b.boss) {
+        // KING MIMIC's health
+        drawText(ctx, 'KING MIMIC', 214, 84, { size: 17, style: 'italic 900', font: FONT_IMPACT, fill: '#ffd040', stroke: '#000', lw: 4 });
+        for (let i = 0; i < b.boss.max; i++) { ctx.save(); ctx.fillStyle = i < b.boss.hp ? '#ffd040' : 'rgba(255,255,255,0.15)'; ctx.shadowColor = '#ffb000'; ctx.shadowBlur = i < b.boss.hp ? 8 : 0; heartPath(ctx, 276 + i * 19, 84, 7); ctx.fill(); ctx.restore(); }
+      } else {
+        // the ones that stay (small) and the floor's own enemies (framed; red for ELITE)
+        const own = [b.foe, b.foe2].filter(Boolean);
+        let ix = 256 - (b.perm.length * 22 + own.length * 34) / 2;
+        for (const id of b.perm) { drawFoeIcon(ctx, id, ix, 74, 22); ix += 22; }
+        for (const id of own) { roundedRect(ctx, ix + 2, 68, 30, 30, 6); ctx.fillStyle = b.elite ? 'rgba(80,0,0,0.6)' : 'rgba(0,0,0,0.5)'; ctx.fill(); ctx.strokeStyle = b.elite ? '#ff3030' : ENDLESS.FOE[id].col; ctx.lineWidth = 2; ctx.stroke(); drawFoeIcon(ctx, id, ix + 3, 69, 28); ix += 34; }
+        if (b.elite) drawText(ctx, 'ELITE', ix + 4, 84, { size: 12, align: 'left', style: 'bold', fill: '#ff5050', stroke: '#000', lw: 3 });
+      }
+      // your Green Guys
+      ctx.save(); ctx.shadowColor = '#3dff6a'; ctx.shadowBlur = 10; drawGreenGuy(ctx, 34, 70, 30); ctx.restore();
+      drawText(ctx, String(b.gg), 68, 87, { size: 24, align: 'left', style: 'italic 900', font: FONT_IMPACT, fill: '#3dff6a', stroke: '#000', lw: 5 });
+      // the floor's clock: white under par, yellow close to it, red past it; THE COLLECTOR once it's out
+      const clk = b.coll ? (Math.floor(Clock.real * 3) % 2 ? '#60ff9a' : '#ffffff') : b.t > b.par ? '#ff4a4a' : b.t > b.par * 0.75 ? '#ffd040' : '#ffffff';
+      drawText(ctx, b.coll ? 'THE COLLECTOR!' : fmtClock(b.t), 440, 82, { size: b.coll ? 18 : 24, style: 'italic 900', font: FONT_IMPACT, fill: clk, stroke: '#000', lw: 5, maxWidth: 140 });
+      const sub = b.frozen > 0 ? 'FROZEN ' + b.frozen + 's' : b.frozen < 0 ? 'STUNNED ' + -b.frozen + 's' : 'PAR ' + fmtClock(b.par) + (b.shopIn === 0 ? ' · SHOP NEXT' : ' · SHOP IN ' + b.shopIn);
+      drawText(ctx, sub, 440, 104, { size: 12, style: 'bold', fill: b.frozen > 0 ? '#a0e0ff' : b.frozen < 0 ? '#ffa040' : 'rgba(255,255,255,0.8)', stroke: '#000', lw: 3, maxWidth: 150 });
+      const extra = (b.shield ? 'SHIELD x' + b.shield : '') + (b.shield && b.gift ? ' · ' : '') + (b.gift ? 'GIFT BOX OUT THERE' : '');
+      if (extra) drawText(ctx, extra, 34, 112, { size: 11, align: 'left', fill: '#a0e0ff', stroke: '#000', lw: 3, maxWidth: 200 });
     } else if (b.kind === 'chase') {
       const off = (Clock.real * 90) % 360;
       drawText(ctx, b.name, 256, 16, { size: 24, style: 'italic 900', font: FONT_IMPACT, fill: b.rgb ? rgbGrad(0, 0, off) : acc, stroke: '#000', lw: 6, spacing: 0.12, glow: acc, glowBlur: 12, maxWidth: 470 });
@@ -3538,7 +3554,14 @@ const HUD = {
     for (const it of ENDLESS.ITEMS) { const t = E.fx[it.id]; if (t > 0) chips.push([it.id, Math.ceil(t), it.col]); }
     if (E.freezeT > 0) chips.push(['freeze', Math.ceil(E.freezeT), '#a0e0ff']);
     if (E.stunT > 0) chips.push(['bomb', Math.ceil(E.stunT), '#ffa040']);
-    const cw = 76; let x = 320 - chips.length * cw / 2;
+    // the combo (top left): xN, how many, and how long it has left
+    if (E.combo > 0) {
+      const k = E.comboK(), col = ENDLESS.COMBO_COL[k - 1];
+      drawText(ctx, 'x' + k, 36, 26, { size: 38, style: 'italic 900', font: FONT_IMPACT, fill: col, stroke: '#000', lw: 6, glow: k > 1 ? col : null, glowBlur: 12 });
+      drawText(ctx, 'COMBO ' + E.combo, 70, 16, { size: 14, align: 'left', style: 'bold', fill: '#ffffff', stroke: '#000', lw: 3 });
+      ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(70, 30, 118, 8); ctx.fillStyle = col; ctx.fillRect(70, 30, 118 * clamp(E.comboT / 3, 0, 1), 8);
+    }
+    const cw = 76; let x = 200;
     for (const [id, s, col] of chips) {
       roundedRect(ctx, x + 2, 4, cw - 4, 42, 13); ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = col; ctx.stroke();
       drawItemIcon(ctx, id, x + 6, 8, 34);
@@ -3559,7 +3582,7 @@ const HUD = {
     }
     if (!chips.length) {
       const s = E.bag[E.sel], it = s && ENDLESS.ITEM[s.id], how = XR.inVR ? 'RIGHT GRIP: USE · LEFT GRIP: NEXT' : IS_TOUCH ? 'USE ITEM · ▸ NEXT' : 'E: USE · Q: NEXT · 1-6';
-      drawText(ctx, (it ? it.name : 'YOUR BAG') + '   ' + how, 320, 27, { size: 17, style: 'italic 900', font: FONT_IMPACT, fill: it ? it.col : 'rgba(255,255,255,0.75)', stroke: '#000', lw: 4, spacing: 0.05, maxWidth: 620 });
+      drawText(ctx, (it ? it.name : 'YOUR BAG') + '   ' + how, 418, 27, { size: 17, style: 'italic 900', font: FONT_IMPACT, fill: it ? it.col : 'rgba(255,255,255,0.75)', stroke: '#000', lw: 4, spacing: 0.05, maxWidth: 430 });
     }
     this.inv.tex.needsUpdate = true;
   },
@@ -3569,7 +3592,7 @@ const HUD = {
     if (on !== this.touchItems) { this.touchItems = on; Touch.items(on); }
     if (!on) return;
     for (let i = 0; i < this.invFlashT.length; i++) if (this.invFlashT[i] > 0) { this.invFlashT[i] -= dt; if (this.invFlashT[i] <= 0) this.invDirty = true; }
-    let key = E.sel + '|' + Math.ceil(E.freezeT) + '|' + Math.ceil(E.stunT) + '|' + (Math.floor(Clock.real * 4) % 2);
+    let key = E.sel + '|' + Math.ceil(E.freezeT) + '|' + Math.ceil(E.stunT) + '|' + (Math.floor(Clock.real * 4) % 2) + '|' + E.combo + '|' + Math.ceil(E.comboT * 6);
     for (const s of E.bag) key += s ? s.id + s.n : '-';
     for (const k in E.fx) if (E.fx[k] > 0) key += k + Math.ceil(E.fx[k]);
     if (key !== this.invKey || this.invDirty) { this.invKey = key; this.invDirty = false; this.drawInv(); }
@@ -3854,8 +3877,8 @@ const Player = {
   shoveVel: new THREE.Vector3(), shoveT: 0,
   // ENDLESS: what's working on you from your bag (speed, jump height, double jumps, armour, a slow fall, the super star),
   // the floor's grip (ice: 0.2), a web slowing you (slowT s at slowK), the bubble shield's hits
-  mods: { speedK: 1, jumpK: 1, airJumps: 0, armorK: 1, regenK: 1, grip: 1, fallK: 1, star: false }, slowT: 0, slowK: 1, shield: 0, airLeft: 0,
-  resetMods() { Object.assign(this.mods, { speedK: 1, jumpK: 1, airJumps: 0, armorK: 1, regenK: 1, grip: 1, fallK: 1, star: false }); this.slowT = 0; this.shield = 0; },
+  mods: { speedK: 1, jumpK: 1, airJumps: 0, armorK: 1, regenK: 1, grip: 1, fallK: 1, star: false, gravK: 1 }, slowT: 0, slowK: 1, shield: 0, airLeft: 0,
+  resetMods() { Object.assign(this.mods, { speedK: 1, jumpK: 1, airJumps: 0, armorK: 1, regenK: 1, grip: 1, fallK: 1, star: false, gravK: 1 }); this.slowT = 0; this.shield = 0; },
   topSpeed: CONFIG.TOP_SPEED,   // the speed cap goes up every lap (see setLapSpeed)
   locomotion: 'none',      // 'full' = run/jump/turn, 'none' = frozen (UI screens, cutscenes)
   respawning: false, recenterOnHead: true, recenterFrames: 0,
@@ -4032,7 +4055,7 @@ const Player = {
     // ---- integrate ----
     this.prevPos.copy(this.pos);
     const wasGrounded = this.grounded;
-    this.vel.y -= Mods.gravity() * (this.vel.y < 0 ? this.mods.fallK : 1) * dt;     // (ENDLESS's FEATHER: you fall slowly)
+    this.vel.y -= Mods.gravity() * this.mods.gravK * (this.vel.y < 0 ? this.mods.fallK : 1) * dt;     // (ENDLESS's FEATHER: you fall slowly)
     if (this.vel.y < -45) this.vel.y = -45;
     if (this.mods.fallK < 1 && this.vel.y < -6) this.vel.y = -6;
     this.pos.x += this.vel.x * dt; this.pos.z += this.vel.z * dt;
@@ -5659,6 +5682,10 @@ const GUIDE = [
   { name: 'THE BOULDER', where: 'ENDLESS', icon: 'f_boulder', lines: ['A HUGE ROCK ROLLS ALONG THE WALKWAYS AT YOU', 'TOO BIG TO JUMP: TAKE ANOTHER WAY', 'OR STEP ASIDE ON A PLATFORM. 40 DAMAGE'] },
   { name: 'THE VACUUM', where: 'ENDLESS', icon: 'f_vacuum', lines: ['A HOLE IN THE WORLD THAT DRIFTS AFTER YOU', 'IT PULLS YOU IN: RUN AGAINST IT', 'TOUCH IT AND IT SPITS YOU OUT (20)'] },
   { name: 'THE THIEF', where: 'ENDLESS', icon: 'f_thief', lines: ['IT RUNS UP AND STEALS YOUR GREEN GUYS', "THEN RUNS: IT'S FAST, BUT IT TIRES", 'CATCH IT TO GET THEM BACK (+3)', 'NOTHING TO STEAL? IT BONKS YOU (10)'] },
+  { name: 'STOMP!', where: 'ENDLESS', icon: 'greenguy', lines: ['COME DOWN ON AN ENEMY TO STOMP IT (YOU BOUNCE)', 'MIMICS, SPIDERS ON THE GROUND, THE THIEF, THE', "BURROWER'S HAT · BOING IS A TRAMPOLINE!", 'STOMPS AND GREEN GUYS BUILD YOUR COMBO:', 'x2 AT 8, x3 AT 16... (GREEN GUYS COUNT MORE)'] },
+  { name: 'THE COLLECTOR', where: 'ENDLESS: TAKE TOO LONG ON A FLOOR', icon: 'f_collector', lines: ['EVERY FLOOR HAS A PAR TIME (TOP RIGHT)', 'BEAT IT FOR A RANK BONUS (S A B C)', 'AT 1.3 x PAR MR. GREEN SENDS HIS COLLECTOR', 'IT FLOATS THROUGH ANYTHING, FASTER AND FASTER', 'ONLY THE BEACON SAVES YOU (45 DAMAGE)'] },
+  { name: 'KING MIMIC', where: 'ENDLESS: EVERY 10TH FLOOR', icon: 'f_king', lines: ['IT HOPS AFTER YOU: JUMP ITS SHOCKWAVES', 'IT LEAPS ONTO YOU (WATCH FOR THE RED RING)', "THEN IT'S DIZZY: JUMP ON ITS HEAD!", 'IT SPITS MIMICS · THE BEACON WAITS FOR IT', 'BEAT IT: GREEN GUYS AND TWO ITEMS'] },
+  { name: 'FLOOR TWISTS', where: 'ENDLESS: MOST FLOORS FROM 3', icon: 'f_meteor', lines: ['GOLD RUSH · GREEN RAIN · LIGHTS OUT', 'METEOR SHOWER · MOON JUMP · FRENZY', 'DOUBLE TROUBLE (TWO NEW ENEMIES)', 'FROM FLOOR 11: ELITE ENEMIES (RED GLOW,', 'FASTER, MORE OF THEM)'] },
   { name: 'THE HUSH', where: "RORY'S CHALLENGE: THE BREAKDOWN", icon: 'hush', lines: ['IT HATES THE MUSIC. IT COMES IN THE DARK', 'THE CLOSER IT GETS, THE QUIETER IT GOES', 'IF THE MUSIC FADES: RUN!', 'A TOUCH = 25 DAMAGE. THE BEAT CHASES IT OFF'] },
 ];
 function drawGuideIcon(ctx, kind, x, y, s) {
@@ -6091,7 +6118,7 @@ const LOBBY_PAGES = {
       { id: 'rory', title: "RORY'S CHALLENGE", tag: 'ENDURANCE', col: '#3aa0ff', icon: 'rory', best: Save.data.bestRory,
         lines: [n + " LIL' GUYS ON ONE HUGE MAP", 'THE WHOLE RUN IS SYNCED TO THE SONG (' + song + ')', 'BEAT IT BEFORE IT ENDS, OR SHOEBENCH COMES'] },
       { id: 'endless', title: 'ENDLESS', tag: 'HOW HIGH CAN YOU GO?', col: '#3dff6a', icon: 'green', bestText: 'BEST: FLOOR ' + (Save.data.bestFloor || '--'),
-        lines: ['A NEW SMALL MAP EVERY FLOOR, FULL OF GREEN GUYS', 'A NEW ENEMY EVERY FLOOR; ONE STAYS EVERY 5', "MR. GREEN'S SHOP EVERY 5 FLOORS · 10 WORLDS"] },
+        lines: ['NEW MAP + ENEMY EVERY FLOOR · STOMP THEM FOR COMBOS', 'FLOOR TWISTS · PAR TIMES · KING MIMIC EVERY 10', "MR. GREEN'S SHOP EVERY 5 · 10 WORLDS · YOUR ITEM BAG"] },
     ];
     cards.forEach((c, i) => {
       const x = 22, y = 80 + i * 120, w = 468, h = 112, sel = cur === c.id, id = 'gm' + i, hov = p.hover === id;
@@ -10880,7 +10907,15 @@ const ENDLESS = {
     boulder: { name: 'THE BOULDER', col: '#a08870', tip: 'TOO BIG TO JUMP: GET OUT OF ITS WAY' },
     vacuum: { name: 'THE VACUUM', col: '#9a7aff', tip: 'IT PULLS YOU IN' },
     thief: { name: 'THE THIEF', col: '#40d0c0', tip: 'IT STEALS YOUR GREEN GUYS: CATCH IT' },
+    // not one of the floor's enemies: the hunter, the boss, a twist
+    collector: { name: 'THE COLLECTOR', col: '#60ff9a', tip: "DON'T TAKE TOO LONG" },
+    king: { name: 'KING MIMIC', col: '#ffd040', tip: "JUMP ON ITS HEAD WHEN IT'S DIZZY" },
+    meteor: { name: 'THE METEORS', col: '#ff7040', tip: 'GET OFF THE RED RINGS' },
   },
+  COMBO_COL: ['#ffffff', '#3dff6a', '#40e0ff', '#ffd040', '#ff50c0'],
+  // the floor twists: [name, what it means, colour]
+  TWISTS: { gold: ['GOLD RUSH', 'CATCH THE GOLDEN GREEN GUY!', '#ffd040'], rain: ['GREEN RAIN', 'BONUS GREEN GUYS FALL FROM THE SKY', '#3dff6a'], dark: ['LIGHTS OUT', 'STAY IN YOUR LAMPLIGHT', '#8a8aff'],
+    meteor: ['METEOR SHOWER', 'GET OFF THE RED RINGS', '#ff7040'], lowgrav: ['MOON JUMP', 'LOW GRAVITY: JUMP SKY HIGH', '#c0e0ff'], frenzy: ['FRENZY', 'EVERYTHING FASTER · GREEN GUYS x2', '#ff40c0'], double: ['DOUBLE TROUBLE', 'TWO NEW ENEMIES', '#ff5050'] },
   // the shop (every 5 floors) and the floors' gift boxes: things for your BAG (6 slots). Every one of them is
   // temporary: you use it (1-6 / E / the USE button / right grip) and it lasts dur s, or happens there and then.
   // stack: how many fit in one slot; shopOk: usable in the shop too; passive: works by itself from the bag
@@ -10911,6 +10946,7 @@ ENDLESS.ITEM = Object.fromEntries(ENDLESS.ITEMS.map((i) => [i.id, i]));
 const EndlessRun = {
   on: false, seed: 1, floor: 0, gg: 0, spent: 0, got: 0, bag: [], sel: 0, fx: {}, used: 0, stunT: 0, dealId: '', theme: ENDLESS.THEMES[0], foe: '', perm: [], freezeT: 0, iceClears: 0,
   startT: 0, maxFloor: 0, radarT: 0, newBest: false, over: false,
+  combo: 0, comboT: 0, bestCombo: 0, stomps: 0, kings: 0, floorT: 0, hits0: 0, ranks: '', twist: '', elite: false, boss: false, foe2: '',
   online() { return Session.inRun() && Session.auth.rgm === 'endless'; },
   active() { return this.on && (SM.curName === 'ENDLESS' || SM.curName === 'ENDLESS_EXIT'); },
   band(f = this.floor) { return Math.floor((Math.max(1, f) - 1) / 10); },
@@ -10946,9 +10982,10 @@ const EndlessRun = {
     this.on = true; this.over = false; this.seed = (seed || (1 + Math.floor(Math.random() * 2147483646))) | 0;
     this.floor = 0; this.gg = 0; this.spent = 0; this.got = 0; this.iceClears = 0; this.freezeT = 0; this.stunT = 0; this.maxFloor = 0; this.newBest = false;
     this.bag = new Array(ENDLESS.BAG).fill(null); this.bag[0] = { id: 'heart', n: 1 }; this.sel = 0; this.fx = {}; this.used = 0; this.dealId = '';
+    this.combo = 0; this.comboT = 0; this.bestCombo = 0; this.stomps = 0; this.kings = 0; this.ranks = ''; this.floorT = 0;
     this.startT = Clock.real; Player.shield = 0; HUD.invDirty = true;
   },
-  end() { this.on = false; this.freezeT = 0; this.stunT = 0; this.fx = {}; Collect.skin('lil'); Player.resetMods(); Effects.hushAmt = 0; GiftBox.hide(); EndAmb.stop(); },
+  end() { this.on = false; this.freezeT = 0; this.stunT = 0; this.fx = {}; Collect.skin('lil'); Player.resetMods(); Effects.hushAmt = 0; GiftBox.hide(); EndAmb.stop(); EndTwist.clear(); EndTwist.lamp(false); EndPop.hide(); },
   // ---- the bag: 6 slots of things from the shop (or a gift box); every one is used up when you use it ----
   // the shop's price (a little more the higher you are; the shop's deal is half price)
   price(it) { const p = Math.round(it.cost * (1 + (Math.max(1, this.floor) - 1) / 30)); return this.dealId === it.id ? Math.max(1, Math.round(p * 0.5)) : p; },
@@ -10973,7 +11010,9 @@ const EndlessRun = {
   // what's working on you right now -> the player's mods (every frame)
   applyFx() {
     const M = Player.mods, F = this.fx;
-    M.speedK = F.boots > 0 ? 1.3 : 1; M.jumpK = F.spring > 0 ? 1.45 : 1; M.airJumps = F.wings > 0 ? 1 : 0;
+    const floor = SM.curName !== 'ENDLESS_SHOP';
+    M.gravK = floor && this.twist === 'lowgrav' ? 0.5 : 1;                       // MOON JUMP
+    M.speedK = (F.boots > 0 ? 1.3 : 1) * (floor && this.twist === 'frenzy' ? 1.1 : 1); M.jumpK = (F.spring > 0 ? 1.45 : 1) * (M.gravK < 1 ? 0.85 : 1); M.airJumps = F.wings > 0 ? 1 : 0;
     M.armorK = F.armor > 0 ? 0.5 : 1; M.regenK = 1; M.fallK = F.feather > 0 ? 0.3 : 1; M.star = F.star > 0;
     M.grip = this.theme && this.theme.ice && SM.curName !== 'ENDLESS_SHOP' ? 0.2 : 1;
     Player.topSpeed = CONFIG.TOP_SPEED * Player.lapK * M.speedK;
@@ -11019,13 +11058,39 @@ const EndlessRun = {
   starHit() {
     if (Clock.real - (this.starT || 0) < 0.6) return; this.starT = Clock.real;
     EndFoes.knockBack(); Sfx.bonk(); Sfx.tone({ type: 'square', f0: 784, f1: 1568, dur: 0.18, vol: 0.06 }); Effects.doFlash(0xffe040, 0.2);
+    this.bump(1); const g = this.reward(1); EndPop.show('+' + g, Player.pos.x, Player.pos.y + 2, Player.pos.z, '#ffe040');
   },
+  // ---- the combo: Green Guys and stomps in quick succession multiply what you get (x2 from 8, x3 from 16... x5) ----
+  comboK() { return Math.min(5, 1 + Math.floor(this.combo / 8)); },
+  bump(n = 1) {
+    const k0 = this.comboK(); this.combo += n; this.comboT = clamp(3 - this.combo * 0.015, 1.8, 3); this.bestCombo = Math.max(this.bestCombo, this.combo);
+    const k = this.comboK();
+    if (k > k0) { UI.announce('COMBO x' + k + '!', { color: ENDLESS.COMBO_COL[k - 1], short: true }); Sfx.tone({ type: 'square', f0: 330 * k, f1: 660 * k, dur: 0.2, vol: 0.06 }); Hands.pulse('both', 0.4, 80); }
+    HUD.invDirty = true;
+  },
+  // Green Guys for your wallet (the combo multiplies them, a FRENZY floor doubles them)
+  reward(n) { const g = Math.round(n * this.comboK() * (this.twist === 'frenzy' ? 2 : 1)); this.gg += g; this.got += g; return g; },
   // a Green Guy is yours (the lucky clover doubles it)
   onPick() {
-    const n = this.fx.clover > 0 ? 2 : 1;
-    if (n > 1) { FX.spark(Player.pos.x, Player.pos.y + 1.2, Player.pos.z, 0.4, 1, 0.5); Sfx.bonus(); }
-    this.gg += n; this.got += n;
+    this.bump(1); this.reward(this.fx.clover > 0 ? 2 : 1);
+    if (this.fx.clover > 0) { FX.spark(Player.pos.x, Player.pos.y + 1.2, Player.pos.z, 0.4, 1, 0.5); Sfx.bonus(); }
   },
+  // you came down on an enemy: you bounce off it, it's done for, Green Guys (and the combo)
+  stomp(x, y, z, worth, what) {
+    const P = Player;
+    P.vel.y = Mods.jumpVel() * P.mods.jumpK * 1.2; P.grounded = false; P.sinceGround = CONFIG.COYOTE + 1; P.invuln = Math.max(P.invuln, 0.5); P.airLeft = P.mods.airJumps;
+    this.stomps++; this.bump(2); const g = this.reward(worth);
+    if (!Game.debugRun) Achievements.stat('stomps');
+    Sfx.bonk(); Sfx.tone({ type: 'square', f0: 520, f1: 1560, dur: 0.14, vol: 0.08 }); Hands.pulse('both', 0.8, 120);
+    for (let k = 0; k < 26; k++) { const a = k / 26 * 6.283; FX.glow.emit(x, y, z, Math.cos(a) * 5, rr(1, 4), Math.sin(a) * 5, 0.3, 1, 0.45, rr(0.12, 0.22), 0.6, 6, 1); }
+    EndPop.show((what ? 'STOMP! ' : '') + '+' + g, x, y + 0.6, z, '#3dff6a');
+  },
+  // ---- the floor: its par time, twist, elite enemies, boss (all from the run's seed: the same for everyone) ----
+  isBoss(f = this.floor) { return f > 0 && f % 10 === 0; },
+  par(f = this.floor) { return this.isBoss(f) ? 170 : Math.round(20 + this.green(f) * 1.1 + this.size(f) * 4); },
+  twistOf(f) { if (f < 3 || this.isBoss(f) || this.h(f, 11) > 0.7) return ''; const L = Object.keys(ENDLESS.TWISTS); return L[Math.floor(this.h(f, 12) * L.length)]; },
+  eliteOf(f) { return f > 10 && !this.isBoss(f) && this.h(f, 13) < 0.45; },
+  foe2Of(f) { const L = ENDLESS.FOES.filter((x) => x !== this.foe && !this.perm.includes(x)); return L.length ? L[Math.floor(this.h(f, 14) * L.length)] : ''; },
   spend(n) { this.gg -= n; this.spent += n; if (!Game.debugRun) Achievements.onEndlessSpend(this.spent); },
   // going down: a 1-UP in your bag brings you back (true), else you're out
   tryExtraLife() {
@@ -11098,17 +11163,27 @@ const EndlessRun = {
     Announce.clear();
     UI.announce('FLOOR ' + f + ': ' + T.name, { color: T.col });
     UI.announce(T.sub, { color: '#ffffff', short: true });
-    if (this.foe) UI.announce(ENDLESS.FOE[this.foe].name + ' IS HERE', { color: ENDLESS.FOE[this.foe].col });
+    if (this.foe) UI.announce((this.elite ? 'ELITE ' : '') + ENDLESS.FOE[this.foe].name + ' IS HERE', { color: this.elite ? '#ff4040' : ENDLESS.FOE[this.foe].col });
+    if (this.foe2) UI.announce(ENDLESS.FOE[this.foe2].name + ' TOO!', { color: ENDLESS.FOE[this.foe2].col });
+    if (this.twist) { const W = ENDLESS.TWISTS[this.twist]; UI.announce('TWIST: ' + W[0], { color: W[2] }); UI.announce(W[1], { color: '#ffffff', short: true }); }
     const added = f % WegaShared.SHOP_EVERY === 0 ? this.perm[this.perm.length - 1] : '';
     if (added) { UI.announce(ENDLESS.FOE[added].name + ' STAYS FOR GOOD!', { color: '#ff6060' }); }
     if (f > 1 && (f - 1) % 10 === 0) UI.announce('THE MAP GROWS · MORE GREEN GUYS · HARDER', { color: '#3dff6a', short: true });
     if (f % WegaShared.SHOP_EVERY === WegaShared.SHOP_EVERY - 1) UI.toast('THE SHOP OPENS AFTER THE NEXT FLOOR');
-    if (f === 1) UI.toast((XR.inVR ? 'YOUR BAG: RIGHT GRIP USES AN ITEM, LEFT GRIP PICKS THE NEXT' : IS_TOUCH ? 'YOUR BAG: USE ITEM / ▸ (BOTTOM RIGHT)' : 'YOUR BAG: 1-6 OR E TO USE AN ITEM, Q FOR THE NEXT') + ' · A GIFT BOX HIDES ON EVERY FLOOR');
+    if (f === 1) UI.toast((XR.inVR ? 'YOUR BAG: RIGHT GRIP USES AN ITEM, LEFT GRIP PICKS THE NEXT' : IS_TOUCH ? 'YOUR BAG: USE ITEM / ▸ (BOTTOM RIGHT)' : 'YOUR BAG: 1-6 OR E TO USE AN ITEM, Q FOR THE NEXT') + ' · A GIFT BOX HIDES ON EVERY FLOOR · JUMP ON ENEMIES TO STOMP THEM');
     if (!Game.debugRun) Achievements.onEndlessFloor(f);
   },
+  // every Green Guy: the floor's rank (how fast against its par time, and whether you got hit) and its bonus
   onCleared() {
-    UI.announce('EVERY GREEN GUY!', { color: '#3dff6a' }); UI.announce('TO THE BEACON!', { color: '#ffffff', short: true });
     Sfx.gold(); Sfx.beacon(); Hands.pulse('both', 0.5, 200);
+    const t = this.floorT, hits = Player.hits - this.hits0, par = this.par(), r = t <= par * 0.75 && !hits ? 'S' : t <= par ? 'A' : t <= par * 1.4 ? 'B' : 'C';
+    const bonus = { S: 30, A: 15, B: 5, C: 0 }[r] + (hits ? 0 : 10), col = { S: '#ffd040', A: '#3dff6a', B: '#40c0ff', C: '#c0c0c0' }[r];
+    this.gg += bonus; this.got += bonus; this.ranks += r;
+    RoryCard.show('RANK ' + r, col, { sub: 'CLEARED IN ' + fmtClock(t) + ' · PAR ' + fmtClock(par) + (bonus ? ' · +' + bonus + ' GREEN GUYS' : ''), hold: 1.6 });
+    UI.announce('EVERY GREEN GUY!', { color: '#3dff6a' });
+    if (!hits) UI.announce('NO HITS! +10', { color: '#ffd040', short: true });
+    UI.announce(EndBoss.alive() ? 'NOW BEAT KING MIMIC!' : 'TO THE BEACON!', { color: '#ffffff', short: true });
+    if (r === 'S' && !Game.debugRun) Achievements.unlock('srank');
   },
   // the floor's beacon: as far from the start as it gets (the same spot for everyone)
   showBeacon() {
@@ -11121,6 +11196,8 @@ const EndlessRun = {
     const F = this.fx, P = Player.pos;
     // the timers only run on a floor (not in the shop, not while you're down)
     if (this.active()) {
+      this.floorT += dt;
+      if (this.comboT > 0 && (this.comboT -= dt) <= 0) { if (this.combo >= 8) UI.toast('COMBO OVER · ' + this.combo); this.combo = 0; HUD.invDirty = true; }
       if (this.freezeT > 0) this.freezeT = Math.max(0, this.freezeT - dt);
       if (this.stunT > 0) this.stunT = Math.max(0, this.stunT - dt);
       for (const k in F) if (F[k] > 0) { F[k] = Math.max(0, F[k] - dt); if (F[k] === 0) this.fxEnd(k); }
@@ -11152,7 +11229,7 @@ const EndlessRun = {
       for (let i = 0; i < Collect.n; i++) if (Collect.alive[i]) { const b = Collect.base[i], d = (b.x - P.x) ** 2 + (b.z - P.z) ** 2 + (b.y - P.y) ** 2 * 4; if (d < bd) { bd = d; best = b; } }
       HUD.beaconTarget = best;
     }
-    GiftBox.update(dt);
+    GiftBox.update(dt); EndTwist.update(dt); EndTwist.updateLamp(); EndPop.update(dt);
   },
   // the score of a run: Lil' Guys for the shop in the lobby
   payout() { return Math.round((this.maxFloor * 8 + this.got * 0.4) * Mods.payK()); },
@@ -11239,6 +11316,9 @@ const EndWorld = {
     this.uni.uPat.value = T.pat; this.uni.uPA.value.set(T.pa); this.uni.uPB.value.set(T.pb);
     EndWeather.set(T.weather, EndWeather.SECOND[T.id]); EndDeco.build(T); EndAmb.set(T.id);
     this.flash = 0; this.boltT = 2;
+    // LIGHTS OUT (a floor twist): black fog closes in, the lights go way down, the sky dims (you carry a lamp)
+    this.dark = !!(T.id && EndlessRun.on && EndlessRun.twist === 'dark');
+    if (this.dark) { f.color.set(0x020204); f.density = Math.max(0.045, Math.min(0.07, T.fogD * 3)); hemi.intensity *= 0.22; dirLight.intensity *= 0.2; S.uBright.value = 0.05; Sky.lava.visible = false; if (EndDeco.group) EndDeco.group.visible = false; }
   },
   update(lvl) {
     const T = this.theme; if (!T) return;
@@ -11248,7 +11328,7 @@ const EndWorld = {
     if (T.sky.storm >= 0.5) {
       if ((this.boltT -= dt) <= 0) { this.boltT = rr(3, 8); this.flash = Save.s.reduceFlash ? 0.6 : 1.6; Sfx.thunder(); if (!Save.s.reduceFlash) Effects.doFlash(0xc0e0ff, 0.12); EndDeco.arc(); }
       this.flash = Math.max(0, this.flash - dt * 3);
-      hemi.intensity = (T.hemi[2] + this.flash * 1.5) * CONFIG.LIGHT_SCALE;
+      hemi.intensity = (T.hemi[2] + this.flash * 1.5) * CONFIG.LIGHT_SCALE * (this.dark ? 0.22 : 1);
     } else this.flash = 0.4 + lvl * 0.4;
     EndDeco.update(dt, lvl); EndWeather.update(); EndAmb.update(dt);
   },
@@ -12299,6 +12379,7 @@ function setupEndless(floor) {
   const E = EndlessRun;
   if (!E.on) E.begin(Session.inRun() ? Session.auth.run : 0);
   E.floor = floor; E.theme = ENDLESS.THEMES[E.themeOf(floor)]; E.perm = E.permAt(floor); E.foe = E.foeOf(floor); E.freezeT = 0;
+  E.twist = E.twistOf(floor); E.elite = E.eliteOf(floor); E.boss = E.isBoss(floor); E.foe2 = E.twist === 'double' ? E.foe2Of(floor) : ''; E.floorT = 0; E.hits0 = Player.hits; E.stunT = 0;
   EndMap.prepare(floor);
   Maze.build(END_LAP);
   Collect.skin('green'); Collect.setup(EndMap.positions);
@@ -12307,7 +12388,7 @@ function setupEndless(floor) {
   Player.setLapSpeed(END_LAP); E.applyFx();
   if (!(E.fx.shield > 0)) Player.shield = 0;
   Hazards.reset('endless');
-  GiftBox.setup(floor);
+  GiftBox.setup(floor); EndTwist.setup(); EndTwist.lamp(E.twist === 'dark');
   Maze.startPos(_v1);
   Player.spawn(_v1.x, _v1.y, _v1.z, Maze.startYaw());
   if (Player.hp <= 0) Player.heal();
@@ -12374,6 +12455,21 @@ function drawFoeIcon(ctx, id, x, y, s) {
     ctx.shadowBlur = 0; ctx.fillStyle = '#1a1a22'; ctx.fillRect(x + s * 0.18, cy - s * 0.06, s * 0.44, s * 0.1);
     ctx.fillStyle = '#ffffff'; for (const sx of [-1, 1]) { circlePath(ctx, x + s * 0.4 + sx * s * 0.09, cy - s * 0.01, s * 0.03); ctx.fill(); }
     ctx.fillStyle = '#1a1a22'; circlePath(ctx, x + s * 0.4, cy + s * 0.1, s * 0.04); ctx.fill();
+  } else if (id === 'collector') {
+    ctx.fillStyle = '#14181a'; polyPath(ctx, [cx - s * 0.3, y + s * 0.95, cx + s * 0.3, y + s * 0.95, cx + s * 0.12, y + s * 0.3, cx - s * 0.12, y + s * 0.3]); ctx.fill();
+    circlePath(ctx, cx, y + s * 0.3, s * 0.15); ctx.fill(); ctx.fillStyle = '#0a0a0a'; ctx.fillRect(cx - s * 0.12, y + s * 0.05, s * 0.24, s * 0.12); ctx.fillRect(cx - s * 0.18, y + s * 0.16, s * 0.36, s * 0.03);
+    ctx.shadowColor = '#40ff8a'; ctx.shadowBlur = s * 0.2; ctx.fillStyle = '#60ff9a'; for (const sx of [-1, 1]) { circlePath(ctx, cx + sx * s * 0.05, y + s * 0.31, s * 0.025); ctx.fill(); }
+    circlePath(ctx, cx + s * 0.32, y + s * 0.62, s * 0.07); ctx.fill();
+  } else if (id === 'king') {
+    drawGreenGuy(ctx, x, y + s * 0.08, s * 0.92); ctx.shadowColor = '#ffd040'; ctx.fillStyle = '#ffc020';
+    polyPath(ctx, [cx - s * 0.2, y + s * 0.2, cx - s * 0.2, y + s * 0.04, cx - s * 0.1, y + s * 0.13, cx, y + s * 0.0, cx + s * 0.1, y + s * 0.13, cx + s * 0.2, y + s * 0.04, cx + s * 0.2, y + s * 0.2]); ctx.fill();
+    ctx.shadowBlur = 0; ctx.fillStyle = '#ff2020'; for (const sx of [-1, 1]) { circlePath(ctx, cx + sx * s * 0.1, cy + s * 0.02, s * 0.045); ctx.fill(); }
+    ctx.fillStyle = '#5a0010'; ellipsePath(ctx, cx, cy + s * 0.2, s * 0.17, s * 0.08); ctx.fill(); ctx.fillStyle = '#ffffff'; for (let k = 0; k < 5; k++) { const tx = cx - s * 0.13 + k * s * 0.065; polyPath(ctx, [tx, cy + s * 0.14, tx + s * 0.03, cy + s * 0.2, tx + s * 0.06, cy + s * 0.14]); ctx.fill(); }
+  } else if (id === 'meteor') {
+    ctx.shadowColor = '#ff6a10'; ctx.shadowBlur = s * 0.25; const g = ctx.createLinearGradient(x + s * 0.9, y, cx, cy); g.addColorStop(0, 'rgba(255,200,60,0)'); g.addColorStop(1, '#ff7020'); ctx.fillStyle = g;
+    polyPath(ctx, [x + s * 0.95, y + s * 0.02, cx + s * 0.12, cy - s * 0.12, cx - s * 0.12, cy + s * 0.12]); ctx.fill();
+    ctx.fillStyle = '#5a3020'; circlePath(ctx, cx - s * 0.08, cy + s * 0.08, s * 0.2); ctx.fill(); ctx.fillStyle = '#ffb040'; circlePath(ctx, cx - s * 0.04, cy + s * 0.04, s * 0.07); ctx.fill();
+    ctx.strokeStyle = '#ff3a10'; ctx.lineWidth = s * 0.04; ellipsePath(ctx, cx - s * 0.1, y + s * 0.88, s * 0.3, s * 0.07); ctx.stroke();
   }
   ctx.restore();
 }
@@ -12384,9 +12480,13 @@ function drawFoeIcon(ctx, id, x, y, s) {
 // every 10 floors (EF.n). TIME STOP (a shop item) freezes them all. Each has its own sounds, death scene and guide page.
 // =====================================================================================
 const EF = {
-  k() { return Math.sqrt(diff().hostile) * Mods.foeK() * (1 + 0.55 * EndlessRun.heat()); },         // how quick
-  rate() { return diff().threat * (1 + 1.1 * EndlessRun.heat()); },                                    // how often
-  n(base, perBand, max) { return Math.min(max, base + Math.floor(EndlessRun.band() * perBand)); },    // how many
+  // how quick / how often / how many (higher floors, a FRENZY floor and the floor's ELITE enemies more so)
+  cur: '', elite: new Set(),
+  k() { return Math.sqrt(diff().hostile) * Mods.foeK() * (1.1 + 0.6 * EndlessRun.heat()) * (EndlessRun.twist === 'frenzy' ? 1.3 : 1) * (this.elite.has(this.cur) ? 1.25 : 1); },
+  rate() { return diff().threat * (1.1 + 1.1 * EndlessRun.heat()) * (EndlessRun.twist === 'frenzy' ? 1.3 : 1); },
+  n(base, perBand, max) { const v = base + Math.floor(EndlessRun.band() * perBand); return Math.min(max, this.elite.has(this.cur) ? Math.ceil(v * 1.5) : v); },
+  // are you coming down on top of something at (x, top, z) within r? (then you stomp it)
+  canStomp(x, top, z, r) { const P = Player.pos; return this.open() && Player.vel.y < -0.5 && Math.hypot(P.x - x, P.z - z) < r && P.y > top - 0.6 && P.y < top + 1.0; },
   open() { return !Player.respawning && !Game.transitioning && SM.isGameplay(); },
   frozen() { return EndlessRun.freezeT > 0 || EndlessRun.stunT > 0; },
   feet() { return Player.grounded ? Player.pos.y : Player.groundY > -Infinity ? Player.groundY : Player.pos.y; },
@@ -12508,22 +12608,25 @@ const EMimic = {
   },
   init() { for (let i = 0; i < this.MAX; i++) { const M = this.build(); M.g.visible = false; G.fx.add(M.g); this.list.push(Object.assign(M, { on: false, st: 'sleep', t: 0, pos: new THREE.Vector3(), base: new THREE.Vector3(), vel: new THREE.Vector3(), tellT: 3, cd: 0, ph: Math.random() * 6 })); } },
   start() {
-    const n = EF.n(3, 1.5, this.MAX);
+    const n = EF.n(4, 1.5, this.MAX);
     for (let i = 0; i < this.MAX; i++) { const M = this.list[i]; M.on = i < n; M.g.visible = M.on; if (M.on) this.sleepAt(M, EF.walkSpot(_v3)); }
   },
-  sleepAt(M, p) { M.st = 'sleep'; M.t = 0; M.base.set(p.x, p.y + CONFIG.COLLECT_HOVER, p.z); M.pos.copy(M.base); M.tellT = rr(3, 7); M.cd = 2; this.pose(M, 0, 0); },
+  sleepAt(M, p) { M.st = 'sleep'; M.t = 0; M.base.set(p.x, p.y + CONFIG.COLLECT_HOVER, p.z); M.pos.copy(M.base); M.tellT = rr(3, 7) * (1 + EndlessRun.heat() * 1.5); M.cd = 2; this.pose(M, 0, 0); },
   stop() { for (const M of this.list) { M.on = false; M.g.visible = false; } },
-  knock() { for (const M of this.list) if (M.on && M.st !== 'sleep') this.sleepAt(M, EF.walkSpot(_v3)); },
+  knock() { for (const M of this.list) if (M.on && M.st !== 'sleep' && M.st !== 'gone') this.sleepAt(M, EF.walkSpot(_v3)); },
+  // stomped: it coughs up Green Guys and is gone for a while
+  stomped(M) { const p = M.g.position; EndlessRun.stomp(p.x, p.y + 0.3, p.z, 3, 'MIMIC'); FX.smoke(p.x, p.y, p.z, 0.3, 1, 0.4, 14); M.st = 'gone'; M.t = 0; M.g.visible = false; },
   update(dt, frozen) {
     const P = Player.pos, k = EF.k();
     for (const M of this.list) {
       if (!M.on) continue;
       const S = CONFIG.COLLECT_SIZE;
       if (!frozen) M.t += dt;
+      if (M.st === 'gone') { if (M.t > 6) { this.sleepAt(M, EF.walkSpot(_v3)); M.g.visible = true; } continue; }
       if (M.st === 'sleep') {
         // bobbing and spinning just like the real ones (only its eyes give it away, now and then)
         M.g.rotation.set(0, Clock.real * 1.7 + M.ph, 0); M.g.position.set(M.base.x, M.base.y + Math.sin(Clock.real * 10.05 + M.ph) * 0.19 * S, M.base.z); M.g.scale.setScalar(S);
-        M.tellT -= dt; const tell = M.tellT < 0.18; M.eyes.forEach((e) => { e.visible = tell; e.position.y = 0.1; }); if (M.tellT <= 0) M.tellT = rr(3, 7);
+        M.tellT -= dt; const tell = M.tellT < 0.18; M.eyes.forEach((e) => { e.visible = tell; e.position.y = 0.1; }); if (M.tellT <= 0) M.tellT = rr(3, 7) * (1 + EndlessRun.heat() * 1.5);
         M.cd -= dt;
         if (!frozen && M.cd <= 0 && EF.open() && Math.hypot(P.x - M.base.x, P.z - M.base.z) < 2.4 && Math.abs(P.y + 0.6 - M.base.y) < 2) {
           M.st = 'wake'; M.t = 0;
@@ -12534,6 +12637,7 @@ const EMimic = {
         const w = clamp(M.t / (0.45 / k), 0, 1);
         M.g.lookAt(P.x, M.g.position.y, P.z); M.g.scale.setScalar(S * (1 + w * 0.9));
         M.g.position.y = M.base.y + Math.sin(M.t * 50) * 0.03; this.pose(M, w, M.t, false);
+        if (EF.canStomp(M.base.x, M.base.y + 0.35, M.base.z, 0.95)) { this.stomped(M); continue; }
         if (w >= 1 && !frozen) { M.st = 'lunge'; M.t = 0; M.vel.set(P.x + Player.vel.x * 0.2 - M.pos.x, 0, P.z + Player.vel.z * 0.2 - M.pos.z); const d = M.vel.length() || 1; M.vel.multiplyScalar(9 * k / d); Sfx.dashWhoosh(); }
       } else if (M.st === 'lunge' || M.st === 'hunt') {
         if (frozen) continue;
@@ -12542,6 +12646,7 @@ const EMimic = {
         const gy = World.groundAt(M.pos.x, M.pos.z, M.pos.y + 1.5); if (gy > -Infinity) M.pos.y = damp(M.pos.y, gy + 0.6, 12, dt);
         const hop = M.st === 'hunt' ? Math.abs(Math.sin(M.t * 9)) * 0.35 : Math.sin(Math.min(1, M.t / 0.35) * Math.PI) * 0.6;
         M.g.position.set(M.pos.x, M.pos.y + hop, M.pos.z); M.g.lookAt(P.x, M.g.position.y, P.z); this.pose(M, 0.6 + Math.abs(Math.sin(M.t * 14)) * 0.4, M.t, true);
+        if (EF.canStomp(M.pos.x, M.pos.y + hop + 0.4, M.pos.z, 0.95)) { this.stomped(M); continue; }
         if (EF.open() && RF.cap(M.pos.x, M.pos.y + hop, M.pos.z) < 0.35) {
           if (Player.damage(CONFIG.DMG.mimic, 'mimic')) { Cue.play('chomp', M.panner); FX.spark(P.x, P.y + 1, P.z, 0.4, 1, 0.3); }
           FX.smoke(M.pos.x, M.pos.y, M.pos.z, 0.2, 0.8, 0.3, 10); this.sleepAt(M, EF.walkSpot(_v3)); continue;
@@ -12611,7 +12716,7 @@ const EStatue = {
   pose(S, reach) { S.cover.visible = !reach; S.reach.visible = !!reach; },
   init() { for (let i = 0; i < this.MAX; i++) { const S = this.build(); S.g.visible = false; G.fx.add(S.g); this.list.push(Object.assign(S, { on: false, pos: new THREE.Vector3(), seen: true, grindT: 0, cd: 0, heading: 0 })); } },
   start() {
-    const n = EF.n(1, 0.5, this.MAX);
+    const n = EF.n(2, 0.34, this.MAX);
     this.list.forEach((S, i) => { S.on = i < n; S.g.visible = S.on; if (S.on) this.place(S); });
   },
   place(S) { const nd = EF.node(24, 40, true) || Nav.g.nodes[0]; S.pos.set(nd.x, nd.y, nd.z); S.path = []; S.repathT = 0; S.cd = 1.5; this.pose(S, 0); },
@@ -12631,7 +12736,7 @@ const EStatue = {
       const moving = !S.seen && !frozen && EF.open() && S.cd <= 0;
       S.cd -= dt;
       if (moving) {
-        const st = EFWalk.step(S, P, 9.5 * k, dt);
+        const st = EFWalk.step(S, P, 11 * k, dt);
         if (st > 0 && (S.grindT -= dt) <= 0) { S.grindT = 0.28; const p = EF.panner(S); setPannerPos(p, S.pos.x, S.pos.y + 1, S.pos.z); Sfx.grind(p); if (S.pos.distanceTo(P) < 20) Cue.cap('stone', 0.6); }
         // the closer it gets, the more it reaches for you (you'll only see it when you look back)
         this.pose(S, S.pos.distanceTo(P) < 14 ? 1 : 0);
@@ -12694,7 +12799,7 @@ const EBoing = {
     }
   },
   start() {
-    const n = EF.n(1, 0.5, this.MAX);
+    const n = EF.n(2, 0.34, this.MAX);
     this.list.forEach((B, i) => { B.on = i < n; B.g.visible = B.sh.visible = B.ring.visible = B.on; if (B.on) { const nd = EF.node(14, 30) || Nav.g.nodes[0]; B.pos.set(nd.x, nd.y + 30, nd.z); this.jump(B, 0.6 + i * 0.7); } });
   },
   // a bounce: from where it is to where you'll be (on a floor), taking T s
@@ -12703,7 +12808,7 @@ const EBoing = {
     const tx = P.x + Player.vel.x * lead + rr(-1.2, 1.2), tz = P.z + Player.vel.z * lead + rr(-1.2, 1.2);
     let dx = tx - P.x, dz = tz - P.z; const dd = Math.hypot(dx, dz); if (dd > 12) { dx *= 12 / dd; dz *= 12 / dd; }
     RF.floor(P.x + dx, P.z + dz, EF.feet(), B.b);
-    B.a.copy(B.pos); B.st = 'air'; B.t = 0;
+    B.a.copy(B.pos); B.st = 'air'; B.t = 0; B.bounced = false;
     const p = EF.panner(B); setPannerPos(p, B.pos.x, B.pos.y, B.pos.z); Sfx.boing(p);
   },
   stop() { for (const B of this.list) { B.on = false; B.g.visible = B.sh.visible = B.ring.visible = false; } },
@@ -12734,6 +12839,8 @@ const EBoing = {
         const u = clamp(B.t / 0.55, 0, 1), sq = Math.sin(u * Math.PI);
         B.g.position.set(B.pos.x, B.pos.y + 1 - sq * 0.35, B.pos.z); B.ball.scale.set(1 + sq * 0.35, 1 - sq * 0.35, 1 + sq * 0.35); B.ball.rotation.x = 0;
         this.face(B, 0.2 * sq, Clock.real);
+        // land on it and it's a trampoline (stomp: sky high!)
+        if (!B.bounced && EF.canStomp(B.pos.x, B.pos.y + 1.75 - sq * 0.4, B.pos.z, 1.35)) { B.bounced = true; EndlessRun.stomp(B.pos.x, B.pos.y + 2, B.pos.z, 2, ''); Player.vel.y = Mods.jumpVel() * Player.mods.jumpK * 1.9; EndPop.show('BOING!', B.pos.x, B.pos.y + 2.8, B.pos.z, '#ff5ad0'); Sfx.boing(); B.t = 0; }
         B.sh.material.opacity = 0.5; B.ring.material.opacity = 0;
         if (u >= 1 && !frozen) this.jump(B);
       }
@@ -12797,19 +12904,19 @@ const EWeaver = {
       const thread = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 1, 0)]), new THREE.LineBasicMaterial({ color: 0xe0e0ff, transparent: true, opacity: 0.6 })); thread.visible = false; G.fx.add(thread);
       const sh = new THREE.Mesh(new THREE.CircleGeometry(1.2, 24), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0, depthWrite: false })); sh.rotation.x = -Math.PI / 2; sh.renderOrder = 3; sh.visible = false; G.fx.add(sh);
       const anchor = new THREE.Vector3();
-      this.spiders.push(Object.assign(S, { thread, sh, on: false, st: 'hang', t: 0, anchor, pos: anchor, ground: 0, y: 0, cd: 0 }));
+      this.spiders.push(Object.assign(S, { thread, sh, on: false, st: 'hang', t: 0, anchor, pos: anchor, ground: 0, y: 0, cd: 0, cw: { pos: new THREE.Vector3(), path: [], repathT: 0, heading: 0 } }));
     }
     const geo = new THREE.PlaneGeometry(2.4, 2.4); geo.rotateX(-Math.PI / 2);
     for (let i = 0; i < this.MAXW; i++) { const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: this.webTex, transparent: true, depthWrite: false, opacity: 0.85 })); m.visible = false; m.renderOrder = 3; G.fx.add(m); this.webs.push({ m, on: false, pos: new THREE.Vector3(), regrow: 0, fade: 0 }); }
   },
   start() {
-    const ns = EF.n(2, 1, this.MAXS), nw = EF.n(4, 2, this.MAXW);
+    const ns = EF.n(3, 1, this.MAXS), nw = EF.n(5, 2, this.MAXW);
     this.spiders.forEach((S, i) => { S.on = i < ns; S.g.visible = S.thread.visible = S.sh.visible = S.on; if (S.on) { EF.walkSpot(_v3, 10); S.ground = _v3.y; S.anchor.set(_v3.x, _v3.y + 7.5, _v3.z); S.y = S.anchor.y - 1.2; S.st = 'hang'; S.cd = rr(0, 2); } });
     this.webs.forEach((W, i) => { W.on = i < nw; W.m.visible = W.on; if (W.on) this.lay(W); });
   },
   lay(W) { EF.walkSpot(W.pos, 9); W.m.position.set(W.pos.x, W.pos.y + 0.04, W.pos.z); W.m.rotation.y = Math.random() * 6; W.m.material.opacity = 0.85; W.fade = 0; W.regrow = 0; W.m.visible = true; },
   stop() { for (const S of this.spiders) { S.on = false; S.g.visible = S.thread.visible = S.sh.visible = false; } for (const W of this.webs) { W.on = false; W.m.visible = false; } },
-  knock() { for (const S of this.spiders) if (S.on) { S.st = 'climb'; S.t = 0; } },
+  knock() { for (const S of this.spiders) if (S.on && S.st !== 'gone') { S.st = 'climb'; S.t = 0; S.y = Math.max(S.y, S.ground + 0.9); S.g.visible = S.thread.visible = S.sh.visible = true; } },
   stick() { Player.slowT = 1.6; Player.slowK = 0.4; Cue.cap('web', 1); Sfx.squish(); },
   update(dt, frozen) {
     const P = Player.pos, k = EF.k();
@@ -12835,14 +12942,26 @@ const EWeaver = {
           S.hit = true; Sfx.thud(S.panner);
           if (EF.open() && Math.hypot(P.x - S.anchor.x, P.z - S.anchor.z) < 1.3 && Math.abs(P.y - S.ground) < 1.4) { if (Player.damage(CONFIG.DMG.weaver, 'weaver')) this.stick(); }
         }
-        if (S.hit && S.t > 0.7 && !frozen) { S.st = 'climb'; S.t = 0; }
+        if (S.hit && S.t > 0.5 && !frozen) { S.st = 'crawl'; S.t = 0; S.cw.pos.set(S.anchor.x, S.ground, S.anchor.z); S.cw.path = []; S.cw.repathT = 0; S.thread.visible = false; }
+      } else if (S.st === 'crawl') {
+        // down on the walkway it scuttles after you for a few seconds (jump on it!)
+        if (!frozen && EF.open()) EFWalk.step(S.cw, P, 5.4 * k, dt);
+        if (EF.canStomp(S.cw.pos.x, S.cw.pos.y + 0.55, S.cw.pos.z, 0.95)) { EndlessRun.stomp(S.cw.pos.x, S.cw.pos.y + 0.5, S.cw.pos.z, 2, 'SPIDER'); FX.smoke(S.cw.pos.x, S.cw.pos.y + 0.3, S.cw.pos.z, 0.3, 0.2, 0.4, 12); S.st = 'gone'; S.t = 0; S.g.visible = S.sh.visible = S.thread.visible = false; continue; }
+        if (!frozen && EF.open() && Math.hypot(P.x - S.cw.pos.x, P.z - S.cw.pos.z) < 0.75 && Math.abs(P.y - S.cw.pos.y) < 1) { if (Player.damage(CONFIG.DMG.weaver, 'weaver')) this.stick(); S.st = 'reel'; S.t = 0; }
+        if (S.t > 3.5 && !frozen) { S.st = 'reel'; S.t = 0; }
+      } else if (S.st === 'reel') {
+        const u = clamp(S.t / 0.7, 0, 1); S.cw.pos.x = lerp(S.cw.pos.x, S.anchor.x, u); S.cw.pos.z = lerp(S.cw.pos.z, S.anchor.z, u);
+        if (u >= 1) { S.st = 'climb'; S.t = 0; S.y = S.ground + 0.9; S.thread.visible = true; }
+      } else if (S.st === 'gone') {
+        if (S.t > 6) { S.st = 'hang'; S.cd = 2; S.hit = false; S.y = S.anchor.y - 1.2; S.g.visible = S.sh.visible = S.thread.visible = true; } else continue;
       } else if (S.st === 'climb') {
         if (!frozen) S.y = Math.min(S.anchor.y - 1.2, S.y + 3 * dt);
         if (S.y >= S.anchor.y - 1.21) { S.st = 'hang'; S.cd = 3; S.hit = false; }
       }
-      S.g.position.set(S.anchor.x, S.y, S.anchor.z); S.g.rotation.y = Clock.real * 0.3 + S.anchor.z;
-      S.g.rotation.x = S.st === 'drop' || S.st === 'tele' ? 0.5 : 0;
-      if (!frozen) this.legs(S, S.st === 'drop' || S.st === 'tele' ? 1 : S.st === 'climb' ? 2 : 0, Clock.real + S.anchor.x);
+      const cr = S.st === 'crawl' || S.st === 'reel';
+      if (cr) { S.g.position.set(S.cw.pos.x, S.cw.pos.y + 0.32, S.cw.pos.z); S.g.rotation.set(0, S.cw.heading || 0, 0); }
+      else { S.g.position.set(S.anchor.x, S.y, S.anchor.z); S.g.rotation.y = Clock.real * 0.3 + S.anchor.z; S.g.rotation.x = S.st === 'drop' || S.st === 'tele' ? 0.5 : 0; }
+      if (!frozen) this.legs(S, S.st === 'drop' || S.st === 'tele' ? 1 : S.st === 'climb' || cr ? 2 : 0, Clock.real + S.anchor.x);
       const pos = S.thread.geometry.attributes.position; pos.setXYZ(0, S.anchor.x, S.anchor.y, S.anchor.z); pos.setXYZ(1, S.anchor.x, S.y + 0.3, S.anchor.z); pos.needsUpdate = true; S.thread.geometry.computeBoundingSphere();
       const near = S.st === 'tele' || S.st === 'drop' ? 1 : 0;
       S.sh.position.set(S.anchor.x, S.ground + 0.05, S.anchor.z); S.sh.material.opacity = 0.15 + near * 0.4 * (1 - clamp((S.y - S.ground) / 8, 0, 1)) + near * 0.1;
@@ -12893,7 +13012,7 @@ const ESentry = {
     }
   },
   start() {
-    const n = EF.n(2, 1, this.MAX), g = Nav.g, s = g.nodes[g.start], used = new Set();
+    const n = EF.n(3, 1, this.MAX), g = Nav.g, s = g.nodes[g.start], used = new Set();
     this.list.forEach((S, i) => {
       S.on = i < n; S.g.visible = S.on; if (!S.on) return;
       let nd = null; for (let k = 0; k < 20; k++) { const c = g.nodes[Math.floor(Math.random() * g.nodes.length)]; if (!used.has(c.id) && Math.hypot(c.x - s.x, c.z - s.z) > 12) { nd = c; break; } }
@@ -12916,23 +13035,23 @@ const ESentry = {
       else if (S.st === 'charge') {
         const u = clamp(S.t / (0.9 / k), 0, 1); S.glow.scale.setScalar(0.6 + u * 1.4); S.lens.material.opacity = 0.3 + u * 0.7; S.lens.rotation.z += dt * (4 + u * 20); this.lid(S, 0.7 + u * 0.3);
         if ((S.beepT -= dt) <= 0) { S.beepT = 0.25 * (1 - u * 0.75); const p = EF.panner(S); setPannerPos(p, S.pos.x, S.pos.y + 1.45, S.pos.z); Sfx.beep(p, u); }
-        if (u >= 1) { this.fire(S, k); S.st = 'idle'; S.cd = rr(2.6, 3.6) / EF.rate(); }
+        if (u >= 1) { const burst = EndlessRun.band() >= 1 || EF.elite.has('sentry') ? 3 : 1; for (let b = 0; b < burst; b++) this.fire(S, k, (b - (burst - 1) / 2) * 0.22); S.st = 'idle'; S.cd = rr(2.4, 3.4) / EF.rate(); }
       }
     }
     for (const O of this.orbs) {
       if (!O.on) continue;
-      if (!frozen) { O.t += dt; O.pos.addScaledVector(O.vel, dt); }
+      if (!frozen) { O.t += dt; O.pos.addScaledVector(O.vel, dt); if (O.t < 1.1) { _v4.set(P.x - O.pos.x, P.y + 1.1 - O.pos.y, P.z - O.pos.z).normalize().multiplyScalar(O.vel.length()); O.vel.lerp(_v4, Math.min(1, dt * 1.2)); } }
       O.s.position.copy(O.pos); O.s.scale.setScalar(0.7 + Math.sin(Clock.real * 20) * 0.08);
       if (!frozen && Math.random() < 0.7) FX.glow.emit(O.pos.x, O.pos.y, O.pos.z, rr(-0.3, 0.3), rr(-0.3, 0.3), rr(-0.3, 0.3), 1, 0.4, 0.1, 0.14, 0.3, 0, 0);
       if (EF.open() && !frozen && RF.cap(O.pos.x, O.pos.y, O.pos.z) < 0.22) { O.on = false; O.s.visible = false; if (Player.damage(CONFIG.DMG.sentry, 'sentry')) FX.spark(O.pos.x, O.pos.y, O.pos.z, 1, 0.5, 0.2); continue; }
       if (O.t > 4.5) { O.on = false; O.s.visible = false; }
     }
   },
-  fire(S, k) {
+  fire(S, k, spread = 0) {
     const O = this.orbs.find((o) => !o.on); if (!O) return;
     const sp = 9 * k, from = _v2.set(S.pos.x, S.pos.y + 1.45, S.pos.z), P = Player.pos, tt = from.distanceTo(_v1.set(P.x, P.y + 1.2, P.z)) / sp;
     _v1.set(P.x + Player.vel.x * tt * 0.7, P.y + 1.1, P.z + Player.vel.z * tt * 0.7);
-    O.on = true; O.t = 0; O.pos.copy(from); O.vel.subVectors(_v1, from).normalize().multiplyScalar(sp); O.s.visible = true;
+    O.on = true; O.t = 0; O.pos.copy(from); O.vel.subVectors(_v1, from).normalize().multiplyScalar(sp).applyAxisAngle(_v4.set(0, 1, 0), spread); O.s.visible = true;
     const p = EF.panner(S); setPannerPos(p, from.x, from.y, from.z); Sfx.pew(p); Cue.cap('sentry', 0.8);
   },
 };
@@ -12977,7 +13096,7 @@ const EMole = {
     }
   },
   start() {
-    const n = EF.n(1, 0.5, this.MAX);
+    const n = EF.n(2, 0.34, this.MAX);
     this.list.forEach((M, i) => { M.on = i < n; M.mound.visible = M.on; M.g.visible = false; M.crack.visible = false; if (M.on) { const nd = EF.node(18, 32) || Nav.g.nodes[0]; M.pos.set(nd.x, nd.y, nd.z); M.st = 'tunnel'; M.cd = 1.5 + i; M.path = []; M.repathT = 0; } });
   },
   stop() { for (const M of this.list) { M.on = false; M.g.visible = M.mound.visible = M.crack.visible = false; } },
@@ -12990,7 +13109,7 @@ const EMole = {
       if (M.st === 'tunnel') {
         M.mound.visible = true; M.g.visible = false;
         if (!frozen && EF.open()) {
-          const st = EFWalk.step(M, P, 4.4 * k, dt);
+          const st = EFWalk.step(M, P, 5.6 * k, dt);
           if (st > 0 && (M.dirtT -= dt) <= 0) { M.dirtT = 0.07; FX.sq.emit(M.pos.x + rr(-0.4, 0.4), M.pos.y + 0.2, M.pos.z + rr(-0.4, 0.4), rr(-1.5, 1.5), rr(1.5, 3.5), rr(-1.5, 1.5), 0.35, 0.22, 0.12, rr(0.08, 0.16), 0.6, 9, 0.5); }
           if ((M.rumbleT = (M.rumbleT || 0) - dt) <= 0) { M.rumbleT = 0.35; const p = EF.panner(M); setPannerPos(p, M.pos.x, M.pos.y, M.pos.z); Sfx.rumbleS(p); if (M.pos.distanceTo(P) < 15) Cue.cap('burrow', 0.6); }
           if (M.cd <= 0 && Math.hypot(P.x - M.pos.x, P.z - M.pos.z) < 1.0 && Math.abs(P.y - M.pos.y) < 1.5) { M.st = 'crack'; M.t = 0; M.at.copy(M.pos); }
@@ -13010,6 +13129,7 @@ const EMole = {
       } else if (M.st === 'erupt') {
         const up = M.t < 0.15 ? M.t / 0.15 : M.t < 0.8 ? 1 : Math.max(0, 1 - (M.t - 0.8) / 0.4);
         M.g.position.set(M.at.x, M.at.y - 2.6 + up * 2.6, M.at.z); M.g.lookAt(P.x, M.g.position.y, P.z);
+        if (up > 0.6 && EF.canStomp(M.at.x, M.at.y + 1.6, M.at.z, 1.25)) { EndlessRun.stomp(M.at.x, M.at.y + 2, M.at.z, 2, 'BURROWER'); M.st = 'tunnel'; M.g.visible = false; M.cd = 3.5; M.pos.copy(M.at); continue; }
         M.arms.forEach((a, i) => { a.rotation.x = -0.5 - Math.abs(Math.sin(M.t * 12 + i)) * 0.6; });
         if (M.t > 1.2 && !frozen) { M.st = 'tunnel'; M.g.visible = false; M.cd = 1.6; M.pos.copy(M.at); }
       }
@@ -13069,9 +13189,9 @@ const ESwarm = {
       if (!frozen) {
         S.t += dt;
         _v1.set(P.x - S.pos.x, P.y + 1.1 - S.pos.y, P.z - S.pos.z); const d = _v1.length();
-        if (d > 0.05 && EF.open()) S.pos.addScaledVector(_v1, Math.min(d, 5.6 * k * dt) / d);
+        if (d > 0.05 && EF.open()) S.pos.addScaledVector(_v1, Math.min(d, 6.4 * k * dt) / d);
         S.pos.x += Math.sin(S.t * 1.7) * dt * 1.5; S.pos.z += Math.cos(S.t * 1.3) * dt * 1.5;
-        if (EF.open() && RF.cap(S.pos.x, S.pos.y, S.pos.z) < 1.4 && (S.tickT -= dt) <= 0) { S.tickT = 0.5; if (Player.damage(CONFIG.DMG.swarm, 'swarm', { tick: true, ignoreInvuln: true })) { Cue.cap('swarm', 0.8); Effects.hurt(3); } }
+        if (EF.open() && RF.cap(S.pos.x, S.pos.y, S.pos.z) < 1.4 && (S.tickT -= dt) <= 0) { S.tickT = 0.5; if (Player.damage(CONFIG.DMG.swarm, 'swarm', { tick: true, ignoreInvuln: true })) { Cue.cap('swarm', 0.8); Effects.hurt(3); Player.slowT = Math.max(Player.slowT, 0.45); Player.slowK = 0.75; } }
         if ((S.buzzT -= dt) <= 0) { S.buzzT = 0.22; const p = EF.panner(S); setPannerPos(p, S.pos.x, S.pos.y, S.pos.z); if (S.pos.distanceTo(P) < 28) Sfx.buzz(p); }
       }
       this.draw(S, S.pos.x, S.pos.y, S.pos.z, S.t, 1, P.x, P.y + 1.4, P.z);
@@ -13111,7 +13231,7 @@ const EBoulder = {
     return { g, rock };
   },
   init() { for (let i = 0; i < this.MAX; i++) { const B = this.build(); B.g.visible = false; G.fx.add(B.g); this.list.push(Object.assign(B, { on: false, st: 'roll', t: 0, pos: new THREE.Vector3(), rumT: 0, wait: 0, heading: 0 })); } },
-  start() { const n = EF.n(1, 1 / 3, this.MAX); this.list.forEach((B, i) => { B.on = i < n; B.g.visible = B.on; if (B.on) this.spawn(B, 1 + i * 3); }); },
+  start() { const n = EF.n(1, 0.5, this.MAX); this.list.forEach((B, i) => { B.on = i < n; B.g.visible = B.on; if (B.on) this.spawn(B, 1 + i * 3); }); },
   spawn(B, wait = 0) { const nd = EF.node(24, 60) || Nav.g.nodes[0]; B.pos.set(nd.x, nd.y, nd.z); B.st = wait > 0 ? 'wait' : 'roll'; B.wait = wait; B.t = 0; B.path = []; B.repathT = 0; B.g.visible = wait <= 0; },
   stop() { for (const B of this.list) { B.on = false; B.g.visible = false; } },
   knock() { for (const B of this.list) if (B.on && B.pos.distanceTo(Player.pos) < 10) this.spawn(B, 2); },
@@ -13122,7 +13242,7 @@ const EBoulder = {
       B.t += dt;
       if (B.st === 'wait') { if ((B.wait -= dt) <= 0) { B.st = 'roll'; B.t = 0; B.g.visible = true; const p = EF.panner(B); setPannerPos(p, B.pos.x, B.pos.y, B.pos.z); Cue.play('boulder', p); } continue; }
       if (B.st === 'crumble') { B.g.scale.setScalar(Math.max(0.01, 1 - B.t / 0.6)); if (B.t > 0.6) { B.g.scale.setScalar(1); this.spawn(B, 4); } continue; }
-      const sp = Math.min(10.5, 6 + B.t * 0.5) * Math.min(1.25, k), st = EF.open() ? EFWalk.step(B, P, sp, dt) : 0;
+      const sp = Math.min(12, 7 + B.t * 0.6) * Math.min(1.3, k), st = EF.open() ? EFWalk.step(B, P, sp, dt) : 0;
       B.rock.rotateOnWorldAxis(_v1.set(Math.cos(B.heading), 0, -Math.sin(B.heading)), st / this.R);
       B.g.position.set(B.pos.x, B.pos.y + this.R, B.pos.z);
       if ((B.rumT -= dt) <= 0) { B.rumT = 0.3; const p = EF.panner(B); setPannerPos(p, B.pos.x, B.pos.y, B.pos.z); if (B.pos.distanceTo(P) < 40) Sfx.rumbleS(p, 1.6); }
@@ -13187,12 +13307,13 @@ const EVacuum = {
       // the pull: it drags you in, harder the closer you are (run against it; it can pull you off an edge)
       const hd = Math.hypot(_v1.x, _v1.z);
       if (d < 18 && hd > 0.1) {
-        const pv = 5.5 * Math.min(1.4, k) * Math.pow(1 - d / 18, 1.3) * (Player.grounded ? 1 : 0.6);
+        const pv = 7 * Math.min(1.4, k) * Math.pow(1 - d / 18, 1.3) * (Player.grounded ? 1 : 0.6);
         P.x -= (_v1.x / hd) * pv * dt; P.z -= (_v1.z / hd) * pv * dt;
         if (Math.random() < 0.6) { const ang = Math.random() * 6.283, r = rr(2, 5); FX.glow.emit(V.pos.x + Math.cos(ang) * r, V.pos.y + rr(-1, 1), V.pos.z + Math.sin(ang) * r, -Math.cos(ang) * r * 2, 0, -Math.sin(ang) * r * 2, 0.6, 0.4, 1, 0.12, 0.45, 0, 0); }
         if (d < 12) Cue.cap('vacuum', 0.6);
       }
       if ((V.humT -= dt) <= 0) { V.humT = 0.9; const p = EF.panner(V); setPannerPos(p, V.pos.x, V.pos.y, V.pos.z); if (d < 30) Sfx.suck(p); }
+      if (d < 7 && EndlessRun.gg > 0 && (V.eatT = (V.eatT || 0) - dt) <= 0) { V.eatT = 0.8; EndlessRun.gg--; EndPop.show('-1', P.x, P.y + 2.1, P.z, '#9a7aff'); }
       if (V.cd <= 0 && RF.cap(V.pos.x, V.pos.y, V.pos.z) < 0.9) {
         if (Player.damage(CONFIG.DMG.vacuum, 'vacuum')) { Player.shoveFrom(V.pos); Sfx.poof(V.panner); Effects.doFlash(0x6a40ff, 0.3); }
         this.place(V);
@@ -13258,8 +13379,12 @@ const EThief = {
     T.t += dt;
     if (T.st === 'wait') { if ((T.wait -= dt) <= 0) { T.st = 'come'; T.t = 0; T.g.visible = true; FX.smoke(T.pos.x, T.pos.y, T.pos.z, 0.25, 0.8, 0.7, 10); const p = EF.panner(T); setPannerPos(p, T.pos.x, T.pos.y, T.pos.z); Cue.play('thief', p); } return; }
     const hd = Math.hypot(P.x - T.pos.x, P.z - T.pos.z), same = Math.abs(P.y - T.pos.y) < 1.5;
+    if (EF.canStomp(T.pos.x, T.pos.y + 1.15, T.pos.z, 0.95)) {
+      const back = T.stolen; EndlessRun.gg += back; EndlessRun.stomp(T.pos.x, T.pos.y + 1, T.pos.z, 4, 'THIEF'); if (back) UI.announce('GOT THEM BACK! +' + back, { color: '#3dff6a' });
+      T.stolen = 0; FX.smoke(T.pos.x, T.pos.y, T.pos.z, 0.2, 1, 0.4, 16); this.spawn(10); return;
+    }
     if (T.st === 'come') {
-      if (EF.open()) EFWalk.step(T, P, 7.2 * k, dt);
+      if (EF.open()) EFWalk.step(T, P, 8.4 * k, dt);
       if (EF.open() && hd < 0.85 && same) {
         const take = Math.min(EndlessRun.gg, 6 + 3 * EndlessRun.band());
         if (take > 0) { EndlessRun.gg -= take; T.stolen = take; UI.announce('THE THIEF STOLE ' + take + ' GREEN GUYS!', { color: '#40d0c0' }); UI.announce('CATCH IT!', { color: '#ffffff', short: true }); Sfx.thiefLaugh(T.panner); }
@@ -13281,19 +13406,355 @@ const EThief = {
   },
 };
 
+// ---------------- ENDLESS: little numbers popping up in the world (+5 for a stomp, the golden one's +25...) ----------------
+const EndPop = {
+  list: [],
+  init() { for (let i = 0; i < 8; i++) { const c = makeCanvas(256, 96), s = new THREE.Sprite(new THREE.SpriteMaterial({ map: canvasTex(c), transparent: true, depthWrite: false, depthTest: false, fog: false })); s.renderOrder = 45; s.visible = false; s.scale.set(1.6, 0.6, 1); scene.add(s); this.list.push({ s, c, t: 9, y: 0 }); } },
+  show(text, x, y, z, col = '#3dff6a') {
+    if (!this.list.length) this.init();
+    const P = this.list.reduce((a, b) => (b.t > a.t ? b : a)), ctx = P.c.getContext('2d');
+    ctx.clearRect(0, 0, 256, 96); drawText(ctx, text, 128, 50, { size: 64, style: 'italic 900', font: FONT_IMPACT, fill: col, stroke: '#000', lw: 9 });
+    P.s.material.map.needsUpdate = true; P.s.visible = true; P.t = 0; P.y = y; P.s.position.set(x, y, z);
+  },
+  update(dt) { for (const P of this.list) { if (!P.s.visible) continue; P.t += dt; P.s.position.y = P.y + P.t * 1.4; P.s.material.opacity = clamp(1.6 - P.t * 1.6, 0, 1); const k = Math.min(1, P.t * 6); P.s.scale.set(1.6 * k, 0.6 * k, 1); if (P.t > 1) P.s.visible = false; } },
+  hide() { for (const P of this.list) P.s.visible = false; },
+};
+
+// ---------------- ENDLESS: the floor's twist (most floors from 3 on have one; the same one for everyone) ----------------
+// GOLD RUSH: a golden Green Guy runs from you (catch it). GREEN RAIN: bonus Green Guys fall from the sky. LIGHTS OUT,
+// MOON JUMP, FRENZY and DOUBLE TROUBLE change the floor itself (EndWorld, the player, EF.k, EndFoes); the METEOR SHOWER
+// is an enemy of its own (EMeteor).
+const EndTwist = {
+  gold: null, orbs: [], rainT: 0, light: null,
+  goldGeo() {
+    const g = buildGreenGuyGeometry(), c = g.attributes.color;
+    for (let i = 0; i < c.count; i++) { _c1.setRGB(c.getX(i), c.getY(i), c.getZ(i)); const l = _c1.r * 0.3 + _c1.g * 0.6 + _c1.b * 0.1; if (l > 0.2 && l < 0.97) _c1.setRGB(1, 0.78 * l + 0.2, 0.15 * l); c.setXYZ(i, _c1.r, _c1.g, _c1.b); }
+    return g;
+  },
+  init() {
+    const G2 = this.gold = { g: new THREE.Group(), on: false, pos: new THREE.Vector3(), t: 0, rest: 0, path: [], repathT: 0, heading: 0 };
+    G2.g.add(new THREE.Mesh(this.goldGeo(), new THREE.MeshBasicMaterial({ vertexColors: true })));
+    const gl = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0xffc020, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); gl.scale.set(2.6, 2.6, 1); G2.g.add(gl);
+    G2.g.visible = false; G.fx.add(G2.g);
+    const geo = buildGreenGuyGeometry(), mat = new THREE.MeshBasicMaterial({ vertexColors: true });
+    for (let i = 0; i < 24; i++) { const m = new THREE.Mesh(geo, mat); m.scale.setScalar(0.5); m.visible = false; G.fx.add(m); this.orbs.push({ m, on: false, pos: new THREE.Vector3(), y0: 0, t: 0, life: 0 }); }
+  },
+  setup() {
+    if (!this.gold) this.init();
+    const T = EndlessRun.twist, G2 = this.gold;
+    G2.on = T === 'gold'; G2.g.visible = G2.on; G2.caught = false;
+    if (G2.on) { const g = Nav.g, far = Nav.farthestFrom(g.start), n = g.nodes[far]; G2.pos.set(n.x, n.y, n.z); G2.t = 0; G2.rest = 0; G2.path = []; G2.repathT = 0; }
+    for (const o of this.orbs) { o.on = false; o.m.visible = false; }
+    this.rainT = 2;
+  },
+  clear() { if (this.gold) { this.gold.on = false; this.gold.g.visible = false; } for (const o of this.orbs) { o.on = false; o.m.visible = false; } },
+  update(dt) {
+    const E = EndlessRun, P = Player.pos, G2 = this.gold; if (!G2) return;
+    const play = E.active() && !Player.respawning;
+    // the golden one: it runs from you (a little slower than you at full tilt), and stops for breath now and then
+    if (G2.on) {
+      G2.t += dt;
+      const d = Math.hypot(P.x - G2.pos.x, P.z - G2.pos.z);
+      if (play && !EF.frozen()) {
+        if (G2.rest > 0) G2.rest -= dt;
+        else if (d < 16) { EFWalk.step(G2, P, Player.topSpeed * 0.78, dt, true); if (Math.random() < dt * 0.25) { G2.rest = 1.1; EndPop.show('PHEW!', G2.pos.x, G2.pos.y + 1.6, G2.pos.z, '#ffd040'); } }
+      }
+      const hop = G2.rest > 0 ? 0 : Math.abs(Math.sin(G2.t * 12)) * 0.25;
+      G2.g.position.set(G2.pos.x, G2.pos.y + 1.05 + hop, G2.pos.z); G2.g.rotation.y = G2.rest > 0 ? Math.sin(G2.t * 3) * 0.3 : (G2.heading || 0) + Math.PI; G2.g.scale.setScalar(1.25);
+      if (Math.random() < 0.4) FX.glow.emit(G2.pos.x + rr(-0.3, 0.3), G2.pos.y + 1 + rr(0, 0.6), G2.pos.z + rr(-0.3, 0.3), 0, 0.8, 0, 1, 0.8, 0.2, 0.08, 0.5, 0, 0);
+      if (play && d < 1.0 && Math.abs(P.y - G2.pos.y) < 1.6) {
+        G2.on = false; G2.g.visible = false; E.bump(5); const got = E.reward(25);
+        EndPop.show('+' + got, G2.pos.x, G2.pos.y + 1.6, G2.pos.z, '#ffd040'); UI.announce('GOLDEN GREEN GUY! +' + got, { color: '#ffd040' });
+        Sfx.gold(); Sfx.beacon(); Hands.pulse('both', 0.8, 200);
+        for (let k = 0; k < 40; k++) FX.glow.emit(G2.pos.x, G2.pos.y + 1, G2.pos.z, rr(-5, 5), rr(2, 7), rr(-5, 5), 1, 0.8, 0.2, rr(0.1, 0.2), 1, 9, 0.5);
+      }
+    }
+    // green rain: bonus Green Guys fall round you (they stay a while)
+    if (E.twist === 'rain' && play && (this.rainT -= dt) <= 0) {
+      this.rainT = rr(0.5, 1.1); const o = this.orbs.find((x) => !x.on);
+      if (o) { const a = Math.random() * 6.283, r = rr(3, 18); RF.floor(P.x + Math.cos(a) * r, P.z + Math.sin(a) * r, EF.feet(), _v3); if (_v3.y > -1e8 && Math.abs(_v3.y - P.y) < 9) { o.on = true; o.m.visible = true; o.pos.copy(_v3); o.y0 = _v3.y + 0.6; o.t = 0; o.life = 12; } }
+    }
+    for (const o of this.orbs) {
+      if (!o.on) continue;
+      o.t += dt; o.life -= dt;
+      const y = Math.max(o.y0, o.y0 + 18 - o.t * 16);
+      o.m.position.set(o.pos.x, y + (y === o.y0 ? Math.sin(o.t * 6) * 0.08 : 0), o.pos.z); o.m.rotation.y = o.t * 3;
+      if (o.life < 2) o.m.visible = Math.floor(o.life * 8) % 2 === 0;
+      if (o.life <= 0) { o.on = false; o.m.visible = false; continue; }
+      if (play && y === o.y0 && Math.hypot(P.x - o.pos.x, P.z - o.pos.z) < 1.1 && Math.abs(P.y + 0.6 - o.y0) < 1.6) { o.on = false; o.m.visible = false; E.bump(1); const g = E.reward(1); FX.pickup(o.pos.x, o.y0, o.pos.z); Sfx.collect(E.combo % 12); EndPop.show('+' + g, o.pos.x, o.y0 + 0.8, o.pos.z); }
+    }
+  },
+  // LIGHTS OUT: the world goes dark round a lamp you carry
+  lamp(on) {
+    if (on && !this.light) { this.light = new THREE.PointLight(0xfff0d0, 0, 22, 1.4); scene.add(this.light); }
+    if (this.light) this.light.intensity = on ? 60 * CONFIG.LIGHT_SCALE : 0;
+  },
+  updateLamp() { if (this.light && this.light.intensity > 0) { this.light.position.set(Player.pos.x, Player.pos.y + 2.2, Player.pos.z); } },
+};
+
+// ---------------- METEOR SHOWER (a floor twist): rocks come down out of the sky where you're heading ----------------
+const EMeteor = {
+  list: [], rockT: 0,
+  init() {
+    for (let i = 0; i < 6; i++) {
+      const g = new THREE.Group(), R = [];
+      avPart(R, new THREE.DodecahedronGeometry(0.75, 0), 0x3a2418, 0, 0, 0); for (let k = 0; k < 5; k++) avPart(R, new THREE.DodecahedronGeometry(0.3, 0), 0x2a1a10, rr(-0.5, 0.5), rr(-0.5, 0.5), rr(-0.5, 0.5));
+      g.add(new THREE.Mesh(avMerge(R), new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x802000, flatShading: true })));
+      const fire = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0xff6a10, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); fire.scale.set(3.4, 3.4, 1); g.add(fire);
+      const ring = new THREE.Mesh(new THREE.RingGeometry(2.1, 2.4, 40), new THREE.MeshBasicMaterial({ color: 0xff3a10, transparent: true, depthWrite: false, side: THREE.DoubleSide })); ring.rotation.x = -Math.PI / 2; ring.renderOrder = 3;
+      const dot = new THREE.Mesh(new THREE.CircleGeometry(2.1, 32), new THREE.MeshBasicMaterial({ color: 0xff3a10, transparent: true, opacity: 0.2, depthWrite: false })); dot.rotation.x = -Math.PI / 2; dot.renderOrder = 3;
+      g.visible = ring.visible = dot.visible = false; G.fx.add(g); G.fx.add(ring); G.fx.add(dot);
+      this.list.push({ g, ring, dot, on: false, t: 0, T: 1.4, at: new THREE.Vector3() });
+    }
+  },
+  start() { this.rockT = 2.5; for (const M of this.list) this.off(M); },
+  off(M) { M.on = false; M.g.visible = M.ring.visible = M.dot.visible = false; },
+  stop() { for (const M of this.list) this.off(M); },
+  knock() {},
+  update(dt, frozen) {
+    const P = Player.pos;
+    if (!frozen && EF.open() && (this.rockT -= dt) <= 0) {
+      this.rockT = rr(1.0, 2.2) / EF.rate();
+      const M = this.list.find((m) => !m.on);
+      if (M) {
+        const lead = rr(0.6, 1.1); RF.floor(P.x + Player.vel.x * lead + rr(-2.5, 2.5), P.z + Player.vel.z * lead + rr(-2.5, 2.5), EF.feet(), M.at);
+        if (M.at.y > -1e8) { M.on = true; M.t = 0; M.T = clamp(1.5 / Math.sqrt(EF.k()), 0.9, 1.5); M.g.visible = M.ring.visible = M.dot.visible = true; Sfx.tone({ type: 'sine', f0: 1400, f1: 300, dur: M.T, vol: 0.05 }); }
+      }
+    }
+    for (const M of this.list) {
+      if (!M.on) continue;
+      if (!frozen) M.t += dt;
+      const u = clamp(M.t / M.T, 0, 1);
+      M.g.position.set(M.at.x + (1 - u) * 14, M.at.y + 0.6 + (1 - u) * 42, M.at.z + (1 - u) * 8); M.g.rotation.x += dt * 4;
+      M.ring.position.set(M.at.x, M.at.y + 0.06, M.at.z); M.dot.position.set(M.at.x, M.at.y + 0.05, M.at.z); M.dot.scale.setScalar(Math.max(0.05, u));
+      M.ring.material.opacity = Save.s.reduceFlash ? 0.8 : (Math.sin(Clock.real * (10 + u * 30)) > 0 ? 1 : 0.35);
+      if (!frozen && Math.random() < 0.7) FX.glow.emit(M.g.position.x, M.g.position.y, M.g.position.z, rr(-1, 1), rr(1, 3), rr(-1, 1), 1, 0.4, 0.05, rr(0.2, 0.4), 0.4, 0, 0);
+      if (u >= 1) {
+        this.off(M); Sfx.boom(null, false); Hands.pulse('both', 0.4, 80);
+        for (let k = 0; k < 30; k++) { const a = Math.random() * 6.283; FX.glow.emit(M.at.x, M.at.y + 0.3, M.at.z, Math.cos(a) * rr(3, 8), rr(2, 8), Math.sin(a) * rr(3, 8), 1, rr(0.3, 0.6), 0.05, rr(0.15, 0.3), 0.7, 14, 0.3); }
+        FX.smoke(M.at.x, M.at.y + 0.5, M.at.z, 0.3, 0.2, 0.15, 12);
+        if (EF.open() && Math.hypot(P.x - M.at.x, P.z - M.at.z) < 2.4 && Math.abs(P.y - M.at.y) < 2) { if (Player.damage(CONFIG.DMG.meteor, 'meteor')) Player.shoveFrom(M.at); }
+      }
+    }
+  },
+};
+
+// ---------------- THE COLLECTOR: take too long on a floor and Mr. Green's debt collector comes for you ----------------
+// A tall hooded shape in a battered top hat, a green lantern swinging from one hand. It floats straight at you
+// through everything, a bit faster all the time. Nothing stops it but the beacon (a TIME STOP holds it, a SHOCKWAVE
+// pushes it back). It comes at 1.3 x the floor's par time (you get warned at par).
+const ECollector = {
+  C: null,
+  build() {
+    const g = new THREE.Group(), sk = EF.skin('collector', 0x40ff8a), B = [], D = 0x14181a, D2 = 0x0a0c0e;
+    avPart(B, new THREE.ConeGeometry(0.75, 2.3, 14, 1, true), D, 0, 1.25, 0);
+    for (let k = 0; k < 12; k++) { const a = k / 12 * 6.283; avPart(B, new THREE.ConeGeometry(0.14, 0.6, 4), D2, Math.cos(a) * 0.68, 0.0, Math.sin(a) * 0.68, Math.PI, 0, 0); }
+    avPart(B, new THREE.SphereGeometry(0.36, 14, 10), D, 0, 2.45, 0, 0, 0, 0, 1, 1.15, 1);
+    avPart(B, new THREE.SphereGeometry(0.27, 12, 10), 0x000000, 0, 2.38, 0.14, 0, 0, 0, 1, 1.1, 0.7);
+    avPart(B, new THREE.CylinderGeometry(0.3, 0.3, 0.04, 16), 0x202020, 0, 2.78, 0); avPart(B, new THREE.CylinderGeometry(0.2, 0.22, 0.42, 14), 0x1a1a1a, 0, 3.0, 0, 0.1, 0, -0.15); avPart(B, new THREE.CylinderGeometry(0.215, 0.215, 0.06, 14), 0x3a8a4a, 0, 2.86, 0);
+    for (const s of [-1, 1]) avPart(B, new THREE.CylinderGeometry(0.09, 0.12, 0.9, 6), D, s * 0.55, 1.95, 0.15, 0.4, 0, s * 0.6);
+    avPart(B, new THREE.SphereGeometry(0.08, 6, 4), 0xc8c0b0, 0.82, 1.55, 0.35); avPart(B, new THREE.SphereGeometry(0.08, 6, 4), 0xc8c0b0, -0.82, 1.55, 0.35);
+    g.add(new THREE.Mesh(avMerge(B), sk));
+    const eyes = [-1, 1].map((s) => { const e = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0x40ff8a, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); e.position.set(s * 0.1, 2.42, 0.36); e.scale.set(0.3, 0.3, 1); g.add(e); return e; });
+    const lantern = new THREE.Group(); lantern.position.set(0.85, 1.5, 0.35); g.add(lantern);
+    const L = []; avPart(L, new THREE.CylinderGeometry(0.01, 0.01, 0.4, 4), 0x808080, 0, -0.2, 0); avPart(L, new THREE.CylinderGeometry(0.13, 0.15, 0.26, 6, 1, true), 0x303030, 0, -0.5, 0); avPart(L, new THREE.ConeGeometry(0.16, 0.1, 6), 0x303030, 0, -0.33, 0);
+    lantern.add(new THREE.Mesh(avMerge(L), sk));
+    const flame = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0x60ff9a, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); flame.position.y = -0.5; flame.scale.set(1.6, 1.6, 1); lantern.add(flame);
+    return { g, eyes, lantern, flame };
+  },
+  init() { this.C = Object.assign(this.build(), { on: false, out: false, pos: new THREE.Vector3(), t: 0, warned: 0, cd: 0, humT: 0 }); this.C.g.visible = false; G.fx.add(this.C.g); },
+  start() { const C = this.C; C.on = true; C.out = false; C.warned = 0; C.g.visible = false; C.t = 0; },
+  stop() { const C = this.C; if (!C) return; C.on = false; C.out = false; C.g.visible = false; },
+  // a SHOCKWAVE / 1-UP / SUPER STAR shoves it back a long way
+  knock() { const C = this.C; if (C.out) { this.place(C, 26); C.cd = 2; } },
+  place(C, minD) { const nd = EF.node(minD, minD + 30) || Nav.g.nodes[0]; C.pos.set(nd.x, nd.y + 0.4, nd.z); },
+  update(dt, frozen) {
+    const C = this.C, E = EndlessRun, P = Player.pos; if (!C.on) return;
+    const par = E.par();
+    if (!C.out) {
+      if (E.floorT > par && C.warned < 1) { C.warned = 1; UI.announce('PAR TIME! HURRY UP!', { color: '#ffd040', short: true }); Sfx.tone({ type: 'square', f0: 880, dur: 0.12, vol: 0.06 }); Sfx.tone({ type: 'square', f0: 880, dur: 0.12, vol: 0.06, when: 0.2 }); }
+      if (E.floorT > par * 1.15 && C.warned < 2) { C.warned = 2; UI.announce('THE COLLECTOR IS COMING...', { color: '#60ff9a' }); Sfx.tone({ type: 'sine', f0: 98, dur: 2.5, vol: 0.2, verb: 0.6 }); }
+      if (E.floorT > par * 1.3 && EF.open()) {
+        C.out = true; C.t = 0; C.cd = 1.5; this.place(C, 30); C.g.visible = true;
+        UI.announce('THE COLLECTOR!', { color: '#60ff9a' }); Cue.play('collector'); FX.smoke(C.pos.x, C.pos.y + 1, C.pos.z, 0.1, 0.4, 0.2, 20);
+      }
+      return;
+    }
+    C.g.position.set(C.pos.x, C.pos.y + Math.sin(Clock.real * 2) * 0.15, C.pos.z);
+    C.lantern.rotation.z = Math.sin(Clock.real * 2.5) * 0.3; C.flame.material.opacity = 0.7 + Math.random() * 0.3;
+    C.g.lookAt(P.x, C.g.position.y, P.z);
+    if (frozen || !EF.open()) return;
+    C.t += dt; C.cd -= dt;
+    // straight at you, through anything; faster all the time (you can still outrun it flat out, for a while)
+    _v1.set(P.x - C.pos.x, P.y + 0.3 - C.pos.y, P.z - C.pos.z); const d = _v1.length(), sp = Math.min(Player.topSpeed * 1.02, (5 + C.t * 0.12) * EF.k());
+    if (d > 0.05) C.pos.addScaledVector(_v1, Math.min(d, sp * dt) / d);
+    if ((C.humT -= dt) <= 0) { C.humT = 1.2; if (d < 25) Sfx.tone({ type: 'sine', f0: 70 + 40 * (1 - d / 25), dur: 1.1, vol: 0.12 * (1 - d / 25), lp: 400 }); }
+    if (d < 12) Cue.cap('collector', 0.5);
+    if (C.cd <= 0 && d < 1.2) {
+      if (Player.damage(CONFIG.DMG.collector, 'collector')) { Player.shoveFrom(C.pos); Effects.doFlash(0x40ff8a, 0.35); }
+      this.place(C, 22); C.cd = 2.5;
+    }
+  },
+};
+
+// ---------------- KING MIMIC: the boss of every 10th floor ----------------
+// A Mimic the size of a house, with a crown. It hops after you (every landing sends a ring along the floor: jump it),
+// leaps high and comes down where you are (its shadow shows where: a huge shockwave), then sits there dizzy for a few
+// seconds: that's your chance to jump on its head. It spits Mimics at you. Stomp it enough times and it bursts into
+// Green Guys (and leaves you two items). The beacon won't take you up while it's alive.
+const EndBoss = {
+  B: null, SCALE: 4.2,
+  build() {
+    const M = EMimic.build(), crown = new THREE.Group(), C = [];
+    avPart(C, new THREE.CylinderGeometry(0.17, 0.16, 0.08, 16, 1, true), 0xffc020, 0, 0, 0);
+    for (let k = 0; k < 6; k++) { const a = k / 6 * 6.283; avPart(C, new THREE.ConeGeometry(0.035, 0.12, 4), 0xffd040, Math.cos(a) * 0.165, 0.09, Math.sin(a) * 0.165); avPart(C, new THREE.SphereGeometry(0.018, 6, 4), k % 2 ? 0xff2040 : 0x40a0ff, Math.cos(a) * 0.17, 0.0, Math.sin(a) * 0.17); }
+    crown.add(new THREE.Mesh(avMerge(C), new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.9, roughness: 0.25, envMap: ENV_MAP, envMapIntensity: 1.2 })));
+    crown.position.set(0, 0.29, 0.02); crown.rotation.z = 0.12; M.jawTop.children[0].add(crown);
+    M.monster.visible = true; M.body.visible = false;
+    const stars = []; for (let k = 0; k < 5; k++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.star || TEX.glow, color: 0xffe040, transparent: true, depthWrite: false, fog: false })); s.scale.set(0.12, 0.12, 1); s.visible = false; M.g.add(s); stars.push(s); }
+    const aura = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0xffc020, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); aura.scale.set(1.6, 1.6, 1); M.g.add(aura);
+    return Object.assign(M, { crown, stars, aura });
+  },
+  init() {
+    const B = this.B = Object.assign(this.build(), { on: false, st: 'off', t: 0, hp: 3, max: 3, pos: new THREE.Vector3(), a: new THREE.Vector3(), b: new THREE.Vector3(), hops: 0, spitT: 8, hitCd: 0 });
+    B.g.visible = false; G.fx.add(B.g);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.92, 1, 64), new THREE.MeshBasicMaterial({ color: 0xffc020, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending })); ring.rotation.x = -Math.PI / 2; ring.visible = false; ring.renderOrder = 3; G.fx.add(ring);
+    const sh = new THREE.Mesh(new THREE.CircleGeometry(3, 40), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.5, depthWrite: false })); sh.rotation.x = -Math.PI / 2; sh.visible = false; sh.renderOrder = 3; G.fx.add(sh);
+    const mark = new THREE.Mesh(new THREE.RingGeometry(2.8, 3.2, 48), new THREE.MeshBasicMaterial({ color: 0xff2a2a, transparent: true, depthWrite: false, side: THREE.DoubleSide })); mark.rotation.x = -Math.PI / 2; mark.visible = false; mark.renderOrder = 3; G.fx.add(mark);
+    Object.assign(B, { ring, sh, mark, ringT: 9, ringR: 9, ringAt: new THREE.Vector3(), ringHit: false });
+  },
+  alive() { return !!(this.B && this.B.on && this.B.st !== 'dead'); },
+  start() {
+    const B = this.B, f = EndlessRun.floor;
+    B.on = true; B.max = B.hp = Math.min(6, 3 + Math.floor((f - 10) / 20)); B.hops = 0; B.spitT = 9; B.hitCd = 0;
+    const g = Nav.g, n = g.nodes[Nav.farthestFrom(g.start)]; B.b.set(n.x, n.y, n.z); B.a.set(n.x, n.y + 40, n.z); B.pos.copy(B.a);
+    B.st = 'intro'; B.t = -1.5; B.g.visible = true; B.g.scale.setScalar(this.SCALE); B.ring.visible = false; B.sh.visible = true; B.mark.visible = false;
+    UI.announce('BOSS: KING MIMIC', { color: '#ffd040' }); UI.announce('JUMP ON ITS HEAD WHEN IT\'S DIZZY', { color: '#ffffff', short: true });
+  },
+  stop() { const B = this.B; if (!B) return; B.on = false; B.st = 'off'; B.g.visible = B.ring.visible = B.sh.visible = B.mark.visible = false; },
+  knock() { const B = this.B; if (this.alive() && B.st !== 'dizzy' && B.st !== 'intro') this.leap(B, true); },
+  // a hop (small) or a leap (onto you, from high up) from where it is to (x, z)
+  jumpTo(B, tx, tz, big, T) { RF.floor(tx, tz, EF.feet(), B.b); if (B.b.y < -1e8) B.b.copy(Player.pos); B.a.copy(B.pos); B.T = T; B.t = 0; B.big = big; B.st = big ? 'leap' : 'hop'; B.mark.visible = big; B.sh.visible = true; },
+  leap(B, away) {
+    const P = Player.pos, k = EF.k();
+    if (away) { const nd = EF.node(16, 28) || Nav.g.nodes[0]; this.jumpTo(B, nd.x, nd.z, true, 1.6); B.away = true; return; }
+    this.jumpTo(B, P.x + Player.vel.x * 0.6, P.z + Player.vel.z * 0.6, true, clamp(1.7 / Math.sqrt(k), 1.1, 1.7)); B.away = false;
+    Cue.play('kingRoar');
+  },
+  wave(B, R) { B.ringAt.copy(B.pos); B.ringT = 0; B.ringR = R; B.ringHit = false; B.ring.visible = true; },
+  update(dt, frozen) {
+    const B = this.B, P = Player.pos; if (!B.on) return;
+    const k = EF.k(), S = this.SCALE;
+    // the shockwave ring rolling out along the floor (jump it)
+    if (B.ring.visible) {
+      if (!frozen) B.ringT += dt;
+      const r = B.ringT * 11 * Math.sqrt(k); B.ring.position.set(B.ringAt.x, B.ringAt.y + 0.08, B.ringAt.z); B.ring.scale.setScalar(Math.max(0.01, r)); B.ring.material.opacity = 1 - r / B.ringR;
+      if (r > B.ringR) B.ring.visible = false;
+      else if (!B.ringHit && EF.open() && Player.grounded && Math.abs(P.y - B.ringAt.y) < 1.2 && Math.abs(Math.hypot(P.x - B.ringAt.x, P.z - B.ringAt.z) - r) < 0.7) { B.ringHit = true; if (Player.damage(CONFIG.DMG.kingWave, 'king')) { Player.vel.y = 5; Player.grounded = false; } }
+    }
+    if (B.st === 'dead') { B.t += dt; B.g.scale.setScalar(S * Math.max(0.01, 1 - B.t * 1.5)); if (B.t > 0.7) { B.g.visible = false; B.on = false; } return; }
+    if (frozen && B.st !== 'intro') { this.pose(B); return; }
+    B.t += dt; B.hitCd -= dt;
+    if (B.st === 'intro' || B.st === 'hop' || B.st === 'leap') {
+      const T = B.st === 'intro' ? 1.4 : B.T, u = clamp(B.t / T, 0, 1), h = B.st === 'hop' ? 3 : 14;
+      if (B.t < 0) { this.pose(B); return; }
+      B.pos.lerpVectors(B.a, B.b, u); if (B.st !== 'intro') B.pos.y += Math.sin(u * Math.PI) * h;
+      B.sh.position.set(B.b.x, B.b.y + 0.05, B.b.z); B.sh.scale.setScalar(0.4 + 0.6 * u); B.sh.material.opacity = 0.2 + 0.4 * u;
+      if (B.mark.visible) { B.mark.position.set(B.b.x, B.b.y + 0.07, B.b.z); B.mark.material.opacity = Save.s.reduceFlash ? 0.8 : (Math.sin(Clock.real * (8 + u * 30)) > 0 ? 1 : 0.3); }
+      if (u >= 1) {
+        // landing
+        B.pos.copy(B.b); B.mark.visible = false; Sfx.thud(); Hands.pulse('both', 0.5, 120);
+        const big = B.st !== 'hop'; Sfx.boom(null, big); this.wave(B, big ? 15 : 8);
+        for (let i = 0; i < (big ? 40 : 16); i++) { const a = Math.random() * 6.283; FX.sq.emit(B.pos.x + Math.cos(a) * 2, B.pos.y + 0.3, B.pos.z + Math.sin(a) * 2, Math.cos(a) * 7, rr(1, 4), Math.sin(a) * 7, 0.5, 0.4, 0.3, rr(0.12, 0.25), 0.7, 9, 0.4); }
+        if (EF.open() && Math.hypot(P.x - B.pos.x, P.z - B.pos.z) < 2.8 && Math.abs(P.y - B.pos.y) < 2.5) { if (Player.damage(big ? CONFIG.DMG.kingSlam : CONFIG.DMG.kingWave, 'king')) Player.shoveFrom(B.pos); }
+        if (B.st === 'leap' && !B.away) { B.st = 'dizzy'; B.t = 0; UI.announce("IT'S DIZZY: JUMP ON IT!", { color: '#ffd040', short: true }); }
+        else { B.st = 'idle'; B.t = 0; }
+      }
+    } else if (B.st === 'idle') {
+      // a beat between hops; every 3rd it leaps; now and then it spits Mimics at you
+      if (B.t > 0.45 / k) {
+        B.hops++; B.spitT -= 1;
+        if (B.spitT <= 0) { B.spitT = 6; this.spit(B); B.st = 'spit'; B.t = 0; }
+        else if (B.hops % 3 === 0) this.leap(B, false);
+        else { _v1.set(P.x - B.pos.x, 0, P.z - B.pos.z); const d = _v1.length() || 1, step = Math.min(d, 7); this.jumpTo(B, B.pos.x + _v1.x / d * step, B.pos.z + _v1.z / d * step, false, 0.75 / Math.sqrt(k)); }
+      }
+    } else if (B.st === 'spit') { if (B.t > 0.9) { B.st = 'idle'; B.t = 0; } }
+    else if (B.st === 'dizzy') {
+      // stomp it now! (it's squashed down low)
+      if (EF.canStomp(B.pos.x, B.pos.y + 1.45, B.pos.z, 2.1) && B.hitCd <= 0) {
+        B.hp--; B.hitCd = 0.5; EndlessRun.stomp(B.pos.x, B.pos.y + 1.6, B.pos.z, 8, ''); Effects.doFlash(0xffd040, 0.3); Sfx.boom(null, true); Hands.pulse('both', 1, 300);
+        if (B.hp <= 0) { this.defeat(B); return; }
+        UI.announce('KING MIMIC: ' + B.hp + ' MORE!', { color: '#ffd040', short: true }); this.leap(B, true); B.spitT = 2;
+      } else if (B.t > Math.max(2.2, 3.4 / Math.sqrt(k))) { B.st = 'idle'; B.t = 0; Cue.play('kingRoar'); }
+    }
+    // touching it (unless it's dizzy and you're on top of it) hurts
+    if (B.st !== 'dizzy' && B.st !== 'intro' && EF.open() && B.hitCd <= 0 && Math.hypot(P.x - B.pos.x, P.z - B.pos.z) < 2.1 && P.y - B.pos.y < 2.6 && P.y - B.pos.y > -1.2) { if (Player.damage(CONFIG.DMG.kingSlam, 'king')) Player.shoveFrom(B.pos); B.hitCd = 1; }
+    this.pose(B);
+  },
+  pose(B) {
+    const P = Player.pos, S = this.SCALE, dz = B.st === 'dizzy', t = Clock.real;
+    const sq = dz ? 0.62 : B.st === 'idle' ? 1 - Math.sin(clamp(B.t / 0.4, 0, 1) * Math.PI) * 0.15 : 1;
+    B.g.position.set(B.pos.x, B.pos.y + 0.37 * S * sq, B.pos.z); B.g.scale.set(S * (dz ? 1.25 : 1), S * sq, S * (dz ? 1.25 : 1));
+    if (!dz) B.g.lookAt(P.x, B.g.position.y, P.z);
+    EMimic.pose(B, dz ? 0.05 : B.st === 'spit' ? 1 : 0.55 + Math.abs(Math.sin(t * 3)) * 0.25, t, B.st === 'hop');
+    B.stars.forEach((s, i) => { s.visible = dz; const a = t * 4 + i * 1.256; s.position.set(Math.cos(a) * 0.3, 0.45, Math.sin(a) * 0.3); });
+    B.aura.material.opacity = dz ? 0.8 : 0.3;
+  },
+  spit(B) {
+    Cue.play('kingRoar'); let n = 0;
+    for (const M of EMimic.list) {
+      if (!M.on || M.st !== 'sleep' || n >= 2) continue;
+      n++; M.st = 'lunge'; M.t = 0; M.pos.set(B.pos.x, B.pos.y + 1.5, B.pos.z); M.panner = EF.panner(M);
+      _v1.set(Player.pos.x - M.pos.x + rr(-3, 3), 0, Player.pos.z - M.pos.z + rr(-3, 3)); const d = _v1.length() || 1; M.vel.copy(_v1).multiplyScalar(9 * EF.k() / d);
+    }
+  },
+  defeat(B) {
+    const E = EndlessRun; B.st = 'dead'; B.t = 0; B.ring.visible = B.sh.visible = B.mark.visible = false;
+    const got = E.reward(60 + 10 * Math.floor(E.floor / 10)); E.bump(10); E.kings++;
+    UI.announce('KING MIMIC DEFEATED!', { color: '#ffd040' }); UI.announce('+' + got + ' GREEN GUYS · 2 ITEMS', { color: '#3dff6a', short: true });
+    EndPop.show('+' + got, B.pos.x, B.pos.y + 4, B.pos.z, '#ffd040');
+    for (let i = 0; i < 2; i++) { const id = E.randomItem(); if (!E.add(id, true)) { E.gg += 10; E.got += 10; } else UI.toast('+1 ' + ENDLESS.ITEM[id].name + ' IN YOUR BAG'); }
+    Sfx.gold(); Sfx.beacon(); Effects.doFlash(0xffd040, 0.5);
+    for (let i = 0; i < 80; i++) { _c1.setHSL(0.3 + Math.random() * 0.15, 1, 0.55); FX.glow.emit(B.pos.x, B.pos.y + 2, B.pos.z, rr(-8, 8), rr(3, 12), rr(-8, 8), _c1.r, _c1.g, _c1.b, rr(0.15, 0.3), rr(1, 2), 12, 0.3); }
+    if (!Game.debugRun) Achievements.unlock('kingslayer');
+  },
+};
+
 // the cast, together (Hazards mode 'endless')
 const EndFoes = {
-  map: { mimic: EMimic, statue: EStatue, boing: EBoing, weaver: EWeaver, sentry: ESentry, mole: EMole, swarm: ESwarm, boulder: EBoulder, vacuum: EVacuum, thief: EThief },
+  map: { mimic: EMimic, statue: EStatue, boing: EBoing, weaver: EWeaver, sentry: ESentry, mole: EMole, swarm: ESwarm, boulder: EBoulder, vacuum: EVacuum, thief: EThief, collector: ECollector, king: EndBoss, meteor: EMeteor },
   active: [],
   init() { for (const k of Object.keys(this.map)) this.map[k].init(); },
   clear() { for (const k of Object.keys(this.map)) this.map[k].stop(); this.active = []; Player.slowT = 0; },
   reset() {
     this.clear();
-    const E = EndlessRun, ids = [...new Set([...E.perm, E.foe].filter(Boolean))];
-    for (const id of ids) this.map[id].start();
-    this.active = ids;
+    const E = EndlessRun;
+    EF.elite = new Set(E.elite ? [E.foe, E.foe2].filter(Boolean) : []);
+    // the ones that stay, the floor's own (and DOUBLE TROUBLE's), KING MIMIC (and his Mimics), the meteors, the Collector
+    const ids = [...new Set([...E.perm, E.foe, E.foe2, E.boss ? 'mimic' : '', E.boss ? 'king' : '', E.twist === 'meteor' ? 'meteor' : '', 'collector'].filter(Boolean))];
+    for (const id of ids) { EF.cur = id; this.map[id].start(); }
+    EF.cur = ''; this.active = ids; this.auras();
   },
-  update(dt) { const fz = EF.frozen(); for (const id of this.active) this.map[id].update(dt, fz); },
+  update(dt) { const fz = EF.frozen(); for (const id of this.active) { EF.cur = id; this.map[id].update(dt, fz); } EF.cur = ''; },
+  // the floor's ELITE enemies glow red
+  groups(id) {
+    const M = this.map[id]; if (!M) return [];
+    if (id === 'thief') return M.T ? [M.T.g] : [];
+    if (id === 'weaver') return M.spiders.map((x) => x.g);
+    if (id === 'swarm' || !M.list) return [];
+    return M.list.map((x) => x.g);
+  },
+  auras() {
+    for (const id of ENDLESS.FOES) {
+      const on = EF.elite.has(id);
+      for (const g of this.groups(id)) {
+        if (!g.userData.aura && !on) continue;
+        if (!g.userData.aura) { const a = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0xff2020, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false, fog: false })); a.position.y = id === 'mimic' ? 0 : 1; a.scale.set(3, 3, 1); g.add(a); g.userData.aura = a; }
+        g.userData.aura.visible = on;
+      }
+      if (id === 'swarm') for (const S of ESwarm.list) S.glow.material.color.set(on ? 0xff2020 : 0x806000);
+    }
+  },
   // a 1-UP, a SHOCKWAVE, a SUPER STAR: whoever was on top of you backs off
   knockBack() { for (const id of this.active) if (this.map[id].knock) this.map[id].knock(); },
 };
@@ -14326,7 +14787,8 @@ const AV = {
     ['NEON GREEN', 0x39ff14], ['CHROME', 0xc8d0dc], ['LAVA', 0xff4a00], ['ICE', 0x9fe8ff],
     ['HOT PINK', 0xff1493], ['VOID', 0x0a0a10], ['MINT', 0x5affc8], ['SUNSET', 0xff7a3a],
     ['RORY BLUE', 0xbfe6ff], ['ELECTRIC BLUE', 0x0a8cff],
-    ['GREEN GUY', 0x3dff6a], ['SKYSCRAPER', 0xd8e4f0], ['TOXIC', 0x9aff1a], ['GLACIER', 0x7fd4ff], ['FLOOR 50 GOLD', 0xe8ff6a]],
+    ['GREEN GUY', 0x3dff6a], ['SKYSCRAPER', 0xd8e4f0], ['TOXIC', 0x9aff1a], ['GLACIER', 0x7fd4ff], ['FLOOR 50 GOLD', 0xe8ff6a],
+    ['STOMP RED', 0xff3a5a], ['ROYAL GOLD', 0xffc020], ['S-RANK SILVER', 0xe8eef8]],
   STYLES: ['SUIT', 'TUXEDO', 'HOODIE', 'TRACKSUIT', 'KNIGHT', 'SPACESUIT', 'LAB COAT', 'OVERALLS', 'I HATE RORY', 'GOLDEN SUIT', 'INFERNO', 'DIVER SUIT', 'GLITCH SUIT', 'NEON SUIT',
     'SAMURAI ARMOUR', 'GALAXY SUIT', 'PIXEL SUIT', 'LAVA SUIT', 'ROYAL ROBE'],
   HEADS: ['FISHBOWL', 'BLOCKY', "LIL' GUY", 'ROBOT', 'PUMPKIN', 'TV', 'CAT', 'ALIEN', 'SKULL', 'GHOST', 'FROG', 'KURIMANJU', 'DIVER HELMET', "GOLDEN LIL' GUY",
@@ -14342,8 +14804,8 @@ const AV = {
   KEYS: ['suit', 'tie', 'head', 'hat', 'fish', 'style', 'anim', 'fx'],     // new keys go at the end (older saves / players still parse)
   // items earned with achievements (key -> index -> achievement id)
   LOCKS: {
-    suit: { 8: 'rampage', 9: 'speedrun', 10: 'chase2', 11: 'chase4', 16: 'rorych', 17: 'rorybeat', 18: 'endless10', 19: 'endless25', 20: 'bigspender', 21: 'iceskater', 22: 'endless50' },
-    tie: { 8: 'rampage', 9: 'speedrun', 10: 'chase2', 11: 'chase4', 16: 'rorych', 17: 'rorybeat', 18: 'endless10', 19: 'endless25', 20: 'bigspender', 21: 'iceskater', 22: 'endless50' },
+    suit: { 8: 'rampage', 9: 'speedrun', 10: 'chase2', 11: 'chase4', 16: 'rorych', 17: 'rorybeat', 18: 'endless10', 19: 'endless25', 20: 'bigspender', 21: 'iceskater', 22: 'endless50', 23: 'stomper', 24: 'kingslayer', 25: 'srank' },
+    tie: { 8: 'rampage', 9: 'speedrun', 10: 'chase2', 11: 'chase4', 16: 'rorych', 17: 'rorybeat', 18: 'endless10', 19: 'endless25', 20: 'bigspender', 21: 'iceskater', 22: 'endless50', 23: 'stomper', 24: 'kingslayer', 25: 'srank' },
     style: { 9: 'wegamaster', 10: 'lap2', 11: 'lap4', 12: 'modded', 13: 'lightsout' },
     head: { 12: 'lap4', 13: 'hoarder' },
     hat: { 8: 'wegamaster', 9: 'lap1', 10: 'escape', 11: 'lap3', 12: 'hard', 13: 'shoebench', 14: 'chase2', 15: 'chase3', 16: 'chase4', 17: 'flyer', 18: 'bookworm', 19: 'onehit', 20: 'completionist', 21: 'marathon', 31: 'lap5', 32: 'omniwega', 33: 'endless50' },
@@ -16173,11 +16635,12 @@ const Stage = {
         ['TIME', fmtTime(s.time)],
         ['THE END', info ? info[0] : s.reason === 'over' ? 'EVERYONE DOWN' : '-'],
         ['ITEMS USED', String(s.used || 0)],
+        ['STOMPS · COMBO', (s.stomps || 0) + '  ·  BEST ' + (s.combo || 0)],
         ['SHOP MONEY', '+' + (s.earned || 0) + '  (' + (s.wallet || 0) + ')'],
       ];
       rows.forEach((r, i) => {
-        const y = 166 + i * 37;
-        drawText(ctx, r[0], 60, y, { size: 22, align: 'left', fill: '#9ad8aa', stroke: '#000', lw: 4 });
+        const y = 160 + i * 34;
+        drawText(ctx, r[0], 60, y, { size: 21, align: 'left', fill: '#9ad8aa', stroke: '#000', lw: 4 });
         drawText(ctx, r[1], 452, y, { size: 21, align: 'right', fill: r[1].includes('NEW') ? '#ffd21f' : '#ffffff', stroke: '#000', lw: 4, maxWidth: 270 });
       });
       if (!Session.inRun()) {
@@ -16267,6 +16730,7 @@ const DEATH_INFO = {
   sentry: ['TARGET DOWN', 'THE SENTRIES SHOT YOU', '#ff6a40'], mole: ['FROM BELOW', 'THE BURROWER GOT YOU', '#d08a40'],
   swarm: ['STUNG', 'THE SWARM GOT YOU', '#ffd020'], boulder: ['FLATTENED', 'THE BOULDER ROLLED OVER YOU', '#a08870'],
   vacuum: ['SUCKED IN', 'THE VACUUM GOT YOU', '#9a7aff'], thief: ['ROBBED', 'THE THIEF BONKED YOU', '#40d0c0'],
+  collector: ['COLLECTED', 'YOU TOOK TOO LONG', '#60ff9a'], king: ['LONG LIVE THE KING', 'KING MIMIC GOT YOU', '#ffd040'], meteor: ['STRUCK DOWN', 'A METEOR HIT YOU', '#ff7040'],
 };
 // which scene a damage source plays
 function deathScene(src) {
@@ -16523,9 +16987,12 @@ const DeathCam = {
     F.boulder = EBoulder.build(); add(F.boulder.g);
     F.vacuum = EVacuum.build(); add(F.vacuum.g);
     F.thief = EThief.build(); add(F.thief.g);
+    F.collector = ECollector.build(); add(F.collector.g);
+    F.king = EndBoss.build(); add(F.king.g);
+    F.meteor = EBoulder.build(); add(F.meteor.g);
     return F;
   },
-  efHide() { const F = this.ef; if (!F) return; for (const k of ['mimic', 'statue', 'boing', 'weaver', 'sentry', 'mole', 'boulder', 'vacuum', 'thief']) F[k].g.visible = false; F.thread.visible = F.orb.visible = F.swarm.mesh.visible = F.swarm.glow.visible = false; },
+  efHide() { const F = this.ef; if (!F) return; for (const k of ['mimic', 'statue', 'boing', 'weaver', 'sentry', 'mole', 'boulder', 'vacuum', 'thief', 'collector', 'king', 'meteor']) F[k].g.visible = false; F.thread.visible = F.orb.visible = F.swarm.mesh.visible = F.swarm.glow.visible = false; },
   endScene(S, t, dt, FL) {
     const F = this.efActors();
     if (S === 'mimic') {
@@ -16602,6 +17069,24 @@ const DeathCam = {
       if (t > 2.0 && this.once('l')) Sfx.thiefLaugh();
       if (away > 0 && Math.random() < 0.5) FX.glow.emit(this.base.x + rr(-0.5, 0.5), this.base.y - 0.5, this.base.z + rr(-0.5, 0.5), rr(-2, 2), rr(1, 4), rr(-2, 2), 0.3, 1, 0.4, rr(0.1, 0.2), 0.8, 6, 0.5);
       if (t > 2.8) this.over('veil', clamp((t - 2.8) / 0.6, 0, 0.75), 0x02140c);
+    } else if (S === 'collector') {
+      // it glides out of the dark, lantern swinging... and reaches you
+      const C = F.collector, k = clamp(t / 2.4, 0, 1);
+      this.at(C.g, 0, FL - 0.8 + Math.sin(t * 2) * 0.1, lerp(-12, -1.4, k * k)); C.g.rotation.set(0, 0, 0); C.lantern.rotation.z = Math.sin(t * 3) * 0.4; C.g.scale.setScalar(1 + k * 0.25);
+      if (this.once('b')) Cue.play('collector');
+      if (k >= 1) { if (this.once('h')) { Effects.doFlash(0x40ff8a, 0.5); this.shake(0.4); Hands.pulse('both', 1, 300); } this.over('veil', clamp((t - 2.5) / 0.6, 0, 0.92), 0x021a08); }
+    } else if (S === 'king') {
+      // a huge shadow spreads round you... and KING MIMIC comes down on you, jaws wide
+      const K = F.king, fall = clamp((t - 1.0) / 0.8, 0, 1);
+      this.at(K.g, 0, lerp(18, FL + 1.2, fall * fall), -2.8); K.g.rotation.set(0.25, 0, 0); K.g.scale.setScalar(EndBoss.SCALE * 0.8); EMimic.pose(K, 0.45 + fall * 0.55, t, false);
+      if (t > 0.3 && this.once('r')) Cue.play('kingRoar');
+      if (fall >= 1) { if (this.once('s')) { Cue.play('chomp'); Sfx.boom(null, true); this.shake(0.7); Hands.pulse('both', 1, 400); } this.over('veil', clamp((t - 1.9) / 0.5, 0, 0.92), 0x2a1a00); }
+    } else if (S === 'meteor') {
+      // a fire in the sky, getting bigger and bigger...
+      const R = F.meteor, k = clamp(t / 2.0, 0, 1);
+      this.at(R.g, lerp(8, 0, k), FL + lerp(30, 1, k), lerp(-22, -2.2, k)); R.rock.rotation.x += dt * 5; R.g.scale.setScalar(0.7);
+      if (this.once('w')) Sfx.tone({ type: 'sine', f0: 1600, f1: 200, dur: 2, vol: 0.12 });
+      if (k >= 1) { if (this.once('h')) { Sfx.boom(null, true); Effects.doFlash(0xff6a10, 0.6); this.shake(0.7); Hands.pulse('both', 1, 400); } this.over('veil', clamp((t - 2.1) / 0.5, 0, 0.9), 0x2a0800); }
     }
   },
   // place an actor at (x, y, z) in the scene frame
@@ -17031,6 +17516,9 @@ const Achievements = {
     { id: 'endless50', name: 'FLOOR 50', desc: 'Reach floor 50 in ENDLESS', reward: [['hat', 33], ['suit', 22]] },
     { id: 'bigspender', name: 'BIG SPENDER', desc: "Spend 300 Green Guys at Mr. Green's in one ENDLESS run", reward: [['suit', 20]] },
     { id: 'iceskater', name: 'ICE SKATER', desc: 'Clear 3 icy floors in one ENDLESS run', reward: [['suit', 21]] },
+    { id: 'stomper', name: 'STOMPER', desc: 'Stomp 50 enemies in ENDLESS', reward: [['suit', 23]], stat: 'stomps', goal: 50 },
+    { id: 'kingslayer', name: 'KING SLAYER', desc: 'Beat KING MIMIC (every 10th floor of ENDLESS)', reward: [['suit', 24]] },
+    { id: 'srank', name: 'S RANK', desc: 'Clear an ENDLESS floor fast without getting hit', reward: [['suit', 25]] },
     { id: 'completionist', name: 'COMPLETIONIST', desc: 'Unlock every other achievement', reward: [['hat', 20]] },
   ],
   saveT: 0, dirty: false, version: 0,
@@ -17568,7 +18056,10 @@ SM.states.ENDLESS_EXIT = {
   update(dt) {
     EndlessRun.update(dt); gameplayTick(dt);
     if (SM.curName !== 'ENDLESS_EXIT' || Game.transitioning) return;
-    if (Beacon.touched()) EndlessRun.beaconReached();
+    if (Beacon.touched()) {
+      if (!EndBoss.alive()) EndlessRun.beaconReached();
+      else if (Clock.real - (EndlessRun.nagT || 0) > 2) { EndlessRun.nagT = Clock.real; UI.announce('BEAT KING MIMIC FIRST!', { color: '#ffd040', short: true }); }
+    }
   },
   exit() { Beacon.hide(); },
 };
@@ -17589,7 +18080,7 @@ SM.states.ENDLESS_OVER = {
     const earned = Game.debugRun ? 0 : Math.round(Wallet.add(E.payout(), 'ENDLESS RUN'));
     Save.save();
     if (!Game.debugRun) Net.event('endless', { f: E.maxFloor });
-    Stage.showWin({ endless: true, floor: E.maxFloor, best: Math.max(Save.data.bestFloor || 0, E.maxFloor), newBest, got: E.got, spent: E.spent, used: E.used, earned, wallet: Wallet.get(), time: Game.runTime, reason: arg.reason, hits: Player.hits, falls: Player.falls });
+    Stage.showWin({ endless: true, floor: E.maxFloor, best: Math.max(Save.data.bestFloor || 0, E.maxFloor), newBest, got: E.got, spent: E.spent, used: E.used, stomps: E.stomps, combo: E.bestCombo, earned, wallet: Wallet.get(), time: Game.runTime, reason: arg.reason, hits: Player.hits, falls: Player.falls });
     UI.setActive([Stage.winPanel]);
     Music.cueWinText();
     E.over = true;
@@ -17741,7 +18232,7 @@ window.WEGA_DEBUG = {
   endlessShop: () => { EndlessRun.toShop(); return true; },
   giveGreen: (n = 100) => { EndlessRun.gg += n; return EndlessRun.gg; },
   giveItem: (id = 'heart', n = 1) => { let k = 0; for (let i = 0; i < n; i++) if (EndlessRun.add(id, true)) k++; Game.debugRun = true; return k; },
-  endlessState: () => { const E = EndlessRun; return { st: SM.curName, floor: E.floor, theme: E.theme && E.theme.id, foe: E.foe, perm: E.perm.join(','), gg: E.gg, left: Collect.left, n: Collect.n, items: JSON.stringify(E.bag.filter(Boolean).map((b) => b.id + 'x' + b.n)), fx: Object.keys(E.fx).filter((k) => E.fx[k] > 0).join(','), sel: E.sel, music: window.WegaMusic ? window.WegaMusic.currentTrack() : '', hp: Math.round(Player.hp), N: E.size(E.floor) }; },
+  endlessState: () => { const E = EndlessRun; return { st: SM.curName, floor: E.floor, theme: E.theme && E.theme.id, twist: E.twist, elite: E.elite, boss: EndBoss.alive() ? EndBoss.B.hp : 0, combo: E.combo, stomps: E.stomps, floorT: +E.floorT.toFixed(1), par: E.par(), ranks: E.ranks, coll: !!(ECollector.C && ECollector.C.out), foe2: E.foe2, foe: E.foe, perm: E.perm.join(','), gg: E.gg, left: Collect.left, n: Collect.n, items: JSON.stringify(E.bag.filter(Boolean).map((b) => b.id + 'x' + b.n)), fx: Object.keys(E.fx).filter((k) => E.fx[k] > 0).join(','), sel: E.sel, music: window.WegaMusic ? window.WegaMusic.currentTrack() : '', hp: Math.round(Player.hp), N: E.size(E.floor) }; },
   roryTime: () => ({ song: +RoryRun.songT().toFixed(3), heard: +RoryRun.beatT().toFixed(3), music: +Music.pos().toFixed(3), lag: +Music.roryLag.toFixed(3), section: RORY_SONG.SECTIONS[Math.max(0, RoryWorld.si)].id, map: RoryMap.groups.map((g) => g.id + ':' + g.state).join(' ') }),
   win: () => Debug.jump('WIN'),
   lap1: () => Debug.jump('LAP1'),
@@ -17752,7 +18243,7 @@ window.WEGA_DEBUG = {
   player: () => ({ pos: Player.pos.toArray().map((v) => +v.toFixed(2)), hp: Player.hp, speed: +(Player.hspeed * CONFIG.SPEED_MULT).toFixed(1), grounded: Player.grounded }),
 };
 // test/debug access to internals (only with ?debug in the URL)
-if (DEBUG_URL) window.WEGA_DEBUG.internals = { SM, Session, FaceBoss, RoryRun, RoryDirector, EndlessRun, EndMap, EndWorld, EndDeco, EndWeather, EndShop, EndFoes, GiftBox, EndAmb, EDT, ENDLESS, EF, EFWalk, EMimic, EStatue, EBoing, EWeaver, ESentry, EMole, ESwarm, EBoulder, EVacuum, EThief, RoryFoes, BeatNotes, Subwoofer, EqWalls, Conductor, Scratch, Hush, Effects, RoryMap, RoryWorld, RoryDeco, RoryCard, RORY_SONG, Duel, Spectate, DeathCam, Clock, Destroyer, Urio, Cue, Sfx, Lap1Deco, Lap2Deco, Lap3Deco, Mods, MOD, MODS, Shop, SHOP, SHOP_CATS, Wallet, Shadow, Enraged, Lap5Deco, WegaShared, NameEdit, AvatarRig, WegaBoss, Diver, Jellies, DeepDeco, LobbyPlus, Achievements, Player, Collect, Beacon, Chamber, Hazards, Game, Rory, Screamer, LapTimer, Lap2: LapTimer, Flood, Shoebench, LapPortal, FPBody, Touch, Net, AV, Avatar, WegaHead, GlitchGuy, Idol, Music, HUD, Maze, Nav, World, Rig, Input, Fade, AudioSys, Save, Lobby, Stage, UI, get renderer() { return renderer; }, get scene() { return scene; }, get camera() { return camera; }, get perf() { return { upd: +Perf.upd.toFixed(2), ren: +Perf.ren.toFixed(2), calls: renderer.info.render.calls, tris: renderer.info.render.triangles }; } };
+if (DEBUG_URL) window.WEGA_DEBUG.internals = { SM, Session, FaceBoss, RoryRun, RoryDirector, EndlessRun, EndMap, EndWorld, EndDeco, EndWeather, EndShop, EndFoes, GiftBox, EndAmb, EDT, EndTwist, EMeteor, ECollector, EndBoss, EndPop, RF, ENDLESS, EF, EFWalk, EMimic, EStatue, EBoing, EWeaver, ESentry, EMole, ESwarm, EBoulder, EVacuum, EThief, RoryFoes, BeatNotes, Subwoofer, EqWalls, Conductor, Scratch, Hush, Effects, RoryMap, RoryWorld, RoryDeco, RoryCard, RORY_SONG, Duel, Spectate, DeathCam, Clock, Destroyer, Urio, Cue, Sfx, Lap1Deco, Lap2Deco, Lap3Deco, Mods, MOD, MODS, Shop, SHOP, SHOP_CATS, Wallet, Shadow, Enraged, Lap5Deco, WegaShared, NameEdit, AvatarRig, WegaBoss, Diver, Jellies, DeepDeco, LobbyPlus, Achievements, Player, Collect, Beacon, Chamber, Hazards, Game, Rory, Screamer, LapTimer, Lap2: LapTimer, Flood, Shoebench, LapPortal, FPBody, Touch, Net, AV, Avatar, WegaHead, GlitchGuy, Idol, Music, HUD, Maze, Nav, World, Rig, Input, Fade, AudioSys, Save, Lobby, Stage, UI, get renderer() { return renderer; }, get scene() { return scene; }, get camera() { return camera; }, get perf() { return { upd: +Perf.upd.toFixed(2), ren: +Perf.ren.toFixed(2), calls: renderer.info.render.calls, tris: renderer.info.render.triangles }; } };
 
 // =====================================================================================
 // MAIN LOOP
