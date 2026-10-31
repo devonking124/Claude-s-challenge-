@@ -285,55 +285,82 @@ twice). The HUD's top bar shows who's here.
 
 | Enemy | What it does | How to beat it |
 |---|---|---|
-| **THE MIMIC** | Looks just like a Green Guy, but its eyes flash red now and then. Get close and it opens up and lunges (25) | Watch the eyes before you grab |
-| **THE STATUE** | A stone angel that only moves when you're not looking at it, and then fast (you hear the stone grind) (30) | Keep it on screen |
-| **BOING** | A big rubber ball that bounces after you; its shadow shows where it lands (20) | Be somewhere else |
-| **THE WEAVER** | Spiders hang over the walkways and drop on you (15); webs on the floor slow you right down | Look up; go round the webs |
-| **THE SENTRIES** | Eye turrets on the platforms track you, beep faster and faster, then fire an orb (15) | Dodge the orbs |
-| **THE BURROWER** | Digs under the walkways at you: the floor cracks in a ring, then it bursts up (25) | Get out of the ring (or jump) |
-| **THE SWARM** | A cloud of hornets that chases you and stings you over and over inside it (5 a sting) | It's slower than you: keep running |
-| **THE BOULDER** | A huge rock rolling along the walkways at you (40) | Too big to jump: take another way, or step aside |
-| **THE VACUUM** | A hole in the world that drifts after you and pulls you in; touch it and it spits you out (20) | Run against it |
-| **THE THIEF** | Runs up and steals your Green Guys, then runs off (with nothing to steal it bonks you, 10) | Catch it to get them back (+3) |
+| **THE MIMIC** | Looks just like a Green Guy, but its eyes flash red now and then. Get close and it splits open into two jaws full of teeth, a tongue lolls out, six spider legs unfold and it scuttles at you (25) | Watch the eyes before you grab |
+| **THE STATUE** | A weeping stone angel (robe in folds, feathered wings, hands over its face) that only moves when you're not looking at it, and then fast (you hear the stone grind). Look back when it's close and it's reaching for you, claws out, fangs bared (30) | Keep it on screen |
+| **BOING** | A striped rubber ball with a cartoon face (big blinking eyes, angry brows, little kicking feet) that bounces after you; its shadow shows where it lands, and its toothy mouth opens wide as it comes down (20) | Be somewhere else |
+| **THE WEAVER** | Big hairy spiders with a glowing skull on their backs, eight jointed legs, eight red eyes and snapping fangs, hanging over the walkways; they drop on you (15). Webs on the floor slow you right down | Look up; go round the webs |
+| **THE SENTRIES** | Tripod turrets with an armoured, bloodshot eye: the shutters blink, the eye tracks you, a lens ring glows and spins as it beeps faster and faster, then fires an orb (15) | Dodge the orbs |
+| **THE BURROWER** | A giant drill-nosed mole in a miner's hard hat (its lamp shines), digging under the walkways at you: the floor cracks in a ring, then it bursts up, drill spinning and claws flailing (25) | Get out of the ring (or jump) |
+| **THE SWARM** | A cloud of striped hornets (wings a blur) round their queen, who's twice their size and wears a little crown; inside it you get stung over and over (5 a sting) | It's slower than you: keep running |
+| **THE BOULDER** | A huge cracked boulder with lava glowing through its cracks, moss on top and an angry face carved in it, rolling along the walkways at you (40) | Too big to jump: take another way, or step aside |
+| **THE VACUUM** | A little black hole (a swirling disc of hot gas, a bright ring, rocks circling in) that drifts after you and pulls you in; touch it and it spits you out (20) | Run against it |
+| **THE THIEF** | A raccoon burglar (mask, striped jumper, beanie, ringed tail) that runs up and steals your Green Guys, then runs off with its swag bag glowing (with nothing to steal it bonks you, 10) | Catch it to get them back (+3) |
 
 Each one has its own sound (and caption), its own death scene and a page in the character guide.
 
 **Ten worlds.** Every floor has a world: its walkways (colours and a pattern of their own), its sky, what's far
-below, the scenery round the map, its weather, fog and light. Floor 1 is NEON NIGHT, **floor 2 is the ice**, then
-the rest come round in a shuffled order.
+below, the landmarks and scenery round the map (lots of it moving), the platforms' own dressing, two layers of
+weather, fog, light and its own background sound. Floor 1 is NEON NIGHT, **floor 2 is the ice**, then the rest come
+round in a shuffled order (never the same world twice in a row).
 
-| World | Walkways | Sky / below | Scenery, weather |
+| World | Walkways | Sky / below | Landmarks and scenery | The platforms | Weather, sound |
+|---|---|---|---|---|---|
+| NEON NIGHT | dark, with a glowing neon grid | synthwave sun and grid over a neon grid | a city skyline all round (every window lit, neon on the roofs), searchlights sweeping the sky, huge neon rings turning overhead, wireframe pyramids | neon strips and glowing discs underneath | dust and drifting neon bits; a low synth hum |
+| **FROZEN PEAKS** | **ice: you slide** (you speed up and slow down slowly) | aurora over a frozen sea | snowy mountains all round, a big pale moon, ice arches in the sea, glowing ice pillars, ice spikes, icicles in the air | snow overhanging the edges, icicles underneath | snow and glitter; wind, ice creaking |
+| MAGMA FORGE | dark rock with glowing veins | red storm clouds over **lava (it burns)** | a volcano smoking and throwing lava bombs, floating rocks pouring lavafalls, obsidian spires | lava dripping off them, rock spikes underneath | embers and ash; a rumble, crackling |
+| TOXIC SWAMP | dark, with green ooze creeping over it | green haze over acid | giant glowing mushrooms, toxic barrels bobbing in the acid, rusty pipes pouring ooze, bubbles rising | moss on the edges, slime dripping, little glowing mushrooms | spores and bubbles; bubbling |
+| CANDY CLOUDS | pink and white candy stripes | pastel sky over clouds | lollipops, candy canes, frosted donuts turning in the air, a giant cake with a cherry, cotton-candy clouds, gumdrops | frosting dripping off the edges, gumdrops | sprinkles and sugar motes; music-box twinkles |
+| DESERT DUSK | rippled sand | a huge low sun over dunes | pyramids (one with a glowing golden cap), obelisks, an oasis with palms, cacti, mesas, tumbleweeds rolling by | sandstone pillars underneath, sand piles | blowing sand and dust motes; wind gusts |
+| DEEP SPACE | black, glittering with stars | stars and planets over the void | banded planets with glowing atmospheres, a turning space station, an asteroid belt, satellites, nebulae, shooting stars | thrusters glowing underneath, blinking lights | star dust; a deep drone, radio beeps |
+| THUNDERSTORM | steel plates and rivets | **lightning** over a dark sea | lightning striking the sea, a lighthouse sweeping its beam, wind turbines turning hard, storm clouds, lightning rods | steel struts underneath, blinking hazard lights | rain and mist; rain and wind |
+| JUNGLE RUINS | old stone with moss and cracks | sun through the canopy over water | giant trees, a step pyramid with glowing eyes in its doorway and torches, waterfalls, totem heads, broken columns | moss on the edges, vines hanging down | fireflies and pollen; birds and insects |
+| CRYSTAL CAVERN | shimmering violet crystal | glowing crystal far below | a cavern roof of crystal-tipped stalactites, a giant gem turning high above, rings of crystals circling, crystal clusters | crystals growing underneath and at the corners | sparkles and glints; chimes and a hum |
+
+**YOUR BAG.** Everything you buy (or find) goes in your **bag**: 6 slots along the bottom of the HUD, each holding a
+stack of one item. **Every item is temporary**: you use it when you want and it lasts a few seconds (or happens
+there and then), then it's gone. Above the bag the HUD shows what's working on you and how long it has left.
+
+| | Use the one you picked | Pick the next one | Use slot 1-6 |
 |---|---|---|---|
-| NEON NIGHT | dark, with a glowing neon grid | synthwave sun and grid over a neon grid | pyramids, dust |
-| **FROZEN PEAKS** | **ice: you slide** (you speed up and slow down slowly) | aurora over a frozen sea | icebergs, snow |
-| MAGMA FORGE | dark rock with glowing veins | red storm clouds over **lava (it burns)** | spires, embers |
-| TOXIC SWAMP | dark, with green ooze creeping over it | green haze over acid | giant mushrooms, spores |
-| CANDY CLOUDS | pink and white candy stripes | pastel sky over clouds | lollipops, sprinkles |
-| DESERT DUSK | rippled sand | a huge low sun over dunes | cacti, blowing sand |
-| DEEP SPACE | black, glittering with stars | stars and planets over the void | planets, star dust |
-| THUNDERSTORM | steel plates and rivets | **lightning** over a dark sea | pylons, rain |
-| JUNGLE RUINS | old stone with moss and cracks | sun through the canopy over water | ruins, fireflies |
-| CRYSTAL CAVERN | shimmering violet crystal | glowing crystal far below | crystals, sparkles |
+| PC | **E** | **Q** or the mouse wheel | **1-6** |
+| Quest (VR) | right grip | left grip | |
+| Phone / tablet | **USE ITEM** (or GRAB) | **▸** | |
 
-**MR. GREEN'S SHOP.** After every 5th floor (5, 10, 15...) you go to Mr. Green's shop (with its own song): a
-little wooden deck in the sky, Mr. Green in his top hat behind the counter and the items floating round it. Spend
-your Green Guys (prices go up a little the higher you are, and with each level you own); what you buy lasts for
-this run. Then **NEXT FLOOR**.
+You start with a HEART. **A gift box is hidden on every floor** (the same platform for everyone): grab it for a free
+random item (if your bag is full you get 15 Green Guys instead).
 
-| Item | What it does | Max |
+| Item | What it does | A slot holds |
 |---|---|---|
-| HEART | Heals 50 health right now | any |
-| ARMOR | 15% less damage (each level) | 3 |
-| SPEED BOOTS | 6% faster top speed (each level) | 3 |
-| SPRING SHOES | Jump 15% higher (each level) | 2 |
-| DOUBLE JUMP | One more jump in mid-air | 1 |
-| BUBBLE SHIELD | Blocks a hit (2 at level 2), refills every floor | 2 |
-| MAGNET | Pulls Green Guys in from 4 m (7 m at level 2) | 2 |
-| EXTRA LIFE | Go down and you come back with half health | 2 |
-| RADAR | An arrow points to the nearest Green Guy | 1 |
-| REGENERATION | Health comes back sooner and faster | 2 |
-| LUCKY CLOVER | 25% chance of a bonus Green Guy (each level) | 2 |
-| TIME STOP | Press **E / Q** (GRAB on a phone, grip in VR): every enemy freezes for 5 s | 3 |
+| HEART | Heals 50 health (you can use it in the shop too) | 5 |
+| REGEN POTION | Heals 6 health a second for 12 s | 3 |
+| IRON SKIN | You take half damage for 20 s | 3 |
+| BUBBLE SHIELD | Blocks the next hit (it pops after 40 s) | 3 |
+| SPEED BOOTS | 30% faster for 15 s | 5 |
+| SPRING SHOES | Jump 45% higher for 20 s | 5 |
+| WINGS | A double jump for 25 s | 3 |
+| FEATHER | You fall slowly (glide over gaps) for 15 s | 3 |
+| MAGNET | Pulls in Green Guys from 8 m for 15 s | 3 |
+| RADAR | An arrow to the nearest Green Guy for 25 s | 3 |
+| LUCKY CLOVER | Every Green Guy counts double for 20 s | 3 |
+| TIME STOP | Every enemy freezes for 6 s | 3 |
+| SHOCKWAVE | Blasts the enemies off you and stuns them for 3 s | 3 |
+| SUPER STAR | Invincible for 8 s (enemies that touch you get blasted) | 2 |
+| 1-UP | Works by itself: keep it in your bag and if you go down it brings you back with half health | 2 |
+
+Using the same timed item again adds its time (up to double).
+
+**MR. GREEN'S SHOP.** After every 5th floor (5, 10, 15...) you go to Mr. Green's shop (with its own song): a little
+island floating in a sunset sky, sky lanterns drifting up round it. Mr. Green himself (a big Green Guy in a top hat,
+monocle, bow tie, waistcoat and a curly moustache) stands on a crate behind his market stall: a green-and-white
+striped awning, shelves of potions and jars, a till that shows your Green Guys, a bell and a jar full of Green
+Guys, string lights and a neon OPEN sign. He waves when you arrive, follows you with his eyes, chats (speech
+bubbles), hops when you buy something and droops when you can't afford it.
+
+Every item sits on its own **glowing pedestal** round the plaza with its price tag: **walk up to one and press E**
+(GRAB on a phone, grip in VR) to buy it, or use the big menu board in front of the stall (click a card to see it,
+click again or BUY to buy it). Everything goes in your bag. **One item each visit is half price** (it has a
+spotlight on it, the same one for everyone), and the **MYSTERY BOX** gives you a random item. Prices go up a little
+the higher you are. Then **NEXT FLOOR**.
 
 **Floor 50** unlocks the **FLOOR 50** achievement (and its Green Guy buddy hat). Your best floor is saved on the
 GAME MODES page and the main menu. At the end you get a Lil' Guy payout for the lobby shop (more the higher you got).
@@ -342,7 +369,7 @@ GAME MODES page and the main menu. At the end you get a Lil' Guy payout for the 
 everyone; each player keeps their own Green Guy wallet and items. When anyone reaches the beacon, **everyone goes up**.
 At the shop everyone presses **READY** (or the shop closes after 45 s). If you go down you spectate and **come back
 on the next floor**; if everyone goes down, it's game over for the run. **Offline**, going down ends the run
-(unless you bought an extra life).
+(unless there's a 1-UP in your bag). Each player has their own bag.
 
 ## Challenges and modifiers
 
@@ -528,8 +555,9 @@ hop), **[ BASS THUMPS ]**, **[ THE CONDUCTOR TAPS HIS BATON ]**, **[ RECORD SCRA
 A speed dial (it turns red past 55 s/s), a card with your Lil' Guys left (RUN! in a chase, FIGHT! against WEGA
 FACE) and your health in ten cells, all in the lap's colour. The bar on top is the lap timer, the chase's progress
 (you, Urio, the collapse eating the route, the exit), Forget Me Not's time left, or the boss's health. In ENDLESS
-it's green, the card counts Green Guys left, and the top shows the floor and its world, how many you've got, who's
-on this floor, your Green Guy wallet, when the next shop is and your shield / time stops.
+it's in the world's colour, the card counts Green Guys left, and the top shows the floor and its world, how many
+you've got, who's on this floor, your Green Guy wallet, when the next shop is, your shield and whether the floor's
+gift box is still out there. Under the card is your bag (6 slots) and what's working on you right now.
 
 ## Difficulty
 
@@ -569,7 +597,8 @@ The game still runs if `wega-music.js` is missing (just without music).
 | WASD / arrow keys | Move (speed builds up the longer you run) |
 | Mouse | Look (click the game to lock the pointer) |
 | Space | Jump (hold it to keep hopping) |
-| E | Grab the idol (ENDLESS: use a TIME STOP; Q works too) |
+| E | Grab the idol (ENDLESS: use the item you picked in your bag; in the shop, buy what's on the pedestal next to you) |
+| Q / mouse wheel / 1-6 | ENDLESS: pick the next item in your bag / use slot 1-6 |
 | Shift | Sprint lock |
 | Esc / P | Pause |
 | M / F | Mute / full screen |
@@ -589,12 +618,13 @@ hands) show up when you're in VR.
 | Right stick | Snap turn (or smooth turn in Settings) |
 | A / X | Jump |
 | Left stick click | Toggle sprint lock |
-| Grip | Grab the idol |
+| Grip | Grab the idol (ENDLESS: right grip uses the item you picked, left grip picks the next; in the shop, buys) |
 | Trigger | Click menu buttons with the laser |
 | B / Y | Pause (hold 1 s to recentre) |
 
 Phone / tablet: tap **TAP TO PLAY** (it goes full screen and asks for landscape). Left stick moves, drag the
-right side of the screen to look, tap the 3D menu buttons, and use the JUMP / GRAB / SPRINT / pause buttons.
+right side of the screen to look, tap the 3D menu buttons, and use the JUMP / GRAB / SPRINT / pause buttons (in
+ENDLESS also USE ITEM and ▸ for your bag).
 The full-screen button is in the top-right corner.
 
 ## Debug
@@ -606,6 +636,6 @@ RORY'S CHALLENGE, and `0` starts ENDLESS.
 `die(killer)` (plays that character's death scene). For RORY'S CHALLENGE: `skipToRory(seconds)` starts it at that
 point of the song, `rorySeek(seconds)` jumps the song (offline) and `roryTime()` shows the song clock, the music's
 position and the current part. For ENDLESS: `skipToFloor(n, seed)` starts a run on floor `n`, `endlessShop()`
-opens Mr. Green's shop, `giveGreen(n)` adds Green Guys to your wallet and `endlessState()` shows the floor, world,
-enemies, wallet, items and song.
+opens Mr. Green's shop, `giveGreen(n)` adds Green Guys to your wallet, `giveItem(id, n)` puts items in your bag
+and `endlessState()` shows the floor, world, enemies, wallet, bag, what's working on you and the song.
 Runs that use debug helpers don't save a best time. Add `?offline` to play without connecting to any server.
